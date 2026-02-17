@@ -1,4 +1,4 @@
-# Pibox - Minimal Pi Coding Agent Sandbox
+# PiClaw - Minimal Pi Coding Agent Sandbox
 FROM debian:bookworm-slim
 
 # Environment variables
@@ -115,14 +115,7 @@ if [ -d "/workspace" ] && [ ! -d "/workspace/.pi/skills" ]; then
     fi
 fi
 
-# Install piclaw dependencies on first run
-if [ -d "$HOME_DIR/piclaw" ] && [ ! -d "$HOME_DIR/piclaw/node_modules" ]; then
-    echo "Installing piclaw dependencies..."
-    cd "$HOME_DIR/piclaw" && su agent -c 'export BUN_INSTALL="$HOME/.bun" && export PATH="$BUN_INSTALL/bin:$PATH" && bun install --frozen-lockfile 2>/dev/null || bun install' 2>&1 | tail -3
-    cd /
-fi
-
-echo "=== Pibox - Pi Coding Agent Sandbox ==="
+echo "=== PiClaw - Pi Coding Agent Sandbox ==="
 echo "Container idle. Attach with: docker exec -u agent -it <name> bash"
 echo "Run 'pi' for interactive mode, or start piclaw for WhatsApp integration."
 exec tail -f /dev/null
@@ -138,7 +131,11 @@ RUN /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/instal
     brew update && \
     curl -fsSL https://bun.sh/install | bash && \
     export BUN_INSTALL="$HOME/.bun" && export PATH="$BUN_INSTALL/bin:$PATH" && \
-    bun add -g @mariozechner/pi-coding-agent
+    bun add -g @mariozechner/pi-coding-agent && \
+    PI_CLI="$(readlink -f $BUN_INSTALL/bin/pi)" && \
+    rm "$BUN_INSTALL/bin/pi" && \
+    printf '#!/usr/bin/env bash\nexec bun "%s" "$@"\n' "$PI_CLI" > "$BUN_INSTALL/bin/pi" && \
+    chmod +x "$BUN_INSTALL/bin/pi"
 
 # Set up pi config directories and global AGENTS.md
 RUN mkdir -p ~/.pi/agent/skills ~/.pi/agent/sessions \
@@ -150,8 +147,11 @@ COPY --chown=agent:agent skel/ /home/agent/workspace-skel/
 # Ship piclaw global skills (IPC: schedule, send-message)
 COPY --chown=agent:agent piclaw/skills/ /home/agent/.pi/agent/skills/
 
-# Ship piclaw orchestrator
+# Ship piclaw orchestrator and install as global binary
 COPY --chown=agent:agent piclaw/ /home/agent/piclaw/
+RUN export BUN_INSTALL="$HOME/.bun" && export PATH="$BUN_INSTALL/bin:$PATH" && \
+    cd /home/agent/piclaw && bun install --frozen-lockfile 2>/dev/null || bun install && \
+    bun link
 
 # Layer 5: Save skeleton
 USER root

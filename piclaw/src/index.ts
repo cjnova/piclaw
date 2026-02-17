@@ -1,3 +1,4 @@
+#!/usr/bin/env bun
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 

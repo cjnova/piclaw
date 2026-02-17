@@ -8,6 +8,7 @@ import makeWASocket, {
   makeCacheableSignalKeyStore,
   useMultiFileAuthState,
 } from "@whiskeysockets/baileys";
+import qrcode from "qrcode-terminal";
 
 import { ASSISTANT_NAME, STORE_DIR } from "../config.js";
 import type { NewMessage, OnChatMetadata, OnInboundMessage } from "../types.js";
@@ -54,7 +55,6 @@ export class WhatsAppChannel {
 
     this.sock = makeWASocket({
       auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, silentLogger) },
-      printQRInTerminal: true,
       logger: silentLogger,
       browser: Browsers.macOS("Chrome"),
     });
@@ -63,7 +63,10 @@ export class WhatsAppChannel {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        console.log("[whatsapp] Scan the QR code above to authenticate");
+        qrcode.generate(qr, { small: true }, (code: string) => {
+          console.log("\n" + code);
+          console.log("[whatsapp] Scan the QR code above to authenticate\n");
+        });
       }
 
       if (connection === "close") {
