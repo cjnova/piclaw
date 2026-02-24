@@ -13,7 +13,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "build:web": "cp web/src/app.ts web/static/js/app.js && cp web/src/api.ts web/static/js/api.js",
-    "test": "bun test"
+    "test": "bun test --max-concurrency=1"
   },
   "dependencies": {
     "@mariozechner/pi-coding-agent": "^0.54.0",

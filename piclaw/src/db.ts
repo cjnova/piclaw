@@ -484,6 +484,12 @@ export function logTaskRun(log: TaskRunLog): void {
   ).run(log.task_id, log.run_at, log.duration_ms, log.status, log.result, log.error);
 }
 
+export function getTaskRunLogs(taskId: string): TaskRunLog[] {
+  return db
+    .prepare("SELECT * FROM task_run_logs WHERE task_id = ? ORDER BY run_at")
+    .all(taskId) as TaskRunLog[];
+}
+
 // --- Router state accessors ---
 
 export function getRouterState(key: string): string | undefined {

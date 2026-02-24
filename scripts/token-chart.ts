@@ -7,7 +7,11 @@ const daysArgIndex = args.indexOf("--days");
 const days = daysArgIndex >= 0 ? parseInt(args[daysArgIndex + 1], 10) : 7;
 const targetDays = Number.isFinite(days) && days > 0 ? days : 7;
 
-const sessionsDir = "/workspace/.piclaw/data/sessions";
+const sessionsArgIndex = args.indexOf("--sessions-dir");
+const sessionsCandidate = sessionsArgIndex >= 0 ? args[sessionsArgIndex + 1] : undefined;
+const sessionsDir = sessionsCandidate && !sessionsCandidate.startsWith("--")
+  ? sessionsCandidate
+  : "/workspace/.piclaw/data/sessions";
 
 const now = new Date();
 const start = new Date(now);
