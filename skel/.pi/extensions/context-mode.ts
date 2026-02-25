@@ -1,4 +1,4 @@
-import { Type, isBashToolResult } from "@mariozechner/pi-coding-agent";
+import { isBashToolResult } from "@mariozechner/pi-coding-agent";
 
 import {
   createBatchExecTool,
