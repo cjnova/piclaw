@@ -2,7 +2,8 @@ import { extname, resolve } from "path";
 
 import { AgentQueue } from "../queue.js";
 import type { AgentPool } from "../agent-pool.js";
-import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
+import { initTheme } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionEvent, ExtensionUIContext, Theme } from "@mariozechner/pi-coding-agent";
 import { parseControlCommand } from "../agent-control.js";
 import { ASSISTANT_NAME, TRIGGER_PATTERN, WEB_HOST, WEB_IDLE_TIMEOUT, WEB_PORT } from "../config.js";
 import {
@@ -47,6 +48,27 @@ const MIME_TYPES: Record<string, string> = {
   ".ico": "image/x-icon",
 };
 
+const createFallbackTheme = (): Theme => {
+  const passthrough = (text: string) => text;
+  const identity = () => passthrough;
+  return {
+    name: "web",
+    sourcePath: undefined,
+    fg: (_color: string, text: string) => text,
+    bg: (_color: string, text: string) => text,
+    bold: passthrough,
+    italic: passthrough,
+    underline: passthrough,
+    inverse: passthrough,
+    strikethrough: passthrough,
+    getFgAnsi: (_color: string) => "",
+    getBgAnsi: (_color: string) => "",
+    getColorMode: () => "truecolor",
+    getThinkingBorderColor: () => identity(),
+    getBashModeBorderColor: () => identity(),
+  } as unknown as Theme;
+};
+
 export interface WebChannelOpts {
   queue: AgentQueue;
   agentPool: AgentPool;
@@ -63,14 +85,24 @@ export class WebChannel {
   private server: ReturnType<typeof Bun.serve> | null = null;
   private lastAgentTimestamp: Record<string, string> = {};
   private clients: Set<PendingClient> = new Set();
+  private pendingUiRequests = new Map<string, { resolve: (value: any) => void; reject: (err: Error) => void; timeoutId: ReturnType<typeof setTimeout>; kind: string }>();
+  private uiRequestCounter = 0;
+  private editorTextByChat = new Map<string, string>();
+  private fallbackTheme = createFallbackTheme();
 
   constructor(opts: WebChannelOpts) {
     this.queue = opts.queue;
     this.agentPool = opts.agentPool;
+    if (typeof (this.agentPool as any).setSessionBinder === "function") {
+      (this.agentPool as any).setSessionBinder((session: AgentSession, chatJid: string) =>
+        this.bindSessionUiContext(session, chatJid)
+      );
+    }
   }
 
   async start(): Promise<void> {
     this.loadState();
+    try { initTheme(); } catch {}
     this.server = Bun.serve({
       hostname: WEB_HOST,
       port: WEB_PORT,
@@ -86,6 +118,11 @@ export class WebChannel {
       try { client.controller.close(); } catch {}
     }
     this.clients.clear();
+    for (const pending of this.pendingUiRequests.values()) {
+      clearTimeout(pending.timeoutId);
+      try { pending.reject(new Error("Web channel stopped")); } catch {}
+    }
+    this.pendingUiRequests.clear();
     this.server?.stop(true);
     this.server = null;
   }
@@ -203,7 +240,7 @@ export class WebChannel {
     }
 
     if (req.method === "POST" && pathname === "/agent/respond") {
-      return this.json({ status: "ok" });
+      return this.handleAgentRespond(req);
     }
 
     if (req.method === "POST" && pathname === "/agent/whitelist") {
@@ -283,6 +320,143 @@ export class WebChannel {
     }
   }
 
+  private async bindSessionUiContext(session: AgentSession, chatJid: string): Promise<void> {
+    if (!chatJid.startsWith("web:")) return;
+
+    const waitForIdle = async (): Promise<void> => {
+      if (!session.isStreaming) return;
+      await new Promise<void>((resolve) => {
+        const unsub = session.subscribe((event) => {
+          if (event.type === "agent_end") {
+            unsub();
+            resolve();
+          }
+        });
+      });
+    };
+
+    const uiContext = this.createUiContext(chatJid);
+    await session.bindExtensions({
+      uiContext,
+      commandContextActions: {
+        waitForIdle,
+        newSession: async (options) => {
+          const ok = await session.newSession(options);
+          return { cancelled: !ok };
+        },
+        fork: async (entryId) => {
+          const result = await session.fork(entryId);
+          return { cancelled: result.cancelled };
+        },
+        navigateTree: async (targetId, options) => {
+          const result = await session.navigateTree(targetId, options);
+          return { cancelled: result.cancelled };
+        },
+        switchSession: async (sessionPath) => {
+          const ok = await session.switchSession(sessionPath);
+          return { cancelled: !ok };
+        },
+        reload: () => session.reload(),
+      },
+      onError: (error) => {
+        console.error("[web] Extension error:", error);
+        this.broadcastEvent("extension_ui_error", error);
+      },
+    });
+  }
+
+  private createUiContext(chatJid: string): ExtensionUIContext {
+    const fallbackTheme = this.fallbackTheme;
+    const requestUiResponse = async (
+      kind: string,
+      payload: Record<string, unknown>,
+      timeoutMs = 120000
+    ): Promise<unknown> => {
+      const requestId = `ui-${Date.now()}-${++this.uiRequestCounter}`;
+      return new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          this.pendingUiRequests.delete(requestId);
+          this.broadcastEvent("extension_ui_timeout", { request_id: requestId, kind, chat_jid: chatJid });
+          resolve(undefined);
+        }, timeoutMs);
+
+        this.pendingUiRequests.set(requestId, { resolve, reject, timeoutId, kind });
+        this.broadcastEvent("extension_ui_request", {
+          request_id: requestId,
+          kind,
+          chat_jid: chatJid,
+          ...payload,
+        });
+      });
+    };
+
+    return {
+      select: async (title, options, opts) => {
+        const timeoutMs = typeof opts?.timeout === "number" ? opts.timeout : 120000;
+        const result = await requestUiResponse("select", { title, options, opts }, timeoutMs);
+        return typeof result === "string" ? result : undefined;
+      },
+      confirm: async (title, message, opts) => {
+        const timeoutMs = typeof opts?.timeout === "number" ? opts.timeout : 120000;
+        const result = await requestUiResponse("confirm", { title, message, opts }, timeoutMs);
+        return Boolean(result);
+      },
+      input: async (title, placeholder, opts) => {
+        const timeoutMs = typeof opts?.timeout === "number" ? opts.timeout : 120000;
+        const result = await requestUiResponse("input", { title, placeholder, opts }, timeoutMs);
+        return typeof result === "string" ? result : undefined;
+      },
+      notify: (message, type) => {
+        this.broadcastEvent("extension_ui_notify", { chat_jid: chatJid, message, type });
+      },
+      onTerminalInput: () => () => {},
+      setStatus: (key, text) => {
+        this.broadcastEvent("extension_ui_status", { chat_jid: chatJid, key, text });
+      },
+      setWorkingMessage: (message) => {
+        this.broadcastEvent("extension_ui_working", { chat_jid: chatJid, message });
+      },
+      setWidget: (key, content, options) => {
+        if (Array.isArray(content)) {
+          this.broadcastEvent("extension_ui_widget", { chat_jid: chatJid, key, content, options });
+        }
+      },
+      setFooter: () => {},
+      setHeader: () => {},
+      setTitle: (title) => {
+        this.broadcastEvent("extension_ui_title", { chat_jid: chatJid, title });
+      },
+      custom: async (_factory, _options) => {
+        const result = await requestUiResponse("custom", { title: "Custom UI" });
+        return result as any;
+      },
+      pasteToEditor: (text) => {
+        const current = this.editorTextByChat.get(chatJid) || "";
+        const updated = current + text;
+        this.editorTextByChat.set(chatJid, updated);
+        this.broadcastEvent("extension_ui_editor_text", { chat_jid: chatJid, text: updated });
+      },
+      setEditorText: (text) => {
+        this.editorTextByChat.set(chatJid, text);
+        this.broadcastEvent("extension_ui_editor_text", { chat_jid: chatJid, text });
+      },
+      getEditorText: () => this.editorTextByChat.get(chatJid) || "",
+      editor: async (title, prefill) => {
+        const result = await requestUiResponse("editor", { title, prefill });
+        return typeof result === "string" ? result : undefined;
+      },
+      setEditorComponent: () => {},
+      get theme() {
+        return fallbackTheme;
+      },
+      getAllThemes: () => [],
+      getTheme: (_name) => undefined,
+      setTheme: (_nextTheme) => ({ success: false, error: "UI theme switching not available" }),
+      getToolsExpanded: () => false,
+      setToolsExpanded: () => {},
+    };
+  }
+
   private async handlePost(req: Request, isReply: boolean): Promise<Response> {
     let data: { content?: string; thread_id?: number | null; media_ids?: number[] };
     try {
@@ -307,6 +481,27 @@ export class WebChannel {
     return this.json(interaction, 201);
   }
 
+  private async handleAgentRespond(req: Request): Promise<Response> {
+    let data: { request_id?: string; outcome?: unknown };
+    try {
+      data = await req.json();
+    } catch {
+      return this.json({ error: "Invalid JSON" }, 400);
+    }
+
+    if (!data.request_id) return this.json({ error: "Missing request_id" }, 400);
+
+    const pending = this.pendingUiRequests.get(data.request_id);
+    if (pending) {
+      clearTimeout(pending.timeoutId);
+      this.pendingUiRequests.delete(data.request_id);
+      pending.resolve(data.outcome);
+      return this.json({ status: "ok" });
+    }
+
+    return this.json({ status: "unknown_request" });
+  }
+
   private async handleAgentMessage(req: Request, pathname: string): Promise<Response> {
     const agentId = pathname.split("/")[2] || DEFAULT_AGENT_ID;
     let data: { content?: string; thread_id?: number | null; media_ids?: number[] };
@@ -328,12 +523,36 @@ export class WebChannel {
 
     this.broadcastEvent("new_post", interaction);
 
+    const markCommandHandled = () => {
+      if (interaction?.timestamp) {
+        this.lastAgentTimestamp[DEFAULT_CHAT_JID] = interaction.timestamp;
+        this.saveState();
+      }
+    };
+
     const command = parseControlCommand(data.content, TRIGGER_PATTERN);
     if (command) {
       const result = await this.agentPool.applyControlCommand(DEFAULT_CHAT_JID, command);
       await this.sendMessage(DEFAULT_CHAT_JID, result.message);
+      markCommandHandled();
       return this.json(
         { user_message: interaction, thread_id: data.thread_id ?? interaction.id, command: result },
+        201
+      );
+    }
+
+    // If message looks like an extension slash command (starts with '/'), execute it directly
+    const trimmed = (data.content || "").trim();
+    if (trimmed.startsWith("/")) {
+      const cmdResult = await this.agentPool.applySlashCommand(DEFAULT_CHAT_JID, trimmed);
+      try {
+        if (cmdResult.message) await this.sendMessage(DEFAULT_CHAT_JID, cmdResult.message);
+      } catch (e) {
+        console.error('[web] Failed to send slash command response:', e);
+      }
+      markCommandHandled();
+      return this.json(
+        { user_message: interaction, thread_id: data.thread_id ?? interaction.id, command: cmdResult },
         201
       );
     }

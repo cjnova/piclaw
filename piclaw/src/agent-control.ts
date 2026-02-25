@@ -13,11 +13,16 @@ export type AgentControlCommand =
       type: "thinking";
       level?: string;
       raw: string;
+    }
+  | {
+      type: "commands";
+      raw: string;
     };
 
 export interface AgentControlResult {
   status: "success" | "error";
   message: string;
+  messages?: Array<{ role: string; text: string; customType?: string }>;
 }
 
 const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
@@ -76,6 +81,13 @@ export function parseControlCommand(text: string, triggerPattern?: RegExp): Agen
     return {
       type: "thinking",
       level: level || undefined,
+      raw: cleaned,
+    };
+  }
+
+  if (command.toLowerCase() === "/commands") {
+    return {
+      type: "commands",
       raw: cleaned,
     };
   }
@@ -190,6 +202,52 @@ export async function applyControlCommand(
     return {
       status: "success",
       message: `Model set to ${selected.provider}/${selected.id}.${thinkingNote}`,
+    };
+  }
+
+  if (command.type === "commands") {
+    const lines: string[] = ["Available commands:"];
+    const addLine = (name: string, description?: string) => {
+      const suffix = description ? ` - ${description}` : "";
+      lines.push(`• ${name}${suffix}`);
+    };
+
+    addLine("/model", "Select model or list available models");
+    addLine("/thinking", "Show or set thinking level");
+    addLine("/commands", "List available commands");
+
+    const extensionRunner = session.extensionRunner;
+    if (extensionRunner) {
+      const extCommands = extensionRunner.getRegisteredCommandsWithPaths();
+      for (const entry of extCommands) {
+        const name = entry.command?.name;
+        if (!name) continue;
+        const description = entry.command.description || `extension (${entry.extensionPath})`;
+        addLine(`/${name}`, description);
+      }
+    }
+
+    for (const template of session.promptTemplates) {
+      const description = template.description || "prompt template";
+      addLine(`/${template.name}`, description);
+    }
+
+    const skills = session.resourceLoader.getSkills().skills;
+    for (const skill of skills) {
+      const description = skill.description || "skill";
+      addLine(`/skill:${skill.name}`, description);
+    }
+
+    return {
+      status: "success",
+      message: lines.join("\n"),
+    };
+  }
+
+  if (command.type !== "thinking") {
+    return {
+      status: "error",
+      message: "Unsupported command.",
     };
   }
 
