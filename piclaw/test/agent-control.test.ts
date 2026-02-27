@@ -66,6 +66,10 @@ test("parseControlCommand parses model and thinking commands", () => {
   expect(queueCmd?.type).toBe("queue");
   expect(queueCmd && "message" in queueCmd ? queueCmd.message : null).toBe("do this next");
 
+  const queueAllCmd = parseControlCommand("/queue-all batch this");
+  expect(queueAllCmd?.type).toBe("queue_all");
+  expect(queueAllCmd && "message" in queueAllCmd ? queueAllCmd.message : null).toBe("batch this");
+
   const stateCmd = parseControlCommand("/state");
   expect(stateCmd?.type).toBe("state");
 

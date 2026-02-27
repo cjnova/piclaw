@@ -1502,6 +1502,7 @@ function App() {
     }, [hasMore]);
 
     useEffect(() => {
+        const intervalMs = Math.min(1000, Math.max(100, Math.floor(SILENCE_WARNING_MS / 2)));
         const interval = setInterval(() => {
             if (!isAgentRunningRef.current) return;
             if (pendingRequestRef.current) return;
@@ -1525,7 +1526,7 @@ function App() {
                     lastSilenceNoticeRef.current = now;
                 }
             }
-        }, 1000);
+        }, intervalMs);
 
         return () => clearInterval(interval);
     }, [finalizeStalledResponse]);

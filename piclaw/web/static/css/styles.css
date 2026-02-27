@@ -1033,11 +1033,11 @@ body {
 }
 
 .agent-thinking-title.thought {
-    color: #ff9f7f;
+    color: var(--turn-color, #ff9f7f);
 }
 
 .agent-thinking-title.thought .turn-dot {
-    background: #ff9f7f;
+    background: var(--turn-color, #ff9f7f);
 }
 
 .agent-thinking-body {
@@ -1066,11 +1066,17 @@ body {
 .agent-thinking-body ul,
 .agent-thinking-body ol {
     margin: 0;
-    padding-left: 1.25em;
+    padding-left: 1.1em;
 }
 
 .agent-thinking-body li {
     margin: 0;
+    padding: 0;
+    line-height: 1.1;
+}
+
+.agent-thinking-body li + li {
+    margin-top: 0.15em;
 }
 
 .agent-thinking-body blockquote {

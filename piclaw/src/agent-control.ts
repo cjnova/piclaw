@@ -41,6 +41,11 @@ export type AgentControlCommand =
       raw: string;
     }
   | {
+      type: "queue_all";
+      message?: string;
+      raw: string;
+    }
+  | {
       type: "state";
       raw: string;
     }
@@ -341,6 +346,14 @@ export function parseControlCommand(text: string, triggerPattern?: RegExp): Agen
     };
   }
 
+  if (commandLower === "/queue-all") {
+    return {
+      type: "queue_all",
+      message: args || undefined,
+      raw: cleaned,
+    };
+  }
+
   if (commandLower === "/state") {
     return { type: "state", raw: cleaned };
   }
@@ -612,13 +625,20 @@ export async function applyControlCommand(
     }
   }
 
-  if (command.type === "queue") {
+  if (command.type === "queue" || command.type === "queue_all") {
     const queuedText = command.message?.trim();
+    const useBatch = command.type === "queue_all";
+    const mode = useBatch ? "all" : "one-at-a-time";
+
     if (!queuedText) {
       return {
         status: "error",
-        message: "Usage: /queue <message>",
+        message: useBatch ? "Usage: /queue-all <message>" : "Usage: /queue <message>",
       };
+    }
+
+    if (session.followUpMode !== mode) {
+      session.setFollowUpMode(mode);
     }
 
     if (session.isStreaming) {
@@ -631,7 +651,9 @@ export async function applyControlCommand(
 
       return {
         status: "success",
-        message: "Queued as a follow-up after the current response.",
+        message: useBatch
+          ? "Queued as a follow-up (batch mode: all)."
+          : "Queued as a follow-up (one-at-a-time).",
       };
     }
 
@@ -1038,7 +1060,8 @@ export async function applyControlCommand(
     addLine("/abort-bash", "Abort running bash command");
     addLine("/shell", "Run a shell command and return output");
     addLine("/bash", "Run a shell command and add output to context");
-    addLine("/queue", "Queue a follow-up message");
+    addLine("/queue", "Queue a follow-up message (one-at-a-time)");
+    addLine("/queue-all", "Queue a follow-up message (batch all)");
     addLine("/steering-mode", "Set steering mode (all|one)");
     addLine("/followup-mode", "Set follow-up mode (all|one)");
     addLine("/session-name", "Set or show the session name");

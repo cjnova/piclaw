@@ -254,7 +254,8 @@ Piclaw supports direct control commands (no LLM round‑trip) in chat. Key comma
 | `/abort-bash` | Cancel a running bash command |
 | `/shell <cmd>` | Run a shell command (output only) |
 | `/bash <cmd>` | Run shell command and add output to context |
-| `/queue <msg>` | Queue follow‑up (or run immediately if idle) |
+| `/queue <msg>` | Queue follow‑up (one‑at‑a‑time; or run immediately if idle) |
+| `/queue-all <msg>` | Queue follow‑up in batch mode (all) |
 | `/steering-mode all|one` | Set steering queue mode |
 | `/followup-mode all|one` | Set follow‑up queue mode |
 | `/session-name [name|clear]` | Show or set session name |
