@@ -61,6 +61,21 @@ test("parseControlCommand parses model and thinking commands", () => {
   const shellCmd = parseControlCommand("/shell ls -la");
   expect(shellCmd?.type).toBe("shell");
   expect(shellCmd && "command" in shellCmd ? shellCmd.command : null).toBe("ls -la");
+
+  const queueCmd = parseControlCommand("/queue do this next");
+  expect(queueCmd?.type).toBe("queue");
+  expect(queueCmd && "message" in queueCmd ? queueCmd.message : null).toBe("do this next");
+
+  const stateCmd = parseControlCommand("/state");
+  expect(stateCmd?.type).toBe("state");
+
+  const autoCompactCmd = parseControlCommand("/auto-compact on");
+  expect(autoCompactCmd?.type).toBe("auto_compact");
+  expect(autoCompactCmd && "enabled" in autoCompactCmd ? autoCompactCmd.enabled : null).toBe(true);
+
+  const bashCmd = parseControlCommand("/bash ls");
+  expect(bashCmd?.type).toBe("bash");
+  expect(bashCmd && "command" in bashCmd ? bashCmd.command : null).toBe("ls");
 });
 
 test("applyControlCommand switches model and thinking level", async () => {
