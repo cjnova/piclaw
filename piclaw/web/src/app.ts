@@ -1419,11 +1419,13 @@ function App() {
     }, []);
 
     // Scroll to bottom of timeline (column-reverse: bottom is scrollTop=0)
+    const scrollToBottomRef = useRef(null);
     const scrollToBottom = useCallback(() => {
         if (timelineRef.current) {
             timelineRef.current.scrollTop = 0;
         }
     }, []);
+    scrollToBottomRef.current = scrollToBottom;
 
     const finalizeStalledResponse = useCallback(() => {
         if (!isAgentRunningRef.current) return;
@@ -1463,9 +1465,9 @@ function App() {
 
         stalledPostIdRef.current = id;
         setPosts((prev) => (prev ? dedupePosts([...prev, localPost]) : [localPost]));
-        scrollToBottom();
+        scrollToBottomRef.current?.();
         setAgentStatus(null);
-    }, [scrollToBottom, setCurrentTurnId]);
+    }, [setCurrentTurnId]);
     
     useEffect(() => {
         viewStateRef.current = { currentHashtag, searchQuery };
@@ -1827,7 +1829,7 @@ function App() {
                 if (prev.some((post) => post.id === data.id)) return prev;
                 return [...prev, data];
             });
-            scrollToBottom();
+            scrollToBottomRef.current?.();
         }
         // Update existing post (e.g., when link previews are fetched)
         if (eventType === 'interaction_updated') {
@@ -1843,7 +1845,7 @@ function App() {
                 }
             }
         }
-    }, [clearAgentRunState, noteAgentActivity, removeStalledPost, scrollToBottom, setActiveTurn]);
+    }, [clearAgentRunState, noteAgentActivity, removeStalledPost, setActiveTurn]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
