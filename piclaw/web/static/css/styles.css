@@ -1059,12 +1059,12 @@ body {
     margin: 0;
     word-break: break-word;
     font-family: inherit;
-    line-height: 1.1;
+    line-height: 1.2;
 }
 
 .agent-thinking-body,
 .agent-thinking-body * {
-    line-height: 1.1;
+    line-height: 1.2;
 }
 
 .agent-thinking-truncation {
@@ -1086,13 +1086,13 @@ body {
 .agent-thinking-body ol {
     margin: 0;
     padding-left: 1.1em;
-    line-height: 1.1;
+    line-height: 1.2;
 }
 
 .agent-thinking-body li {
     margin: 0;
     padding: 0;
-    line-height: 1.1;
+    line-height: 1.2;
 }
 
 .agent-thinking-body li + li {
@@ -1118,7 +1118,7 @@ body {
 .agent-thinking-body pre {
     margin: 0;
     white-space: pre-wrap;
-    line-height: 1.1;
+    line-height: 1.2;
 }
 
 /* Agent request modal */
