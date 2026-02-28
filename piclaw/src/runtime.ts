@@ -158,7 +158,14 @@ async function processMessages(chatJid: string): Promise<boolean> {
 
   await whatsapp.setTyping(chatJid, true);
 
-  const output = await agentPool.runAgent(prompt, chatJid);
+  const output = await agentPool.runAgent(prompt, chatJid, {
+    onTurnComplete: async (turn) => {
+      if (turn.text) {
+        const text = formatOutbound(turn.text, channel);
+        if (text) await whatsapp.sendMessage(chatJid, text);
+      }
+    },
+  });
 
   await whatsapp.setTyping(chatJid, false);
 

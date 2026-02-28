@@ -29,6 +29,12 @@ export interface AgentOutput {
   attachments?: AttachmentInfo[];
 }
 
+/** A single turn's output within a multi-turn agent run. */
+export interface TurnOutput {
+  text: string;
+  attachments: AttachmentInfo[];
+}
+
 export interface AutoCompactNotice {
   phase: "pre" | "post";
   status: "start" | "end" | "error";
@@ -43,6 +49,8 @@ export interface RunAgentOptions {
   onEvent?: (event: AgentSessionEvent) => void;
   onAutoCompact?: (notice: AutoCompactNotice) => void;
   autoCompactPhases?: Array<"pre" | "post">;
+  /** Called when a turn completes (text_start → next text_start or end). */
+  onTurnComplete?: (turn: TurnOutput) => void;
 }
 
 export interface AgentPoolOptions {
@@ -110,8 +118,26 @@ export class AgentPool {
       const session = await this.getOrCreate(chatJid);
       console.log(`[agent-pool] Prompting session ${chatJid} (${prompt.length} chars)`);
 
-      let result = "";
+      // Track turns: each text_start begins a new turn
+      let currentTurnText = "";
+      let turnCount = 0;
       const onEvent = options.onEvent;
+      const onTurnComplete = options.onTurnComplete;
+
+      const flushTurn = () => {
+        const text = currentTurnText.trim();
+        if (!text && !onTurnComplete) return;
+        if (text || turnCount > 0) {
+          const turnAttachments = this.attachments.take(chatJid);
+          onTurnComplete?.({
+            text,
+            attachments: turnAttachments,
+          });
+          turnCount++;
+        }
+        currentTurnText = "";
+      };
+
       const unsub = session.subscribe((event: AgentSessionEvent) => {
         if (onEvent) {
           try {
@@ -120,8 +146,14 @@ export class AgentPool {
             console.warn("[agent-pool] Event handler error:", err);
           }
         }
-        if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-          result += event.assistantMessageEvent.delta;
+        if (event.type === "message_update") {
+          if (event.assistantMessageEvent.type === "text_start" && onTurnComplete) {
+            // A new text response is starting — flush the previous turn
+            flushTurn();
+          }
+          if (event.assistantMessageEvent.type === "text_delta") {
+            currentTurnText += event.assistantMessageEvent.delta;
+          }
         }
       });
 
@@ -152,18 +184,23 @@ export class AgentPool {
       }
 
       const duration = Date.now() - startTime;
-      const attachments = this.attachments.take(chatJid);
-      writeAgentLog(this.logsDir, chatJid, duration, timedOut, result, null);
+
+      // If onTurnComplete was used, intermediate turns were already flushed.
+      // The final turn's text is in currentTurnText.
+      const finalText = currentTurnText.trim();
+      const finalAttachments = this.attachments.take(chatJid);
+
+      writeAgentLog(this.logsDir, chatJid, duration, timedOut, finalText, null);
 
       if (timedOut) {
         return { status: "error", result: null, error: `Timed out after ${AGENT_TIMEOUT}ms` };
       }
 
-      console.log(`[agent-pool] Done in ${duration}ms (${result.length} chars, session ${chatJid})`);
+      console.log(`[agent-pool] Done in ${duration}ms (${finalText.length} chars, ${turnCount + 1} turns, session ${chatJid})`);
       return {
         status: "success",
-        result: result.trim() || null,
-        attachments: attachments.length ? attachments : undefined,
+        result: finalText || null,
+        attachments: finalAttachments.length ? finalAttachments : undefined,
       };
     } catch (err) {
       this.attachments.clear(chatJid);

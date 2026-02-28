@@ -1,5 +1,6 @@
 import type { AgentSessionEvent } from "@mariozechner/pi-coding-agent";
 import type { WebChannel } from "../../web.js";
+import type { AttachmentInfo } from "../../../agent-pool/attachments.js";
 import { ASSISTANT_AVATAR, ASSISTANT_NAME, TRIGGER_PATTERN } from "../../../config.js";
 import { parseControlCommand } from "../../../agent-control.js";
 import { getMessagesSince } from "../../../db.js";
@@ -138,6 +139,29 @@ export async function processChat(channel: WebChannel, chatJid: string, agentId:
     title: "Thinking...",
     turn_id: turnId,
   }));
+
+  const storeAndBroadcast = (text: string, turnAttachments: AttachmentInfo[]) => {
+    const mediaIds = turnAttachments.map((a) => a.id);
+    const contentBlocks = turnAttachments.map((a) => ({
+      type: a.kind === "image" ? "image" : "file",
+      name: a.name,
+      filename: a.name,
+      mime_type: a.contentType,
+      size: a.size,
+    }));
+
+    const formatted = formatOutbound(text, channelName);
+    const interaction = channel.storeMessage(chatJid, formatted, true, mediaIds, {
+      contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
+    });
+    if (interaction) {
+      channel.broadcastEvent("agent_response", {
+        ...interaction,
+        agent_name: ASSISTANT_NAME,
+        agent_avatar: ASSISTANT_AVATAR || null,
+      });
+    }
+  };
 
   const output = await channel.agentPool.runAgent(prompt, chatJid, {
     onAutoCompact: (notice) => {
@@ -307,6 +331,12 @@ export async function processChat(channel: WebChannel, chatJid: string, agentId:
         }));
       }
     },
+    onTurnComplete: (turn) => {
+      // Intermediate turn completed (follow-up boundary) — store as separate message
+      if (turn.text || turn.attachments.length > 0) {
+        storeAndBroadcast(turn.text, turn.attachments);
+      }
+    },
   });
 
   if (output.status === "error") {
@@ -322,28 +352,10 @@ export async function processChat(channel: WebChannel, chatJid: string, agentId:
     return;
   }
 
-  const attachments = output.attachments ?? [];
-  const mediaIds = attachments.map((attachment) => attachment.id);
-  const contentBlocks = attachments.map((attachment) => ({
-    type: attachment.kind === "image" ? "image" : "file",
-    name: attachment.name,
-    filename: attachment.name,
-    mime_type: attachment.contentType,
-    size: attachment.size,
-  }));
-
-  if (output.result || attachments.length > 0) {
-    const text = formatOutbound(output.result || "", channelName);
-    const interaction = channel.storeMessage(chatJid, text, true, mediaIds, {
-      contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
-    });
-    if (interaction) {
-      channel.broadcastEvent("agent_response", {
-        ...interaction,
-        agent_name: ASSISTANT_NAME,
-        agent_avatar: ASSISTANT_AVATAR || null,
-      });
-    }
+  // Store the final turn's output
+  const finalAttachments = output.attachments ?? [];
+  if (output.result || finalAttachments.length > 0) {
+    storeAndBroadcast(output.result || "", finalAttachments);
   }
 
   channel.broadcastEvent("agent_status", withAgentProfile({
