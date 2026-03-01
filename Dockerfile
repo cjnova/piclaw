@@ -116,8 +116,15 @@ if [ -d "/workspace" ] && [ ! -d "/workspace/.pi/skills" ]; then
 fi
 
 echo "=== PiClaw - Pi Coding Agent Sandbox ==="
+
+# Auto-start piclaw if requested
+if [ "${PICLAW_AUTOSTART:-0}" = "1" ]; then
+    echo "Auto-starting piclaw..."
+    exec su -s /bin/bash agent -c 'source ~/.bashrc 2>/dev/null; exec piclaw'
+fi
+
 echo "Container idle. Attach with: docker exec -u agent -it <name> bash"
-echo "Run 'pi' for interactive mode, or start piclaw for WhatsApp integration."
+echo "Run 'pi' for interactive mode, or 'piclaw' for web UI + WhatsApp."
 exec tail -f /dev/null
 ENTRYPOINT
 RUN chmod +x /entrypoint.sh

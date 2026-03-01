@@ -27,21 +27,23 @@ make up
 # Enter the container
 make enter
 
-# Inside the container, run `pi` interactively
-cd /workspace
-pi
-```
-
-To run `piclaw` (web UI + WhatsApp gateway):
-
-```bash
+# Inside the container, start piclaw (web UI + WhatsApp gateway)
 piclaw
 ```
 
-Then open the web UI at:
+The container starts idle — you need to `exec` into it and run `piclaw` manually (or set `PICLAW_AUTOSTART=1` in your environment / `.env` to start it on boot).
+
+Once piclaw is running, open the web UI at:
 
 ```
 http://localhost:8080
+```
+
+To use `pi` interactively instead (no web UI):
+
+```bash
+cd /workspace
+pi
 ```
 
 WhatsApp pairing is optional; see [docs/whatsapp.md](docs/whatsapp.md).
@@ -128,6 +130,7 @@ WORKSPACE_PATH=/mnt/data/piclaw-workspace docker compose up -d
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
+| `PICLAW_AUTOSTART` | `0` | Set to `1` to auto-start piclaw on container boot |
 | `AGENT_TIMEOUT` | `600000` | Max `pi` invocation time (ms) |
 | `ASSISTANT_NAME` | `PiClaw` | Trigger name (`@PiClaw`) |
 | `ASSISTANT_AVATAR` | _(empty)_ | Avatar URL for web UI |
