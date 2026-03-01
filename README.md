@@ -59,9 +59,31 @@ The built-in UI is single-user, mobile-friendly, and streams updates over SSE:
 - **Thought/Draft panels** during streaming
 - **Live steering** and follow‑ups while streaming
 - **File attachments** with download links
+- **Workspace explorer** (left sidebar SVG tree, previews, and downloads)
+- **File reference pills** (click a file to add it to the next prompt)
+- **Preview rules**: Markdown renders only for `.md`; other text is monospaced plaintext; images render inline
 - **Link previews** via server-side OpenGraph fetch
 - **Dark/Light themes** (system preference)
 - **Mobile-first layout** with webapp manifest
+
+### Workspace explorer
+
+The workspace sidebar shows an SVG tree of `/workspace` (auto-refreshes every 15s and only re-renders when the tree changes). Click a file to:
+
+- Open a preview (images inline, text in monospaced plaintext by default, Markdown rendered only for `.md`).
+- Add a **file reference pill** to the compose box for your next prompt.
+
+When you send a message with pills, the UI prefixes your prompt with a `Files:` block so the agent sees the paths:
+
+```
+Files:
+- notes/orangepi-6-plus.md
+- scripts/run-stress-ng.sh
+
+<your message>
+```
+
+Remove pills with the “x” on each tag, or clear them automatically after sending.
 
 Web server settings:
 
