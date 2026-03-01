@@ -177,7 +177,7 @@ export function ComposeBox({
                     />
                     ${!searchMode && activeModel && html`
                         <span class="compose-model-hint" title=${activeModel}>
-                            ${activeModel.includes('/') ? activeModel.split('/').pop() : activeModel}
+                            ${activeModel}
                         </span>
                     `}
                 </div>
