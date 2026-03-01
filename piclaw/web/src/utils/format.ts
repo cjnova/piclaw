@@ -2,13 +2,19 @@
 
 export function formatTime(timestamp) {
     const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return timestamp;
     const now = new Date();
-    const diff = (now - date) / 1000;
+    const diffMs = now - date;
+    const dayMs = 24 * 60 * 60 * 1000;
 
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
-    if (diff < 604800) return `${Math.floor(diff / 86400)}d`;
+    if (diffMs < dayMs) {
+        return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+    }
+    if (diffMs < 7 * dayMs) {
+        const weekday = date.toLocaleDateString(undefined, { weekday: 'short' });
+        const time = date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+        return `${weekday} ${time}`;
+    }
     return date.toLocaleDateString();
 }
 
