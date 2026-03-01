@@ -1,7 +1,7 @@
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { ASSISTANT_NAME, DATA_DIR, POLL_INTERVAL, PUSHOVER_APP_TOKEN, PUSHOVER_DEVICE, PUSHOVER_PRIORITY, PUSHOVER_SOUND, PUSHOVER_USER_KEY, STORE_DIR, TRIGGER_PATTERN, WORKSPACE_DIR, TOOL_OUTPUT_RETENTION_DAYS, TOOL_OUTPUT_CLEANUP_INTERVAL_MS, WHATSAPP_PHONE, } from "./config.js";
-import { initDatabase, getMessagesSince, getNewMessages, getRouterState, setRouterState, storeMessage, storeChatMetadata } from "./db.js";
+import { initDatabase, getMessagesSince, getNewMessages, storeMessage, storeChatMetadata } from "./db.js";
 import { AgentPool } from "./agent-pool.js";
 import { AgentQueue } from "./queue.js";
 import { startIpcWatcher } from "./ipc.js";
@@ -13,58 +13,15 @@ import { detectChannel, formatMessages, formatOutbound } from "./router.js";
 import { startToolOutputCleanup } from "./tool-output.js";
 import { parseControlCommand } from "./agent-control.js";
 import { createId } from "./utils/ids.js";
-let lastTimestamp = "";
-let lastAgentTimestamp = {};
+import { RuntimeState } from "./runtime/state.js";
 const queue = new AgentQueue();
 const agentPool = new AgentPool();
 let whatsapp;
 let web;
 let pushover = null;
-// Chat JIDs we listen on — loaded from data/chats.json
-let chatJids = new Set();
-const processedCommandIds = new Map();
-function getProcessedCommandSet(chatJid) {
-    const existing = processedCommandIds.get(chatJid);
-    if (existing)
-        return existing;
-    const set = new Set();
-    processedCommandIds.set(chatJid, set);
-    return set;
-}
-function markCommandProcessed(chatJid, messageId) {
-    getProcessedCommandSet(chatJid).add(messageId);
-}
-function wasCommandProcessed(chatJid, messageId) {
-    return getProcessedCommandSet(chatJid).has(messageId);
-}
-function loadChats() {
-    const chatsFile = join(DATA_DIR, "chats.json");
-    if (existsSync(chatsFile)) {
-        const data = JSON.parse(readFileSync(chatsFile, "utf-8"));
-        chatJids = new Set(data.jids || []);
-    }
-    // Self-chat is always included (determined after WhatsApp connects)
-}
-function saveChats() {
-    const chatsFile = join(DATA_DIR, "chats.json");
-    writeFileSync(chatsFile, JSON.stringify({ jids: [...chatJids] }, null, 2));
-}
-function loadState() {
-    lastTimestamp = getRouterState("last_timestamp") || "";
-    const agentTs = getRouterState("last_agent_timestamp");
-    try {
-        lastAgentTimestamp = agentTs ? JSON.parse(agentTs) : {};
-    }
-    catch {
-        lastAgentTimestamp = {};
-    }
-}
-function saveState() {
-    setRouterState("last_timestamp", lastTimestamp);
-    setRouterState("last_agent_timestamp", JSON.stringify(lastAgentTimestamp));
-}
+const state = new RuntimeState(DATA_DIR);
 async function processMessages(chatJid) {
-    const since = lastAgentTimestamp[chatJid] || "";
+    const since = state.lastAgentTimestamp[chatJid] || "";
     const messages = getMessagesSince(chatJid, since, ASSISTANT_NAME);
     if (messages.length === 0)
         return true;
@@ -75,7 +32,7 @@ async function processMessages(chatJid) {
             ? parseControlCommand(message.content, TRIGGER_PATTERN)
             : null;
         if (command) {
-            if (!wasCommandProcessed(chatJid, message.id)) {
+            if (!state.wasCommandProcessed(chatJid, message.id)) {
                 commandQueue.push({ message, command });
             }
             continue;
@@ -85,16 +42,16 @@ async function processMessages(chatJid) {
     for (const { message, command } of commandQueue) {
         const result = await agentPool.applyControlCommand(chatJid, command);
         await whatsapp.sendMessage(chatJid, result.message);
-        markCommandProcessed(chatJid, message.id);
+        state.markCommandProcessed(chatJid, message.id);
     }
     // Check trigger on non-command messages only
     const hasTrigger = promptMessages.some((m) => TRIGGER_PATTERN.test(m.content.trim()));
     if (!hasTrigger)
         return true;
     const channel = detectChannel(chatJid);
-    const prevCursor = lastAgentTimestamp[chatJid] || "";
-    lastAgentTimestamp[chatJid] = messages[messages.length - 1].timestamp;
-    saveState();
+    const prevCursor = state.lastAgentTimestamp[chatJid] || "";
+    state.lastAgentTimestamp[chatJid] = messages[messages.length - 1].timestamp;
+    state.saveTimestamps();
     const stripTrigger = (text) => {
         if (!text)
             return "";
@@ -135,8 +92,8 @@ async function processMessages(chatJid) {
     });
     await whatsapp.setTyping(chatJid, false);
     if (output.status === "error") {
-        lastAgentTimestamp[chatJid] = prevCursor;
-        saveState();
+        state.lastAgentTimestamp[chatJid] = prevCursor;
+        state.saveTimestamps();
         console.error(`[piclaw] Agent error: ${output.error}`);
         return false;
     }
@@ -151,11 +108,11 @@ async function messageLoop() {
     console.log(`[piclaw] Running (trigger: @${ASSISTANT_NAME})`);
     while (true) {
         try {
-            const jids = [...chatJids];
-            const { messages, newTimestamp } = getNewMessages(jids, lastTimestamp, ASSISTANT_NAME);
+            const jids = [...state.chatJids];
+            const { messages, newTimestamp } = getNewMessages(jids, state.lastTimestamp, ASSISTANT_NAME);
             if (messages.length > 0) {
-                lastTimestamp = newTimestamp;
-                saveState();
+                state.lastTimestamp = newTimestamp;
+                state.saveTimestamps();
                 // Deduplicate by chat
                 const byChat = new Map();
                 for (const msg of messages)
@@ -182,8 +139,8 @@ export async function main() {
     mkdirSync(WORKSPACE_DIR, { recursive: true });
     initDatabase();
     startToolOutputCleanup(TOOL_OUTPUT_RETENTION_DAYS, TOOL_OUTPUT_CLEANUP_INTERVAL_MS);
-    loadState();
-    loadChats();
+    state.loadTimestamps();
+    state.loadChats();
     console.log("=== Piclaw - Pi Coding Agent Assistant ===");
     const shutdown = async (signal) => {
         console.log(`[piclaw] ${signal} received, shutting down...`);
@@ -209,7 +166,7 @@ export async function main() {
         await pushover.start();
     }
     whatsapp = new WhatsAppChannel({
-        chatJids: () => chatJids,
+        chatJids: () => state.chatJids,
         phoneNumber: WHATSAPP_PHONE || undefined,
         onPairingCode: (code) => {
             try {
@@ -228,9 +185,9 @@ export async function main() {
             }
         },
         onMessage: (chatJid, msg) => {
-            if (!chatJids.has(chatJid) && msg.is_from_me) {
-                chatJids.add(chatJid);
-                saveChats();
+            if (!state.chatJids.has(chatJid) && msg.is_from_me) {
+                state.chatJids.add(chatJid);
+                state.saveChats();
             }
             storeMessage(msg);
         },
