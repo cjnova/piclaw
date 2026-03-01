@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { ResponseService } from "../src/channels/web/response-service.js";
+import { ResponseService } from "../src/channels/web/http/response-service.js";
 
 
 test("response service wraps json and static helpers", async () => {

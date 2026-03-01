@@ -2,10 +2,10 @@ import { expect, test } from "bun:test";
 import { existsSync } from "fs";
 import { join } from "path";
 
-import { clampInt, jsonResponse, parseOptionalInt } from "../src/channels/web/http-utils.js";
+import { clampInt, jsonResponse, parseOptionalInt } from "../src/channels/web/http/http-utils.js";
 import { buildPreview, createToolTitleTracker } from "../src/channels/web/agent-utils.js";
 import { handleSse, broadcastEvent } from "../src/channels/web/sse.js";
-import { serveDocsStatic, serveStatic } from "../src/channels/web/static.js";
+import { serveDocsStatic, serveStatic } from "../src/channels/web/http/static.js";
 import { UiBridge } from "../src/channels/web/ui-bridge.js";
 import { createUiContext } from "../src/channels/web/ui-context.js";
 import { handleMedia, handleMediaInfo, handleMediaUpload } from "../src/channels/web/handlers/media.js";

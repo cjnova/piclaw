@@ -1,7 +1,7 @@
 import { extname, resolve } from "path";
 
-const STATIC_DIR = resolve(import.meta.dir, "..", "..", "..", "web", "static");
-const DOCS_DIR = resolve(import.meta.dir, "..", "..", "..", "docs");
+const STATIC_DIR = resolve(import.meta.dir, "..", "..", "..", "..", "web", "static");
+const DOCS_DIR = resolve(import.meta.dir, "..", "..", "..", "..", "docs");
 
 const MIME_TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",

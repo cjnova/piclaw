@@ -6,7 +6,7 @@ import { handleMedia, handleMediaInfo, handleMediaUpload } from "./web/handlers/
 import { handleWorkspaceAttach, handleWorkspaceFile, handleWorkspaceRaw, handleWorkspaceTree, startWorkspaceWatcher } from "./web/handlers/workspace.js";
 import { SseHub } from "./web/sse-hub.js";
 import { UiBridge } from "./web/ui-bridge.js";
-import { ResponseService } from "./web/response-service.js";
+import { ResponseService } from "./web/http/response-service.js";
 import {
   getMessageRowIdById,
   replaceMessageContent,
