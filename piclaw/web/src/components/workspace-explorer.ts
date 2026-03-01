@@ -67,6 +67,20 @@ function mergeTree(prev, next) {
     return changed ? { ...next, children: merged } : prev;
 }
 
+// Replace a subtree at path with a new node (merged to preserve identity).
+function replaceNodeAtPath(node, targetPath, nextNode) {
+    if (!node) return node;
+    if (node.path === targetPath) return mergeTree(node, nextNode);
+    if (!Array.isArray(node.children)) return node;
+    let changed = false;
+    const children = node.children.map(child => {
+        const updated = replaceNodeAtPath(child, targetPath, nextNode);
+        if (updated !== child) changed = true;
+        return updated;
+    });
+    return changed ? { ...node, children } : node;
+}
+
 // ── FileAttachmentCard ────────────────────────────────────────────────────────
 
 function FileAttachmentCard({ mediaId }) {
@@ -118,12 +132,14 @@ export function WorkspaceExplorer({ onFileSelect }) {
     const lastSigRef      = useRef('');
     const pendingRootRef  = useRef(null);
     const rafRef          = useRef(0);
+    const pendingSubtreeRef = useRef(new Set());
     // KEY FIX: keep a ref to the latest loadTree so the setInterval never
     // holds a stale closure over the initial tree=null state.
     const loadTreeFnRef   = useRef(null);
     const nodeMapRef      = useRef(new Map());
     const onFileSelectRef = useRef(onFileSelect);
     const loadPreviewRef  = useRef(null);
+    const loadSubtreeRef  = useRef(null);
     const sidebarRef      = useRef(null);
     const previewHeightRef= useRef(0);
 
@@ -174,6 +190,22 @@ export function WorkspaceExplorer({ onFileSelect }) {
             setInitialLoad(false);
         }
     };
+
+    const loadSubtree = async (path) => {
+        if (!path) return;
+        if (pendingSubtreeRef.current.has(path)) return;
+        pendingSubtreeRef.current.add(path);
+        try {
+            const data = await getWorkspaceTree(path, 3);
+            setTree(prev => replaceNodeAtPath(prev, path, data.root));
+        } catch (err) {
+            setError(err.message || 'Failed to load workspace');
+        } finally {
+            pendingSubtreeRef.current.delete(path);
+        }
+    };
+    loadSubtreeRef.current = loadSubtree;
+
     // Always point at the freshest loadTree — interval calls this ref,
     // so it always has the current closure (tree, expanded, etc.).
     loadTreeFnRef.current = loadTree;
@@ -208,6 +240,8 @@ export function WorkspaceExplorer({ onFileSelect }) {
         const clickedPath = rowEl.dataset.path;
         const clickedType = rowEl.dataset.type;
         if (clickedType === 'dir') {
+            const wasExpanded = expandedRef.current.has(clickedPath);
+            if (!wasExpanded) loadSubtreeRef.current?.(clickedPath);
             setExpanded(prev => {
                 const next = new Set(prev);
                 if (next.has(clickedPath)) next.delete(clickedPath);
@@ -227,6 +261,8 @@ export function WorkspaceExplorer({ onFileSelect }) {
     const handleRefreshClick = useRef(() => {
         lastSigRef.current = '';
         loadTreeFnRef.current();
+        const openPaths = Array.from(expandedRef.current || []).filter((p) => p && p !== '.');
+        openPaths.forEach((p) => loadSubtreeRef.current?.(p));
     }).current;
 
     // ── Preview-pane vertical resize — zero re-renders ────────────────────────
