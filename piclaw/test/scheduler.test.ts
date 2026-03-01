@@ -50,6 +50,10 @@ test("runScheduledTask logs run and updates task", async () => {
     queue: { enqueueTask: (_id: string, fn: () => Promise<void>) => fn() } as any,
     agentPool: {
       runAgent: async () => ({ status: "success", result: "Hello" }),
+      saveSessionPosition: async () => "leaf-123",
+      restoreSessionPosition: async () => {},
+      getCurrentModelLabel: async () => null,
+      applyControlCommand: async () => ({ status: "success", message: "" }),
     } as any,
     sendMessage: async (_jid: string, text: string) => {
       sent.push(text);

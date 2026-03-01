@@ -53,6 +53,6 @@ piclaw/src/
 - The agent pool keeps one warm session per chat JID and evicts idle sessions after a TTL.
 - The web UI is the primary interface; the WhatsApp channel is optional.
 - Web and WhatsApp share the same storage and agent pool.
-- Scheduled tasks and IPC messages are routed through the same core workflow.
+- Scheduled tasks are isolated using the **session tree**: before a task runs, the current tree position is saved; after the task, the tree is navigated back. The task's output stays in a side branch without polluting conversation context. If the task uses a different model, it is restored afterwards. See [runtime-flows.md](runtime-flows.md) for details.
 
 For the message‑level flow, see [runtime-flows.md](runtime-flows.md).

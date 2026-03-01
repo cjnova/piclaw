@@ -63,10 +63,15 @@ Common direct commands (no LLM round‑trip):
 
 ## Skill pipeline
 
+Skills create tasks via IPC JSON files. Each task can optionally specify a `model` field (e.g. `anthropic/claude-sonnet-4-20250514`) to run on a cheaper or different model than the user's current one. The scheduler handles model switching and restoration automatically.
+
+Tasks are isolated from the user's conversation using the **session tree** — the scheduler saves the tree position before execution and navigates back afterwards. This prevents the task's prompt/response from appearing in the user's conversation context while still preserving it in a side branch for inspection via `/tree`. See [runtime-flows.md](runtime-flows.md) for the full flow.
+
 ```mermaid
 flowchart LR
   Skill[Skill script] --> IPC[IPC file]
   IPC --> Scheduler[Task scheduler]
-  Scheduler --> Pool[AgentPool]
+  Scheduler --> Tree[Save/restore tree position]
+  Tree --> Pool[AgentPool]
   Pool --> Channel[Web UI / WhatsApp]
 ```

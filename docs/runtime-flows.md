@@ -30,6 +30,10 @@ sequenceDiagram
 
 ## Scheduled tasks / IPC
 
+Scheduled tasks run on the same `AgentSession` as normal user messages but are isolated using the **session tree**. Before executing a task, the scheduler saves the current tree position (leaf ID) and the active model. The task's prompt and response are appended to the session as usual, then the scheduler **navigates back** to the saved leaf. This leaves the task's output in a side branch of the session tree — it persists in history but does not pollute the user's conversation context.
+
+If the task specifies a different model (e.g. a cheaper one for periodic summaries), the model is switched before execution and restored afterwards. Because the tree navigation also rewinds the conversation state, the model restore happens on the original branch where it belongs.
+
 ```mermaid
 sequenceDiagram
   participant Skill
@@ -37,17 +41,38 @@ sequenceDiagram
   participant Scheduler
   participant DB as SQLite
   participant Pool as AgentPool
+  participant Tree as Session Tree
   participant Pi as Pi SDK
   participant Web as Web UI
 
   Skill->>IPC: write schedule_task JSON
   Scheduler->>DB: persist task
+  Scheduler->>Tree: save leaf position + model
+  Note over Tree: leafId = "abc123"
+  opt Task specifies model
+    Scheduler->>Pool: switch model
+  end
   Scheduler->>Pool: runAgent()
   Pool->>Pi: prompt()
   Pi-->>Pool: result
+  Note over Tree: leaf advanced to "xyz789"
+  Scheduler->>Tree: navigate back to "abc123"
+  Note over Tree: task output in side branch
+  opt Model was switched
+    Scheduler->>Pool: restore original model
+  end
   Scheduler->>DB: log run
   Scheduler-->>Web: post result
 ```
+
+### Why session tree isolation matters
+
+Without isolation, a scheduled task's prompt and response would appear in the agent's conversation context. The next user message would see the task's output, leading to confused responses. The session tree approach solves this cleanly:
+
+- **No context pollution**: The user's conversation continues from where it left off.
+- **Full history**: The task's output is preserved in a side branch and can be inspected via `/tree`.
+- **Model safety**: The model is restored to its pre-task state on the correct branch.
+- **No session forking**: Unlike `fork()` which creates a new session file, `navigateTree()` stays in the same file and simply moves the branch pointer.
 
 ## Session lifecycle (summary)
 

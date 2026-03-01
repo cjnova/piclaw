@@ -164,7 +164,7 @@ export function handleWorkspaceTree(_channel, req) {
             headers: { "Content-Type": "application/json" },
         });
     }
-    catch (_err) {
+    catch {
         return new Response(JSON.stringify({ error: "Failed to read workspace" }), { status: 500 });
     }
 }
@@ -229,7 +229,7 @@ export function handleWorkspaceFile(_channel, req) {
             truncated,
         }), { headers: { "Content-Type": "application/json" } });
     }
-    catch (_err) {
+    catch {
         return new Response(JSON.stringify({ error: "Failed to read file" }), { status: 500 });
     }
 }

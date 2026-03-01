@@ -204,6 +204,32 @@ export class AgentPool {
         const model = session.model;
         return model ? `${model.provider}/${model.id}` : null;
     }
+    /**
+     * Save the current session tree position so it can be restored later.
+     * Used by the scheduler to isolate task execution in a side branch.
+     */
+    async saveSessionPosition(chatJid) {
+        const session = await this.getOrCreate(chatJid);
+        return session.sessionManager.getLeafId();
+    }
+    /**
+     * Restore the session tree to a previously saved position.
+     * Navigates back to the saved leaf, leaving the task's output in a side branch.
+     */
+    async restoreSessionPosition(chatJid, leafId) {
+        if (leafId === null)
+            return;
+        const session = await this.getOrCreate(chatJid);
+        const currentLeaf = session.sessionManager.getLeafId();
+        if (currentLeaf === leafId)
+            return; // already there
+        try {
+            await session.navigateTree(leafId);
+        }
+        catch (err) {
+            console.error(`[agent-pool] Failed to restore session position for ${chatJid}:`, err);
+        }
+    }
     resolveModelInput(input) {
         const trimmed = input.trim();
         if (!trimmed)

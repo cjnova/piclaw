@@ -30,10 +30,14 @@ export async function runScheduledTask(task, deps) {
     const start = Date.now();
     let result = null;
     let error = null;
-    let previousModel = null;
+    // Save session position so we can restore after the task.
+    // This isolates the task's prompt/response in a side branch of the session
+    // tree, preventing context pollution of the user's conversation.
+    const savedLeafId = await deps.agentPool.saveSessionPosition(task.chat_jid);
+    const savedModel = await deps.agentPool.getCurrentModelLabel(task.chat_jid);
     try {
+        // Switch model if task specifies one
         if (task.model) {
-            previousModel = await deps.agentPool.getCurrentModelLabel(task.chat_jid);
             const slash = task.model.indexOf("/");
             const provider = slash > 0 ? task.model.slice(0, slash) : undefined;
             const modelId = slash > 0 ? task.model.slice(slash + 1) : task.model;
@@ -66,19 +70,30 @@ export async function runScheduledTask(task, deps) {
         error = e instanceof Error ? e.message : String(e);
     }
     finally {
-        if (task.model && previousModel && previousModel !== task.model) {
-            const slash = previousModel.indexOf("/");
-            const provider = slash > 0 ? previousModel.slice(0, slash) : undefined;
-            const modelId = slash > 0 ? previousModel.slice(slash + 1) : previousModel;
+        // Navigate back to the saved position — the task's prompt and response
+        // stay in a side branch and won't pollute the user's conversation context.
+        await deps.agentPool.restoreSessionPosition(task.chat_jid, savedLeafId);
+        // Restore the original model if it was changed
+        if (task.model && savedModel && savedModel !== task.model) {
+            const slash = savedModel.indexOf("/");
+            const provider = slash > 0 ? savedModel.slice(0, slash) : undefined;
+            const modelId = slash > 0 ? savedModel.slice(slash + 1) : savedModel;
             await deps.agentPool.applyControlCommand(task.chat_jid, {
                 type: "model",
                 provider,
                 modelId,
-                raw: `/model ${previousModel}`,
+                raw: `/model ${savedModel}`,
             });
         }
     }
-    logTaskRun({ task_id: task.id, run_at: new Date().toISOString(), duration_ms: Date.now() - start, status: error ? "error" : "success", result, error });
+    logTaskRun({
+        task_id: task.id,
+        run_at: new Date().toISOString(),
+        duration_ms: Date.now() - start,
+        status: error ? "error" : "success",
+        result,
+        error,
+    });
     const nextRun = computeNextRun(task.schedule_type, task.schedule_value);
     updateTaskAfterRun(task.id, nextRun, error ? `Error: ${error}` : (result?.slice(0, 200) || "Completed"));
 }

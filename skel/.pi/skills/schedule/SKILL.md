@@ -24,7 +24,15 @@ cat > "$PICLAW_DATA/ipc/tasks/schedule_$(date +%s).json" <<EOF
 EOF
 ```
 
-`model` is optional. When provided, the scheduler validates the model before creating the task and switches the session model before running the prompt. If the model name is ambiguous, use `provider/modelId`.
+`model` is optional. When provided, the scheduler validates the model before creating the task and switches the session model before running the prompt. After the task completes, the original model is restored. If the model name is ambiguous, use `provider/modelId`.
+
+## Session Isolation
+
+Scheduled tasks are isolated from the user's conversation using the **session tree**. Before a task executes, the scheduler saves the current tree position (leaf ID). The task's prompt and response are appended to the session normally, then the scheduler navigates the tree back to the saved position. This means:
+
+- The task's output lives in a **side branch** — it won't appear in the user's next conversation turn.
+- The full task history is preserved and can be inspected via the `/tree` command.
+- If the task used a different model, it is restored after navigation.
 
 ## Schedule Types
 
