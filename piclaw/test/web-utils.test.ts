@@ -6,6 +6,7 @@ import { clampInt, jsonResponse, parseOptionalInt } from "../src/channels/web/ht
 import { buildPreview, createToolTitleTracker } from "../src/channels/web/agent-utils.js";
 import { handleSse, broadcastEvent } from "../src/channels/web/sse.js";
 import { serveDocsStatic, serveStatic } from "../src/channels/web/static.js";
+import { UiBridge } from "../src/channels/web/ui-bridge.js";
 import { createUiContext } from "../src/channels/web/ui-context.js";
 import { handleMedia, handleMediaInfo, handleMediaUpload } from "../src/channels/web/handlers/media.js";
 import { getTestWorkspace, setEnv, waitFor } from "./helpers.js";
@@ -78,19 +79,17 @@ test("static helpers serve files and not-found", async () => {
 test("ui context emits requests and resolves", async () => {
   const events: Array<{ type: string; payload: any }> = [];
   const channel = {
-    pendingUiRequests: new Map(),
-    uiRequestCounter: 0,
-    editorTextByChat: new Map(),
-    fallbackTheme: {} as any,
     broadcastEvent: (type: string, payload: any) => events.push({ type, payload }),
-  };
+  } as any;
+  const uiBridge = new UiBridge(channel);
+  channel.uiBridge = uiBridge;
 
-  const ui = createUiContext(channel as any, "web:default");
+  const ui = createUiContext(channel, "web:default");
   const selectPromise = ui.select("Pick", ["a", "b"]);
-  const [requestId] = channel.pendingUiRequests.keys();
-  const pending = channel.pendingUiRequests.get(requestId)!;
+  const [requestId] = uiBridge.pendingUiRequests.keys();
+  const pending = uiBridge.pendingUiRequests.get(requestId)!;
   clearTimeout(pending.timeoutId);
-  channel.pendingUiRequests.delete(requestId);
+  uiBridge.pendingUiRequests.delete(requestId);
   pending.resolve("a");
   expect(await selectPromise).toBe("a");
 
@@ -98,7 +97,7 @@ test("ui context emits requests and resolves", async () => {
   expect(events.some((event) => event.type === "extension_ui_notify")).toBe(true);
 
   ui.pasteToEditor("test");
-  expect(channel.editorTextByChat.get("web:default")).toBe("test");
+  expect(uiBridge.editorTextByChat.get("web:default")).toBe("test");
 });
 
 test("media handlers store and retrieve files", async () => {

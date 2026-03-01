@@ -1,44 +1,43 @@
 import { describe, test, expect } from "bun:test";
+import { UiBridge } from "../src/channels/web/ui-bridge.js";
 import { bindSessionUiContext, createUiContext } from "../src/channels/web/ui-context.js";
 
 function makeChannel() {
   const events: Array<{ type: string; payload: any }> = [];
   const channel = {
-    pendingUiRequests: new Map(),
-    uiRequestCounter: 0,
-    editorTextByChat: new Map(),
-    fallbackTheme: { name: "fallback" },
     broadcastEvent: (type: string, payload: any) => events.push({ type, payload }),
   };
-  return { channel, events };
+  const uiBridge = new UiBridge(channel as any);
+  (channel as any).uiBridge = uiBridge;
+  return { channel, events, uiBridge };
 }
 
 describe("ui-context", () => {
   test("createUiContext handles confirm/input/editor and editor updates", async () => {
-    const { channel, events } = makeChannel();
+    const { channel, events, uiBridge } = makeChannel();
     const ui = createUiContext(channel as any, "web:default");
 
     const confirmPromise = ui.confirm("Confirm", "Are you sure?", { timeout: 50 });
-    let requestId = Array.from(channel.pendingUiRequests.keys())[0] as string;
-    let pending = channel.pendingUiRequests.get(requestId)!;
+    let requestId = Array.from(uiBridge.pendingUiRequests.keys())[0] as string;
+    let pending = uiBridge.pendingUiRequests.get(requestId)!;
     clearTimeout(pending.timeoutId);
-    channel.pendingUiRequests.delete(requestId);
+    uiBridge.pendingUiRequests.delete(requestId);
     pending.resolve(true);
     expect(await confirmPromise).toBe(true);
 
     const inputPromise = ui.input("Input", "Type here", { timeout: 50 });
-    requestId = Array.from(channel.pendingUiRequests.keys())[0] as string;
-    pending = channel.pendingUiRequests.get(requestId)!;
+    requestId = Array.from(uiBridge.pendingUiRequests.keys())[0] as string;
+    pending = uiBridge.pendingUiRequests.get(requestId)!;
     clearTimeout(pending.timeoutId);
-    channel.pendingUiRequests.delete(requestId);
+    uiBridge.pendingUiRequests.delete(requestId);
     pending.resolve("hello");
     expect(await inputPromise).toBe("hello");
 
     const editorPromise = ui.editor("Editor", "prefill");
-    requestId = Array.from(channel.pendingUiRequests.keys())[0] as string;
-    pending = channel.pendingUiRequests.get(requestId)!;
+    requestId = Array.from(uiBridge.pendingUiRequests.keys())[0] as string;
+    pending = uiBridge.pendingUiRequests.get(requestId)!;
     clearTimeout(pending.timeoutId);
-    channel.pendingUiRequests.delete(requestId);
+    uiBridge.pendingUiRequests.delete(requestId);
     pending.resolve("edited");
     expect(await editorPromise).toBe("edited");
 
@@ -61,7 +60,7 @@ describe("ui-context", () => {
   });
 
   test("createUiContext timeout resolves undefined", async () => {
-    const { channel, events } = makeChannel();
+    const { channel, events, uiBridge } = makeChannel();
     const ui = createUiContext(channel as any, "web:default");
 
     const selectPromise = ui.select("Pick", ["a", "b"], { timeout: 10 });
@@ -70,7 +69,7 @@ describe("ui-context", () => {
 
     const timeoutEvent = events.find((event) => event.type === "extension_ui_timeout");
     expect(timeoutEvent).toBeDefined();
-    expect(channel.pendingUiRequests.size).toBe(0);
+    expect(uiBridge.pendingUiRequests.size).toBe(0);
   });
 
   test("bindSessionUiContext wires command actions", async () => {

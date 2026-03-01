@@ -5,8 +5,7 @@ import { handleWorkspaceAttach, handleWorkspaceFile, handleWorkspaceRaw, handleW
 import { SseHub } from "./web/sse-hub.js";
 import { serveDocsStatic, serveStatic } from "./web/static.js";
 import { clampInt, jsonResponse, parseOptionalInt } from "./web/http-utils.js";
-import { createFallbackTheme } from "./web/theme.js";
-import { bindSessionUiContext } from "./web/ui-context.js";
+import { UiBridge } from "./web/ui-bridge.js";
 import { deleteMessageByRowId, getMessageByRowId, getMessageRowIdById, getMessagesByHashtag, getTimeline, hasOlderMessages, replaceMessageContent, searchMessages, } from "../db.js";
 import { WebChannelState } from "./web/channel-state.js";
 import { storeWebMessage } from "./web/message-store.js";
@@ -19,17 +18,15 @@ export class WebChannel {
     server = null;
     state = new WebChannelState(STATE_KEY);
     sse = new SseHub();
-    pendingUiRequests = new Map();
-    uiRequestCounter = 0;
-    editorTextByChat = new Map();
+    uiBridge;
     pendingLinkPreviews = new Set();
-    fallbackTheme = createFallbackTheme();
     workspaceWatcher = null;
     constructor(opts) {
         this.queue = opts.queue;
         this.agentPool = opts.agentPool;
+        this.uiBridge = new UiBridge(this);
         if (typeof this.agentPool.setSessionBinder === "function") {
-            this.agentPool.setSessionBinder((session, chatJid) => bindSessionUiContext(this, session, chatJid));
+            this.agentPool.setSessionBinder((session, chatJid) => this.uiBridge.bindSession(session, chatJid));
         }
     }
     async start() {
@@ -49,14 +46,7 @@ export class WebChannel {
     }
     async stop() {
         this.sse.closeAll();
-        for (const pending of this.pendingUiRequests.values()) {
-            clearTimeout(pending.timeoutId);
-            try {
-                pending.reject(new Error("Web channel stopped"));
-            }
-            catch { }
-        }
-        this.pendingUiRequests.clear();
+        this.uiBridge.stop();
         this.server?.stop(true);
         this.server = null;
         if (this.workspaceWatcher) {
@@ -188,14 +178,8 @@ export class WebChannel {
         }
         if (!data.request_id)
             return this.json({ error: "Missing request_id" }, 400);
-        const pending = this.pendingUiRequests.get(data.request_id);
-        if (pending) {
-            clearTimeout(pending.timeoutId);
-            this.pendingUiRequests.delete(data.request_id);
-            pending.resolve(data.outcome);
-            return this.json({ status: "ok" });
-        }
-        return this.json({ status: "unknown_request" });
+        const status = this.uiBridge.handleUiResponse(data.request_id, data.outcome);
+        return this.json(status);
     }
     async handleAgentMessage(req, pathname) {
         const { handleAgentMessage } = await import("./web/handlers/agent.js");
