@@ -150,7 +150,7 @@ export function WorkspaceExplorer({ onFileSelect }) {
     // ── loadTree ──────────────────────────────────────────────────────────────
     const loadTree = async () => {
         try {
-            const data = await getWorkspaceTree('', 3);
+            const data = await getWorkspaceTree('', 4);
             const sig = treeSignature(data.root, expandedRef.current);
             if (sig === lastSigRef.current) {
                 // Structure unchanged – just clear the initial spinner if needed.
