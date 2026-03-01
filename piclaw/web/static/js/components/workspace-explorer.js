@@ -92,9 +92,8 @@ function mergeTree(prev, next) {
 
     let changed = false;
     const mergedChildren = nextChildren.map((child) => {
-        const prevChild = prevMap.get(child.path);
-        const merged = mergeTree(prevChild, child);
-        if (merged !== prevChild) changed = true;
+        const merged = mergeTree(prevMap.get(child.path), child);
+        if (merged !== prevMap.get(child.path)) changed = true;
         return merged;
     });
 
@@ -235,7 +234,7 @@ export function WorkspaceExplorer({ onFileSelect }) {
                 <span>Workspace</span>
                 <button class="workspace-refresh" onClick=${loadTree} title="Refresh">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <circle cx="12" cy="12" r="8.5" stroke-dasharray="42 12" stroke-dashoffset="6" transform="rotate(-35 12 12)" />
+                        <circle cx="12" cy="12" r="8.5" stroke-dasharray="42 12" stroke-dashoffset="6" transform="rotate(-45 12 12)" />
                         <polyline points="23 4 23 10 17 10" />
                     </svg>
                 </button>
