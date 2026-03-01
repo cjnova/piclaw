@@ -33,3 +33,12 @@ export function shouldIgnorePath(absPath) {
     }
     return false;
 }
+export function isHiddenPath(absPath) {
+    const rel = path.relative(WORKSPACE_DIR, absPath);
+    if (!rel || rel === ".")
+        return false;
+    if (rel.startsWith("..") || path.isAbsolute(rel))
+        return false;
+    const parts = rel.split(path.sep);
+    return parts.some((part) => part.startsWith(".") && part !== "." && part !== "..");
+}

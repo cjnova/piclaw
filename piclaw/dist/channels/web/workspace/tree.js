@@ -3,7 +3,7 @@ import path from "path";
 import { MAX_TREE_ENTRIES } from "./constants.js";
 import { formatMtime } from "./file-utils.js";
 import { shouldExcludeDir, toRelativePath } from "./paths.js";
-export function buildTree(absPath, depth, state) {
+export function buildTree(absPath, depth, state, options) {
     const stats = statSync(absPath);
     const node = {
         name: path.basename(absPath) || "workspace",
@@ -24,6 +24,7 @@ export function buildTree(absPath, depth, state) {
         return node;
     }
     const entries = readdirSync(absPath, { withFileTypes: true })
+        .filter((entry) => options.includeHidden || !entry.name.startsWith("."))
         .filter((entry) => !entry.isDirectory() || !shouldExcludeDir(entry.name))
         .sort((a, b) => {
         if (a.isDirectory() && !b.isDirectory())
@@ -40,7 +41,7 @@ export function buildTree(absPath, depth, state) {
         }
         const childPath = path.join(absPath, entry.name);
         try {
-            node.children.push(buildTree(childPath, depth - 1, state));
+            node.children.push(buildTree(childPath, depth - 1, state, options));
         }
         catch {
             // ignore unreadable paths

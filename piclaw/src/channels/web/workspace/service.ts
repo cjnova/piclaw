@@ -6,11 +6,15 @@ import { WORKSPACE_DIR } from "../../../config.js";
 import { createMedia } from "../../../db.js";
 import { MAX_ATTACH_BYTES, MAX_PREVIEW_BYTES } from "./constants.js";
 import { contentTypeForPath, detectBinary, formatMtime, isImageFile, isTextFile } from "./file-utils.js";
-import { resolveWorkspacePath, shouldIgnorePath, toRelativePath } from "./paths.js";
+import { isHiddenPath, resolveWorkspacePath, shouldIgnorePath, toRelativePath } from "./paths.js";
 import { buildTree, compressPaths } from "./tree.js";
 
 export class WorkspaceService {
-  getTree(pathParam: string | null, depthParam?: string | null): { status: number; body: unknown } {
+  getTree(
+    pathParam: string | null,
+    depthParam?: string | null,
+    includeHidden = false
+  ): { status: number; body: unknown } {
     const targetPath = resolveWorkspacePath(pathParam);
     if (!targetPath) return { status: 400, body: { error: "Invalid path" } };
 
@@ -19,7 +23,7 @@ export class WorkspaceService {
 
     try {
       const state = { count: 0, truncated: false };
-      const tree = buildTree(targetPath, depth, state);
+      const tree = buildTree(targetPath, depth, state, { includeHidden });
       return { status: 200, body: { root: tree, truncated: state.truncated } };
     } catch {
       return { status: 500, body: { error: "Failed to read workspace" } };
@@ -154,12 +158,16 @@ export class WorkspaceService {
     }
   }
 
-  startWatcher(onUpdate: (updates: Array<{ path: string; root: unknown; truncated: boolean }>) => void): { close: () => Promise<void> } {
+  startWatcher(
+    onUpdate: (updates: Array<{ path: string; root: unknown; truncated: boolean }>) => void,
+    includeHidden: () => boolean
+  ): { close: () => Promise<void> } {
     const pending = new Set<string>();
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
     const queuePath = (absPath: string) => {
       if (shouldIgnorePath(absPath)) return;
+      if (!includeHidden() && isHiddenPath(absPath)) return;
       const rel = toRelativePath(absPath);
       const target = rel === "." ? "." : toRelativePath(path.dirname(absPath));
       pending.add(target);
@@ -176,7 +184,7 @@ export class WorkspaceService {
           try {
             const state = { count: 0, truncated: false };
             const depth = relPath === "." ? 4 : 3;
-            const root = buildTree(abs, depth, state);
+            const root = buildTree(abs, depth, state, { includeHidden: includeHidden() });
             updates.push({ path: relPath, root, truncated: state.truncated });
           } catch {
             // ignore

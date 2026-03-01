@@ -8,7 +8,8 @@ function jsonResponse(body, status = 200) {
 }
 export function handleWorkspaceTree(_channel, req) {
     const url = new URL(req.url);
-    const result = workspaceService.getTree(url.searchParams.get("path"), url.searchParams.get("depth"));
+    const showHidden = url.searchParams.get("show_hidden") === "1" || url.searchParams.get("show_hidden") === "true";
+    const result = workspaceService.getTree(url.searchParams.get("path"), url.searchParams.get("depth"), showHidden);
     return jsonResponse(result.body, result.status);
 }
 export function handleWorkspaceFile(_channel, req) {
@@ -42,5 +43,5 @@ export function startWorkspaceWatcher(channel) {
         if (!channel.workspaceVisible)
             return;
         channel.broadcastEvent("workspace_update", { updates });
-    });
+    }, () => channel.workspaceShowHidden);
 }

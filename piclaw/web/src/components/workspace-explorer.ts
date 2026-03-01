@@ -181,7 +181,7 @@ export function WorkspaceExplorer({ onFileSelect }) {
     // ── loadTree ──────────────────────────────────────────────────────────────
     const loadTree = async () => {
         try {
-            const data = await getWorkspaceTree('', 4);
+            const data = await getWorkspaceTree('', 4, showHiddenRef.current);
             const sig = treeSignature(data.root, expandedRef.current, showHiddenRef.current);
             if (sig === lastSigRef.current) {
                 // Structure unchanged – just clear the initial spinner if needed.
@@ -211,7 +211,7 @@ export function WorkspaceExplorer({ onFileSelect }) {
         if (pendingSubtreeRef.current.has(path)) return;
         pendingSubtreeRef.current.add(path);
         try {
-            const data = await getWorkspaceTree(path, 3);
+            const data = await getWorkspaceTree(path, 3, showHiddenRef.current);
             setTree(prev => replaceNodeAtPath(prev, path, data.root));
         } catch (err) {
             setError(err.message || 'Failed to load workspace');
@@ -255,7 +255,7 @@ export function WorkspaceExplorer({ onFileSelect }) {
         if (typeof window === 'undefined') return;
         const media = window.matchMedia('(min-width: 1024px) and (orientation: landscape)');
         const visible = media.matches && document.visibilityState !== 'hidden';
-        setWorkspaceVisibility(visible).catch(() => {});
+        setWorkspaceVisibility(visible, showHiddenRef.current).catch(() => {});
     }).current;
 
     // Mount once; interval always calls the ref, never a stale copy.
@@ -289,7 +289,7 @@ export function WorkspaceExplorer({ onFileSelect }) {
                 media.removeListener(onVisibilityChange);
             }
             document.removeEventListener('visibilitychange', onVisibilityChange);
-            setWorkspaceVisibility(false).catch(() => {});
+            setWorkspaceVisibility(false, showHiddenRef.current).catch(() => {});
         };
     }, []);
 
@@ -337,6 +337,8 @@ export function WorkspaceExplorer({ onFileSelect }) {
             if (typeof window !== 'undefined') {
                 localStorage.setItem('workspaceShowHidden', String(next));
             }
+            showHiddenRef.current = next;
+            setWorkspaceVisibility(true, next).catch(() => {});
             return next;
         });
     }).current;

@@ -184,8 +184,8 @@ export async function getMediaInfo(mediaId) {
 /**
  * Get workspace tree
  */
-export async function getWorkspaceTree(path = '', depth = 2) {
-    const url = `/workspace/tree?path=${encodeURIComponent(path)}&depth=${depth}`;
+export async function getWorkspaceTree(path = '', depth = 2, showHidden = false) {
+    const url = `/workspace/tree?path=${encodeURIComponent(path)}&depth=${depth}&show_hidden=${showHidden ? '1' : '0'}`;
     return request(url);
 }
 
@@ -207,10 +207,10 @@ export async function attachWorkspaceFile(path) {
     });
 }
 
-export async function setWorkspaceVisibility(visible) {
+export async function setWorkspaceVisibility(visible, showHidden = false) {
     return request('/workspace/visibility', {
         method: 'POST',
-        body: JSON.stringify({ visible: Boolean(visible) }),
+        body: JSON.stringify({ visible: Boolean(visible), show_hidden: Boolean(showHidden) }),
     });
 }
 

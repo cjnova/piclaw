@@ -5,10 +5,10 @@ import { WORKSPACE_DIR } from "../../../config.js";
 import { createMedia } from "../../../db.js";
 import { MAX_ATTACH_BYTES, MAX_PREVIEW_BYTES } from "./constants.js";
 import { contentTypeForPath, detectBinary, formatMtime, isImageFile, isTextFile } from "./file-utils.js";
-import { resolveWorkspacePath, shouldIgnorePath, toRelativePath } from "./paths.js";
+import { isHiddenPath, resolveWorkspacePath, shouldIgnorePath, toRelativePath } from "./paths.js";
 import { buildTree, compressPaths } from "./tree.js";
 export class WorkspaceService {
-    getTree(pathParam, depthParam) {
+    getTree(pathParam, depthParam, includeHidden = false) {
         const targetPath = resolveWorkspacePath(pathParam);
         if (!targetPath)
             return { status: 400, body: { error: "Invalid path" } };
@@ -16,7 +16,7 @@ export class WorkspaceService {
         const depth = Number.isFinite(depthRaw) ? Math.min(Math.max(depthRaw, 1), 8) : 2;
         try {
             const state = { count: 0, truncated: false };
-            const tree = buildTree(targetPath, depth, state);
+            const tree = buildTree(targetPath, depth, state, { includeHidden });
             return { status: 200, body: { root: tree, truncated: state.truncated } };
         }
         catch {
@@ -146,11 +146,13 @@ export class WorkspaceService {
             return { status: 500, body: { error: "Failed to attach file" } };
         }
     }
-    startWatcher(onUpdate) {
+    startWatcher(onUpdate, includeHidden) {
         const pending = new Set();
         let flushTimer = null;
         const queuePath = (absPath) => {
             if (shouldIgnorePath(absPath))
+                return;
+            if (!includeHidden() && isHiddenPath(absPath))
                 return;
             const rel = toRelativePath(absPath);
             const target = rel === "." ? "." : toRelativePath(path.dirname(absPath));
@@ -171,7 +173,7 @@ export class WorkspaceService {
                     try {
                         const state = { count: 0, truncated: false };
                         const depth = relPath === "." ? 4 : 3;
-                        const root = buildTree(abs, depth, state);
+                        const root = buildTree(abs, depth, state, { includeHidden: includeHidden() });
                         updates.push({ path: relPath, root, truncated: state.truncated });
                     }
                     catch {

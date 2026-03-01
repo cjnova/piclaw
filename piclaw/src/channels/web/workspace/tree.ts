@@ -10,7 +10,12 @@ export interface WorkspaceTreeState {
   truncated: boolean;
 }
 
-export function buildTree(absPath: string, depth: number, state: WorkspaceTreeState): any {
+export function buildTree(
+  absPath: string,
+  depth: number,
+  state: WorkspaceTreeState,
+  options: { includeHidden: boolean }
+): any {
   const stats = statSync(absPath);
   const node = {
     name: path.basename(absPath) || "workspace",
@@ -34,6 +39,7 @@ export function buildTree(absPath: string, depth: number, state: WorkspaceTreeSt
   }
 
   const entries = readdirSync(absPath, { withFileTypes: true })
+    .filter((entry) => options.includeHidden || !entry.name.startsWith("."))
     .filter((entry) => !entry.isDirectory() || !shouldExcludeDir(entry.name))
     .sort((a, b) => {
       if (a.isDirectory() && !b.isDirectory()) return -1;
@@ -49,7 +55,7 @@ export function buildTree(absPath: string, depth: number, state: WorkspaceTreeSt
     }
     const childPath = path.join(absPath, entry.name);
     try {
-      node.children.push(buildTree(childPath, depth - 1, state));
+      node.children.push(buildTree(childPath, depth - 1, state, options));
     } catch {
       // ignore unreadable paths
     }

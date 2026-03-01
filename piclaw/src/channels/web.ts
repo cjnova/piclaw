@@ -41,6 +41,7 @@ export class WebChannel {
   pendingLinkPreviews = new Set<number>();
   workspaceWatcher: { close: () => Promise<void> } | null = null;
   workspaceVisible = false;
+  workspaceShowHidden = false;
 
   constructor(opts: WebChannelOpts) {
     this.queue = opts.queue;
@@ -168,14 +169,23 @@ export class WebChannel {
   }
 
   async handleWorkspaceVisibility(req: Request): Promise<Response> {
-    let data: { visible?: boolean };
+    let data: { visible?: boolean; show_hidden?: boolean; showHidden?: boolean };
     try {
       data = await req.json();
     } catch {
       return this.json({ error: "Invalid JSON" }, 400);
     }
-    this.workspaceVisible = Boolean(data.visible);
-    return this.json({ status: "ok", visible: this.workspaceVisible });
+    if (typeof data.visible === "boolean") {
+      this.workspaceVisible = data.visible;
+    } else {
+      this.workspaceVisible = Boolean(data.visible);
+    }
+    if (typeof data.show_hidden === "boolean") {
+      this.workspaceShowHidden = data.show_hidden;
+    } else if (typeof data.showHidden === "boolean") {
+      this.workspaceShowHidden = data.showHidden;
+    }
+    return this.json({ status: "ok", visible: this.workspaceVisible, show_hidden: this.workspaceShowHidden });
   }
 
   handleTimeline(limit: number, before?: number): Response {

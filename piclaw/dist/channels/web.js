@@ -22,6 +22,7 @@ export class WebChannel {
     pendingLinkPreviews = new Set();
     workspaceWatcher = null;
     workspaceVisible = false;
+    workspaceShowHidden = false;
     constructor(opts) {
         this.queue = opts.queue;
         this.agentPool = opts.agentPool;
@@ -134,8 +135,19 @@ export class WebChannel {
         catch {
             return this.json({ error: "Invalid JSON" }, 400);
         }
-        this.workspaceVisible = Boolean(data.visible);
-        return this.json({ status: "ok", visible: this.workspaceVisible });
+        if (typeof data.visible === "boolean") {
+            this.workspaceVisible = data.visible;
+        }
+        else {
+            this.workspaceVisible = Boolean(data.visible);
+        }
+        if (typeof data.show_hidden === "boolean") {
+            this.workspaceShowHidden = data.show_hidden;
+        }
+        else if (typeof data.showHidden === "boolean") {
+            this.workspaceShowHidden = data.showHidden;
+        }
+        return this.json({ status: "ok", visible: this.workspaceVisible, show_hidden: this.workspaceShowHidden });
     }
     handleTimeline(limit, before) {
         const posts = getTimeline(DEFAULT_CHAT_JID, limit, before ?? undefined);

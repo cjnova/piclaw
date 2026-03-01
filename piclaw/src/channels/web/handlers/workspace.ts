@@ -12,9 +12,11 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 export function handleWorkspaceTree(_channel: WebChannel, req: Request): Response {
   const url = new URL(req.url);
+  const showHidden = url.searchParams.get("show_hidden") === "1" || url.searchParams.get("show_hidden") === "true";
   const result = workspaceService.getTree(
     url.searchParams.get("path"),
-    url.searchParams.get("depth")
+    url.searchParams.get("depth"),
+    showHidden
   );
   return jsonResponse(result.body, result.status);
 }
@@ -52,8 +54,11 @@ export async function handleWorkspaceAttach(_channel: WebChannel, req: Request):
 }
 
 export function startWorkspaceWatcher(channel: WebChannel): { close: () => Promise<void> } {
-  return workspaceService.startWatcher((updates) => {
-    if (!channel.workspaceVisible) return;
-    channel.broadcastEvent("workspace_update", { updates });
-  });
+  return workspaceService.startWatcher(
+    (updates) => {
+      if (!channel.workspaceVisible) return;
+      channel.broadcastEvent("workspace_update", { updates });
+    },
+    () => channel.workspaceShowHidden
+  );
 }
