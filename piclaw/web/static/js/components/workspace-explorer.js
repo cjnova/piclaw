@@ -179,18 +179,27 @@ export function WorkspaceExplorer() {
                             const expandedDir = isDir && expanded.has(node.path);
                             const caret = isDir ? (expandedDir ? '▾' : '▸') : '';
                             const caretWidth = 10;
+                            const iconSize = 16;
                             const iconX = x + caretWidth;
-                            const iconY = y - 9;
-                            const textX = iconX + 18;
+                            const iconY = y - iconSize / 2;
+                            const textX = iconX + iconSize + 6;
                             return html`
                                 <g class="workspace-row" onClick=${() => handleSelect(node)}>
                                     <rect x="0" y=${y - 14} width=${TREE_WIDTH} height=${ROW_HEIGHT} class=${`workspace-row-bg ${isSelected ? 'selected' : ''}`} />
                                     ${caret && html`<text class="workspace-caret" x=${x + 1} y=${y}>${caret}</text>`}
-                                    <g transform=${`translate(${iconX}, ${iconY}) scale(0.6)`} class=${`workspace-icon ${isDir ? 'folder' : 'file'}`}>
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            ${iconPath(node.type)}
-                                        </svg>
-                                    </g>
+                                    <svg
+                                        class=${`workspace-icon ${isDir ? 'folder' : 'file'}`}
+                                        x=${iconX}
+                                        y=${iconY}
+                                        width=${iconSize}
+                                        height=${iconSize}
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        stroke-width="2"
+                                    >
+                                        ${iconPath(node.type)}
+                                    </svg>
                                     <text class="workspace-label" x=${textX} y=${y}>${node.name}</text>
                                 </g>
                             `;
