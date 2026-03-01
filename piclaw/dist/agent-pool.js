@@ -60,55 +60,10 @@ export class AgentPool {
         try {
             const session = await this.getOrCreate(chatJid);
             console.log(`[agent-pool] Prompting session ${chatJid} (${prompt.length} chars)`);
-            // Track turns: each text_start begins a new turn
-            let currentTurnText = "";
-            let turnCount = 0;
-            const onEvent = options.onEvent;
-            const onTurnComplete = options.onTurnComplete;
-            const flushTurn = () => {
-                const text = currentTurnText.trim();
-                if (!text && !onTurnComplete)
-                    return;
-                if (text || turnCount > 0) {
-                    const turnAttachments = this.attachments.take(chatJid);
-                    onTurnComplete?.({
-                        text,
-                        attachments: turnAttachments,
-                    });
-                    turnCount++;
-                }
-                currentTurnText = "";
-            };
-            const unsub = session.subscribe((event) => {
-                if (onEvent) {
-                    try {
-                        onEvent(event);
-                    }
-                    catch (err) {
-                        console.warn("[agent-pool] Event handler error:", err);
-                    }
-                }
-                if (event.type === "message_update") {
-                    if (event.assistantMessageEvent.type === "text_start" && onTurnComplete) {
-                        // A new text response is starting — flush the previous turn
-                        flushTurn();
-                    }
-                    if (event.assistantMessageEvent.type === "text_delta") {
-                        currentTurnText += event.assistantMessageEvent.delta;
-                    }
-                }
-                if (event.type === "message_end") {
-                    recordMessageUsage(chatJid, event.message);
-                }
-            });
-            let timedOut = false;
-            const timeoutId = setTimeout(async () => {
-                timedOut = true;
-                console.error(`[agent-pool] Timeout after ${AGENT_TIMEOUT}ms for ${chatJid}`);
-                await session.abort();
-            }, AGENT_TIMEOUT);
-            process.env.PICLAW_CHAT_JID = chatJid;
-            process.env.PICLAW_CHANNEL = detectChannel(chatJid);
+            const tracker = this.createTurnTracker(chatJid, options.onTurnComplete);
+            const unsub = this.subscribeToSession(session, chatJid, tracker, options.onEvent);
+            const { timeoutId, timedOutRef } = this.startPromptTimeout(session, chatJid);
+            this.setRunEnvironment(chatJid);
             const phases = options.autoCompactPhases ?? ["pre", "post"];
             if (phases.includes("pre")) {
                 await this.maybeAutoCompact(session, "pre", options.onAutoCompact);
@@ -127,14 +82,15 @@ export class AgentPool {
             }
             const duration = Date.now() - startTime;
             // If onTurnComplete was used, intermediate turns were already flushed.
-            // The final turn's text is in currentTurnText.
-            const finalText = currentTurnText.trim();
+            // The final turn's text is in tracker.getFinalText().
+            const finalText = tracker.getFinalText();
             const finalAttachments = this.attachments.take(chatJid);
+            const timedOut = timedOutRef.value;
             writeAgentLog(this.logsDir, chatJid, duration, timedOut, finalText, null);
             if (timedOut) {
                 return { status: "error", result: null, error: `Timed out after ${AGENT_TIMEOUT}ms` };
             }
-            console.log(`[agent-pool] Done in ${duration}ms (${finalText.length} chars, ${turnCount + 1} turns, session ${chatJid})`);
+            console.log(`[agent-pool] Done in ${duration}ms (${finalText.length} chars, ${tracker.getTurnCount() + 1} turns, session ${chatJid})`);
             return {
                 status: "success",
                 result: finalText || null,
@@ -284,6 +240,69 @@ export class AgentPool {
         await this.bindSession(session, chatJid);
         console.log(`[agent-pool] Session ready for ${chatJid} (pool size: ${this.pool.size})`);
         return session;
+    }
+    createTurnTracker(chatJid, onTurnComplete) {
+        let currentTurnText = "";
+        let turnCount = 0;
+        const flushTurn = () => {
+            const text = currentTurnText.trim();
+            if (!text && !onTurnComplete)
+                return;
+            if (text || turnCount > 0) {
+                const turnAttachments = this.attachments.take(chatJid);
+                onTurnComplete?.({
+                    text,
+                    attachments: turnAttachments,
+                });
+                turnCount++;
+            }
+            currentTurnText = "";
+        };
+        const handleMessageUpdate = (event) => {
+            if (event.type !== "message_update")
+                return;
+            if (event.assistantMessageEvent.type === "text_start" && onTurnComplete) {
+                // A new text response is starting — flush the previous turn
+                flushTurn();
+            }
+            if (event.assistantMessageEvent.type === "text_delta") {
+                currentTurnText += event.assistantMessageEvent.delta;
+            }
+        };
+        return {
+            handleMessageUpdate,
+            getFinalText: () => currentTurnText.trim(),
+            getTurnCount: () => turnCount,
+        };
+    }
+    subscribeToSession(session, chatJid, tracker, onEvent) {
+        return session.subscribe((event) => {
+            if (onEvent) {
+                try {
+                    onEvent(event);
+                }
+                catch (err) {
+                    console.warn("[agent-pool] Event handler error:", err);
+                }
+            }
+            tracker.handleMessageUpdate(event);
+            if (event.type === "message_end") {
+                recordMessageUsage(chatJid, event.message);
+            }
+        });
+    }
+    startPromptTimeout(session, chatJid) {
+        const timedOutRef = { value: false };
+        const timeoutId = setTimeout(async () => {
+            timedOutRef.value = true;
+            console.error(`[agent-pool] Timeout after ${AGENT_TIMEOUT}ms for ${chatJid}`);
+            await session.abort();
+        }, AGENT_TIMEOUT);
+        return { timeoutId, timedOutRef };
+    }
+    setRunEnvironment(chatJid) {
+        process.env.PICLAW_CHAT_JID = chatJid;
+        process.env.PICLAW_CHANNEL = detectChannel(chatJid);
     }
     async bindSession(session, chatJid) {
         if (!this.sessionBinder)
