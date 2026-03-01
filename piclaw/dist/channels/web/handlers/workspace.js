@@ -1,176 +1,13 @@
-import { statSync, readdirSync, readFileSync } from "fs";
+import { statSync, readFileSync } from "fs";
 import path from "path";
 import chokidar from "chokidar";
 import { WORKSPACE_DIR } from "../../../config.js";
 import { createMedia } from "../../../db.js";
 import { broadcastEvent } from "../sse.js";
-const EXCLUDE_DIRS = new Set([
-    "node_modules",
-    ".git",
-    "dist",
-    "build",
-    "output",
-    ".cache",
-    ".venv",
-    ".piclaw",
-    "tmp",
-    "coverage",
-]);
-const MAX_TREE_ENTRIES = 2000;
-const MAX_PREVIEW_BYTES = 64 * 1024;
-const MAX_ATTACH_BYTES = 25 * 1024 * 1024;
-const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"]);
-const TEXT_EXTS = new Set([
-    ".md", ".txt", ".log", ".json", ".yaml", ".yml", ".toml", ".ini", ".conf",
-    ".js", ".ts", ".tsx", ".jsx", ".css", ".html", ".sh", ".py", ".go", ".rs",
-    ".c", ".cpp", ".h", ".hpp", ".java", ".kt", ".swift", ".sql",
-]);
-function resolveWorkspacePath(input) {
-    const raw = (input || "").trim();
-    const resolved = path.resolve(WORKSPACE_DIR, raw);
-    const rel = path.relative(WORKSPACE_DIR, resolved);
-    if (!rel || rel === ".")
-        return WORKSPACE_DIR;
-    if (rel.startsWith("..") || path.isAbsolute(rel))
-        return null;
-    return resolved;
-}
-function toRelativePath(absPath) {
-    const rel = path.relative(WORKSPACE_DIR, absPath) || ".";
-    return rel.split(path.sep).join("/");
-}
-function contentTypeForPath(filePath) {
-    const ext = path.extname(filePath).toLowerCase();
-    switch (ext) {
-        case ".md":
-            return "text/markdown";
-        case ".txt":
-        case ".log":
-        case ".conf":
-        case ".ini":
-            return "text/plain";
-        case ".sh":
-            return "text/x-shellscript";
-        case ".json":
-            return "application/json";
-        case ".yaml":
-        case ".yml":
-            return "text/yaml";
-        case ".toml":
-            return "text/toml";
-        case ".html":
-            return "text/html";
-        case ".css":
-            return "text/css";
-        case ".js":
-            return "text/javascript";
-        case ".ts":
-        case ".tsx":
-            return "text/typescript";
-        case ".jsx":
-            return "text/jsx";
-        case ".svg":
-            return "image/svg+xml";
-        case ".png":
-            return "image/png";
-        case ".jpg":
-        case ".jpeg":
-            return "image/jpeg";
-        case ".gif":
-            return "image/gif";
-        case ".webp":
-            return "image/webp";
-        default:
-            return "application/octet-stream";
-    }
-}
-function isTextFile(filePath) {
-    const ext = path.extname(filePath).toLowerCase();
-    return TEXT_EXTS.has(ext);
-}
-function isImageFile(filePath) {
-    const ext = path.extname(filePath).toLowerCase();
-    return IMAGE_EXTS.has(ext);
-}
-function formatMtime(stats) {
-    if (!stats.mtime)
-        return null;
-    return stats.mtime.toISOString();
-}
-function shouldExcludeDir(name) {
-    return EXCLUDE_DIRS.has(name);
-}
-function shouldIgnorePath(absPath) {
-    const rel = path.relative(WORKSPACE_DIR, absPath);
-    if (!rel || rel === ".")
-        return false;
-    if (rel.startsWith("..") || path.isAbsolute(rel))
-        return true;
-    const parts = rel.split(path.sep);
-    for (const part of parts) {
-        if (!part || part === ".")
-            continue;
-        if (part.startsWith(".") && part !== ".piclaw")
-            return true;
-        if (EXCLUDE_DIRS.has(part))
-            return true;
-    }
-    return false;
-}
-function buildTree(absPath, depth, state) {
-    const stats = statSync(absPath);
-    const node = {
-        name: path.basename(absPath) || "workspace",
-        path: toRelativePath(absPath),
-        type: stats.isDirectory() ? "dir" : "file",
-        size: stats.isDirectory() ? null : stats.size,
-        mtime: formatMtime(stats),
-        children: [],
-    };
-    state.count += 1;
-    if (state.count > MAX_TREE_ENTRIES) {
-        state.truncated = true;
-        node.children = undefined;
-        return node;
-    }
-    if (!stats.isDirectory() || depth <= 0) {
-        node.children = undefined;
-        return node;
-    }
-    const entries = readdirSync(absPath, { withFileTypes: true })
-        .filter((entry) => !entry.name.startsWith(".") || entry.name === ".piclaw")
-        .filter((entry) => !entry.isDirectory() || !shouldExcludeDir(entry.name))
-        .sort((a, b) => {
-        if (a.isDirectory() && !b.isDirectory())
-            return -1;
-        if (!a.isDirectory() && b.isDirectory())
-            return 1;
-        return a.name.localeCompare(b.name);
-    });
-    node.children = [];
-    for (const entry of entries) {
-        if (state.count >= MAX_TREE_ENTRIES) {
-            state.truncated = true;
-            break;
-        }
-        const childPath = path.join(absPath, entry.name);
-        try {
-            node.children.push(buildTree(childPath, depth - 1, state));
-        }
-        catch {
-            // ignore unreadable paths
-        }
-    }
-    return node;
-}
-function detectBinary(buffer) {
-    const max = Math.min(buffer.length, 4096);
-    for (let i = 0; i < max; i += 1) {
-        if (buffer[i] === 0)
-            return true;
-    }
-    return false;
-}
+import { MAX_ATTACH_BYTES, MAX_PREVIEW_BYTES } from "../workspace/constants.js";
+import { contentTypeForPath, detectBinary, formatMtime, isImageFile, isTextFile } from "../workspace/file-utils.js";
+import { resolveWorkspacePath, shouldIgnorePath, toRelativePath } from "../workspace/paths.js";
+import { buildTree, compressPaths } from "../workspace/tree.js";
 export function handleWorkspaceTree(_channel, req) {
     const url = new URL(req.url);
     const targetPath = resolveWorkspacePath(url.searchParams.get("path"));
@@ -306,21 +143,6 @@ export async function handleWorkspaceAttach(_channel, req) {
     catch {
         return new Response(JSON.stringify({ error: "Failed to attach file" }), { status: 500 });
     }
-}
-function compressPaths(paths) {
-    const normalized = Array.from(new Set(paths.map((p) => (p || ".").replace(/\\/g, "/"))));
-    if (normalized.includes("."))
-        return ["."];
-    normalized.sort((a, b) => a.length - b.length);
-    return normalized.filter((candidate) => {
-        let current = candidate;
-        while (current.includes("/")) {
-            current = current.slice(0, current.lastIndexOf("/"));
-            if (normalized.includes(current))
-                return false;
-        }
-        return true;
-    });
 }
 export function startWorkspaceWatcher(channel) {
     const pending = new Set();
