@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { html, render, useState, useEffect, useCallback, useRef } from './vendor/preact-htm.js';
-import { getTimeline, getPostsByHashtag, searchPosts, deletePost, getAgents, SSEClient } from './api.js';
+import { getTimeline, getPostsByHashtag, searchPosts, deletePost, getAgents, getAgentThought, setAgentThoughtVisibility, SSEClient } from './api.js';
 import { ComposeBox } from './components/compose-box.js';
 import { AgentRequestModal, AgentStatus, ConnectionStatus } from './components/status.js';
 import { Timeline } from './components/timeline.js';
@@ -110,11 +110,14 @@ function App() {
     const lastSilenceNoticeRef = useRef(0);
     const isAgentRunningRef = useRef(false);
     const draftBufferRef = useRef('');
+    const thoughtBufferRef = useRef('');
     const pendingRequestRef = useRef(null);
     const stalledPostIdRef = useRef(null);
     const currentTurnIdRef = useRef(null);
     const appShellRef = useRef(null);
     const sidebarWidthRef = useRef(0);
+    const thoughtExpandedRef = useRef(false);
+    const draftExpandedRef = useRef(false);
 
     // Refresh timestamps every 30 seconds
     useTimestampRefresh(30000);
@@ -148,9 +151,12 @@ function App() {
         lastAgentEventRef.current = null;
         lastSilenceNoticeRef.current = 0;
         draftBufferRef.current = '';
+        thoughtBufferRef.current = '';
         pendingRequestRef.current = null;
         currentTurnIdRef.current = null;
         setCurrentTurnId(null);
+        thoughtExpandedRef.current = false;
+        draftExpandedRef.current = false;
     }, [setCurrentTurnId]);
 
     const setActiveTurn = useCallback((turnId) => {
@@ -159,12 +165,51 @@ function App() {
         currentTurnIdRef.current = turnId;
         setCurrentTurnId(turnId);
         draftBufferRef.current = '';
+        thoughtBufferRef.current = '';
         setAgentDraft({ text: '', totalLines: 0 });
         setAgentPlan('');
         setAgentThought({ text: '', totalLines: 0 });
         setPendingRequest(null);
         pendingRequestRef.current = null;
+        thoughtExpandedRef.current = false;
+        draftExpandedRef.current = false;
     }, [setCurrentTurnId]);
+
+    const handlePanelToggle = useCallback(async (panelKey, expanded) => {
+        if (panelKey !== 'thought' && panelKey !== 'draft') return;
+        const turnId = currentTurnIdRef.current;
+        if (panelKey === 'thought') {
+            thoughtExpandedRef.current = expanded;
+            if (turnId) {
+                try {
+                    await setAgentThoughtVisibility(turnId, 'thought', expanded);
+                } catch (error) {
+                    console.warn('Failed to update thought visibility:', error);
+                }
+            }
+            if (!expanded) return;
+            try {
+                const data = turnId ? await getAgentThought(turnId, 'thought') : null;
+                if (data?.text) {
+                    thoughtBufferRef.current = data.text;
+                }
+                setAgentThought((prev) => ({
+                    ...(prev || { text: '', totalLines: 0 }),
+                    fullText: thoughtBufferRef.current || prev?.fullText || '',
+                    totalLines: Number.isFinite(data?.total_lines) ? data.total_lines : prev?.totalLines || 0,
+                }));
+            } catch (error) {
+                console.warn('Failed to fetch full thought:', error);
+            }
+            return;
+        }
+        draftExpandedRef.current = expanded;
+        if (!expanded) return;
+        setAgentDraft((prev) => ({
+            ...(prev || { text: '', totalLines: 0 }),
+            fullText: draftBufferRef.current || prev?.fullText || '',
+        }));
+    }, []);
 
     const removeStalledPost = useCallback(() => {
         const stalledId = stalledPostIdRef.current;
@@ -189,9 +234,12 @@ function App() {
         lastAgentEventRef.current = null;
         currentTurnIdRef.current = null;
         setCurrentTurnId(null);
+        thoughtExpandedRef.current = false;
+        draftExpandedRef.current = false;
 
         const partial = (draftBufferRef.current || '').trim();
         draftBufferRef.current = '';
+        thoughtBufferRef.current = '';
         setAgentDraft({ text: '', totalLines: 0 });
         setAgentPlan('');
         setAgentThought({ text: '', totalLines: 0 });
@@ -512,6 +560,7 @@ function App() {
                 noteAgentActivity({ running: true, clearSilence: true });
                 if (data.type === 'thinking') {
                     draftBufferRef.current = '';
+                    thoughtBufferRef.current = '';
                     setAgentDraft({ text: '', totalLines: 0 });
                     setAgentPlan('');
                     setAgentThought({ text: '', totalLines: 0 });
@@ -535,6 +584,13 @@ function App() {
             if (data?.delta) {
                 draftBufferRef.current += data.delta;
             }
+            if (draftExpandedRef.current) {
+                setAgentDraft((prev) => ({
+                    text: prev?.text || '',
+                    totalLines: prev?.totalLines || 0,
+                    fullText: draftBufferRef.current,
+                }));
+            }
             return;
         }
 
@@ -556,7 +612,35 @@ function App() {
                 if (mode === 'replace') setAgentPlan(text);
                 else setAgentPlan((prev) => (prev || '') + text);
             } else {
-                setAgentDraft({ text, totalLines: inferredTotal });
+                setAgentDraft((prev) => ({
+                    text,
+                    totalLines: inferredTotal,
+                    fullText: prev?.fullText || '',
+                }));
+            }
+            return;
+        }
+
+        if (eventType === 'agent_thought_delta') {
+            if (turnId && currentTurnIdRef.current && turnId !== currentTurnIdRef.current) {
+                return;
+            }
+            if (turnId && !currentTurnIdRef.current) {
+                setActiveTurn(turnId);
+            }
+            noteAgentActivity({ running: true, clearSilence: true });
+            if (data?.reset) {
+                thoughtBufferRef.current = '';
+            }
+            if (typeof data?.delta === 'string') {
+                thoughtBufferRef.current += data.delta;
+            }
+            if (thoughtExpandedRef.current) {
+                setAgentThought((prev) => ({
+                    text: prev?.text || '',
+                    totalLines: prev?.totalLines || 0,
+                    fullText: thoughtBufferRef.current,
+                }));
             }
             return;
         }
@@ -573,7 +657,11 @@ function App() {
             const inferredTotal = Number.isFinite(data.total_lines)
                 ? data.total_lines
                 : (text ? text.replace(/\r\n/g, '\n').split('\n').length : 0);
-            setAgentThought({ text, totalLines: inferredTotal });
+            setAgentThought((prev) => ({
+                text,
+                totalLines: inferredTotal,
+                fullText: prev?.fullText || '',
+            }));
             return;
         }
 
@@ -780,6 +868,7 @@ function App() {
                     thought=${agentThought}
                     pendingRequest=${pendingRequest}
                     turnId=${currentTurnId}
+                    onPanelToggle=${handlePanelToggle}
                 />
                 <${ComposeBox} 
                     onPost=${() => { loadPosts(); scrollToBottom(); }}
