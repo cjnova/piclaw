@@ -158,6 +158,18 @@ export async function addToWhitelist(pattern, description) {
     return response.json();
 }
 
+export async function getAgentThought(turnId, panel = 'thought') {
+    const url = `/agent/thought?turn_id=${encodeURIComponent(turnId)}&panel=${encodeURIComponent(panel)}`;
+    return request(url);
+}
+
+export async function setAgentThoughtVisibility(turnId, panel, expanded) {
+    return request('/agent/thought/visibility', {
+        method: 'POST',
+        body: JSON.stringify({ turn_id: turnId, panel, expanded: Boolean(expanded) }),
+    });
+}
+
 /**
  * Get media URL
  */
@@ -304,8 +316,16 @@ export class SSEClient {
             this.onEvent('agent_draft', JSON.parse(e.data));
         });
 
+        this.eventSource.addEventListener('agent_draft_delta', (e) => {
+            this.onEvent('agent_draft_delta', JSON.parse(e.data));
+        });
+
         this.eventSource.addEventListener('agent_thought', (e) => {
             this.onEvent('agent_thought', JSON.parse(e.data));
+        });
+
+        this.eventSource.addEventListener('agent_thought_delta', (e) => {
+            this.onEvent('agent_thought_delta', JSON.parse(e.data));
         });
     }
     

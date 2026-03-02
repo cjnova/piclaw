@@ -60,6 +60,15 @@ export async function handleWebRequest(channel, req) {
         const id = channel.parseOptionalInt(pathname.replace("/thread/", ""));
         return channel.handleThread(id);
     }
+    if (req.method === "GET" && pathname === "/agent/thought") {
+        const url = new URL(req.url);
+        const turnId = url.searchParams.get("turn_id");
+        const panel = url.searchParams.get("panel");
+        return channel.handleThought(panel, turnId);
+    }
+    if (req.method === "POST" && pathname === "/agent/thought/visibility") {
+        return channel.handleThoughtVisibility(req);
+    }
     if (req.method === "DELETE" && pathname.startsWith("/post/")) {
         const id = channel.parseOptionalInt(pathname.replace("/post/", ""));
         const url = new URL(req.url);

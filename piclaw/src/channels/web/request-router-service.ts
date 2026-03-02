@@ -82,6 +82,17 @@ export class RequestRouterService {
       return this.channel.handleThread(id);
     }
 
+    if (req.method === "GET" && pathname === "/agent/thought") {
+      const url = new URL(req.url);
+      const turnId = url.searchParams.get("turn_id");
+      const panel = url.searchParams.get("panel");
+      return this.channel.handleThought(panel, turnId);
+    }
+
+    if (req.method === "POST" && pathname === "/agent/thought/visibility") {
+      return this.channel.handleThoughtVisibility(req);
+    }
+
     if (req.method === "DELETE" && pathname.startsWith("/post/")) {
       const id = this.channel.parseOptionalInt(pathname.replace("/post/", ""));
       const url = new URL(req.url);

@@ -3,6 +3,7 @@ export function createAgentEventEmitter(channel, withAgentProfile) {
     return {
         status: (payload) => channel.broadcastEvent("agent_status", withAgentProfile(payload)),
         thought: (payload) => channel.broadcastEvent("agent_thought", withAgentProfile(payload)),
+        thoughtDelta: (payload) => channel.broadcastEvent("agent_thought_delta", withAgentProfile(payload)),
         draft: (payload) => channel.broadcastEvent("agent_draft", withAgentProfile(payload)),
         draftDelta: (payload) => channel.broadcastEvent("agent_draft_delta", withAgentProfile(payload)),
         response: (payload) => channel.broadcastEvent("agent_response", withAgentProfile(payload)),
@@ -14,6 +15,8 @@ export function createStreamingEventHandler(options) {
     const previewMaxCharsPerLine = options.previewMaxCharsPerLine ?? 160;
     let thoughtBuffer = "";
     let draftBuffer = "";
+    let thoughtHasDelta = false;
+    let thoughtDeltaActive = false;
     const { remember, lookup, forget } = createToolTitleTracker();
     const base = {
         thread_id: options.threadId,
@@ -25,24 +28,67 @@ export function createStreamingEventHandler(options) {
             const messageEvent = event.assistantMessageEvent;
             if (messageEvent.type === "thinking_start") {
                 thoughtBuffer = "";
+                thoughtHasDelta = false;
+                thoughtDeltaActive = false;
+                if (options.includeThoughtFull?.()) {
+                    thoughtDeltaActive = true;
+                    options.emitter.thoughtDelta({
+                        ...base,
+                        delta: "",
+                        reset: true,
+                    });
+                }
             }
             if (messageEvent.type === "thinking_delta") {
                 thoughtBuffer += messageEvent.delta;
+                thoughtHasDelta = true;
                 const { preview, totalLines } = buildPreview(thoughtBuffer, thoughtPreviewLines, previewMaxCharsPerLine);
+                options.onThoughtBuffer?.(thoughtBuffer, totalLines);
                 options.emitter.thought({
                     ...base,
                     text: preview,
                     total_lines: totalLines,
                 });
+                const shouldSendDelta = Boolean(options.includeThoughtFull?.());
+                if (shouldSendDelta && !thoughtDeltaActive) {
+                    thoughtDeltaActive = true;
+                    options.emitter.thoughtDelta({
+                        ...base,
+                        delta: thoughtBuffer,
+                        reset: true,
+                    });
+                }
+                else if (shouldSendDelta) {
+                    options.emitter.thoughtDelta({
+                        ...base,
+                        delta: messageEvent.delta,
+                    });
+                }
+                else {
+                    thoughtDeltaActive = false;
+                }
             }
             if (messageEvent.type === "thinking_end") {
                 thoughtBuffer = messageEvent.content || thoughtBuffer;
                 const { preview, totalLines } = buildPreview(thoughtBuffer, thoughtPreviewLines, previewMaxCharsPerLine);
+                options.onThoughtBuffer?.(thoughtBuffer, totalLines);
                 options.emitter.thought({
                     ...base,
                     text: preview,
                     total_lines: totalLines,
                 });
+                const shouldSendDelta = Boolean(options.includeThoughtFull?.());
+                if (shouldSendDelta && !thoughtHasDelta) {
+                    thoughtDeltaActive = true;
+                    options.emitter.thoughtDelta({
+                        ...base,
+                        delta: thoughtBuffer,
+                        reset: true,
+                    });
+                }
+                else if (!shouldSendDelta) {
+                    thoughtDeltaActive = false;
+                }
             }
             if (messageEvent.type === "toolcall_end") {
                 const title = remember(messageEvent.toolCall.id, messageEvent.toolCall.name, messageEvent.toolCall.arguments);
@@ -54,6 +100,7 @@ export function createStreamingEventHandler(options) {
             }
             if (messageEvent.type === "text_start") {
                 draftBuffer = "";
+                options.onDraftBuffer?.(draftBuffer, 0);
                 options.emitter.draft({
                     ...base,
                     text: "",
@@ -70,13 +117,18 @@ export function createStreamingEventHandler(options) {
             if (messageEvent.type === "text_delta") {
                 draftBuffer += messageEvent.delta;
                 const { preview, totalLines } = buildPreview(draftBuffer, draftPreviewLines, previewMaxCharsPerLine);
-                options.emitter.draft({
+                options.onDraftBuffer?.(draftBuffer, totalLines);
+                const payload = {
                     ...base,
                     text: preview,
                     total_lines: totalLines,
                     kind: "draft",
                     mode: "replace",
-                });
+                };
+                if (options.includeDraftFull?.()) {
+                    payload.full_text = draftBuffer;
+                }
+                options.emitter.draft(payload);
                 options.emitter.draftDelta({
                     ...base,
                     delta: messageEvent.delta,

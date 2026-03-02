@@ -26,6 +26,9 @@ export class WebChannel {
     workspaceWatcher = null;
     workspaceVisible = false;
     workspaceShowHidden = false;
+    thoughtBuffers = new Map();
+    draftBuffers = new Map();
+    expandedPanels = new Map();
     constructor(opts) {
         this.queue = opts.queue;
         this.agentPool = opts.agentPool;
@@ -98,6 +101,45 @@ export class WebChannel {
     saveState() {
         this.state.save();
     }
+    setPanelExpanded(turnId, panel, expanded) {
+        if (!turnId)
+            return;
+        const current = this.expandedPanels.get(turnId) ?? { thought: false, draft: false };
+        current[panel] = expanded;
+        if (!current.thought && !current.draft) {
+            this.expandedPanels.delete(turnId);
+        }
+        else {
+            this.expandedPanels.set(turnId, current);
+        }
+    }
+    isPanelExpanded(turnId, panel) {
+        return this.expandedPanels.get(turnId)?.[panel] ?? false;
+    }
+    updateThoughtBuffer(turnId, text, totalLines) {
+        if (!turnId)
+            return;
+        this.thoughtBuffers.set(turnId, { text, totalLines, updatedAt: Date.now() });
+        this.pruneBuffers(this.thoughtBuffers);
+    }
+    updateDraftBuffer(turnId, text, totalLines) {
+        if (!turnId)
+            return;
+        this.draftBuffers.set(turnId, { text, totalLines, updatedAt: Date.now() });
+        this.pruneBuffers(this.draftBuffers);
+    }
+    getBuffer(turnId, panel) {
+        return panel === "draft" ? this.draftBuffers.get(turnId) : this.thoughtBuffers.get(turnId);
+    }
+    pruneBuffers(map) {
+        const limit = 50;
+        if (map.size <= limit)
+            return;
+        const entries = Array.from(map.entries()).sort((a, b) => a[1].updatedAt - b[1].updatedAt);
+        for (let i = 0; i < entries.length - limit; i += 1) {
+            map.delete(entries[i][0]);
+        }
+    }
     async handleRequest(req) {
         const { RequestRouterService } = await import("./web/request-router-service.js");
         const router = new RequestRouterService(this);
@@ -149,6 +191,31 @@ export class WebChannel {
     handleThread(id) {
         const result = getThreadResponse(DEFAULT_CHAT_JID, id);
         return this.json(result.body, result.status);
+    }
+    handleThought(panel, turnId) {
+        if (!turnId)
+            return this.json({ error: "Missing turn_id" }, 400);
+        const normalized = panel === "draft" ? "draft" : "thought";
+        const buffer = this.getBuffer(turnId, normalized);
+        if (!buffer)
+            return this.json({ error: "Thought not found" }, 404);
+        return this.json({ text: buffer.text, total_lines: buffer.totalLines }, 200);
+    }
+    async handleThoughtVisibility(req) {
+        let data;
+        try {
+            data = await req.json();
+        }
+        catch {
+            return this.json({ error: "Invalid JSON" }, 400);
+        }
+        const turnId = (data.turn_id || data.turnId || "").trim();
+        const panel = data.panel === "draft" ? "draft" : "thought";
+        const expanded = Boolean(data.expanded);
+        if (!turnId)
+            return this.json({ error: "Missing turn_id" }, 400);
+        this.setPanelExpanded(turnId, panel, expanded);
+        return this.json({ status: "ok", turn_id: turnId, panel, expanded });
     }
     handleDeletePost(id, cascade = false) {
         const result = deletePostResponse(DEFAULT_CHAT_JID, id, cascade);

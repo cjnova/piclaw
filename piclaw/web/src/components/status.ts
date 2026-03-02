@@ -4,22 +4,23 @@ import { addToWhitelist, respondToAgentRequest } from '../api.js';
 import { renderThinkingMarkdown } from '../markdown.js';
 import { getTurnColor } from '../ui/agent-utils.js';
 
-export function AgentStatus({ status, draft, plan, thought, pendingRequest, turnId }) {
+export function AgentStatus({ status, draft, plan, thought, pendingRequest, turnId, onPanelToggle }) {
     const THOUGHT_MAX_LINES = 8;
     const DRAFT_MAX_LINES = 8;
 
     const normalizePreview = (value) => {
-        if (!value) return { text: '', totalLines: 0 };
+        if (!value) return { text: '', totalLines: 0, fullText: '' };
         if (typeof value === 'string') {
             const text = value;
             const totalLines = text ? text.replace(/\r\n/g, '\n').split('\n').length : 0;
-            return { text, totalLines };
+            return { text, totalLines, fullText: text };
         }
         const text = value.text || '';
+        const fullText = value.fullText || value.full_text || text;
         const totalLines = Number.isFinite(value.totalLines)
             ? value.totalLines
-            : (text ? text.replace(/\r\n/g, '\n').split('\n').length : 0);
-        return { text, totalLines };
+            : (fullText ? fullText.replace(/\r\n/g, '\n').split('\n').length : 0);
+        return { text, totalLines, fullText };
     };
 
     const PREVIEW_MAX_CHARS_PER_LINE = 160;
@@ -58,7 +59,11 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, turn
     const toggleExpand = (key) =>
         setExpandedPanels(prev => {
             const next = new Set(prev);
-            if (next.has(key)) next.delete(key); else next.add(key);
+            const willExpand = !next.has(key);
+            if (willExpand) next.add(key); else next.delete(key);
+            if (typeof onPanelToggle === 'function') {
+                onPanelToggle(key, willExpand);
+            }
             return next;
         });
 
@@ -82,12 +87,13 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, turn
         content = title || statusText || 'Working...';
     }
 
-    const renderThinkingPanel = ({ panelTitle, text, totalLines, maxLines, titleClass, panelKey }) => {
+    const renderThinkingPanel = ({ panelTitle, text, fullText, totalLines, maxLines, titleClass, panelKey }) => {
         const isExpanded = expandedPanels.has(panelKey);
+        const effectiveText = (isExpanded && fullText) ? fullText : text;
         const effectiveMax = (typeof maxLines === 'number' && !isExpanded) ? maxLines : undefined;
         const truncated = typeof effectiveMax === 'number'
-            ? truncateLines(text, effectiveMax, totalLines)
-            : { text: text || '', omitted: 0, totalLines: Number.isFinite(totalLines) ? totalLines : 0 };
+            ? truncateLines(effectiveText, effectiveMax, totalLines)
+            : { text: effectiveText || '', omitted: 0, totalLines: Number.isFinite(totalLines) ? totalLines : 0 };
         if (!truncated.text && !(Number.isFinite(truncated.totalLines) && truncated.totalLines > 0)) return null;
         return html`
             <div class="agent-thinking" style=${turnColor ? `--turn-color: ${turnColor};` : ''}>
@@ -128,12 +134,14 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, turn
             ${hasPlan && renderThinkingPanel({
                 panelTitle: panelTitle('Planning'),
                 text: planInfo.text,
+                fullText: planInfo.fullText,
                 totalLines: planInfo.totalLines,
                 panelKey: 'plan',
             })}
             ${hasThought && renderThinkingPanel({
                 panelTitle: panelTitle('Thoughts'),
                 text: thoughtInfo.text,
+                fullText: thoughtInfo.fullText,
                 totalLines: thoughtInfo.totalLines,
                 maxLines: THOUGHT_MAX_LINES,
                 titleClass: 'thought',
@@ -142,6 +150,7 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, turn
             ${hasDraft && renderThinkingPanel({
                 panelTitle: panelTitle('Draft'),
                 text: draftInfo.text,
+                fullText: draftInfo.fullText,
                 totalLines: draftInfo.totalLines,
                 maxLines: DRAFT_MAX_LINES,
                 titleClass: 'thought',
