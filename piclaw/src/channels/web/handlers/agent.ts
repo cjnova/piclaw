@@ -6,7 +6,7 @@ import {
   parseAgentMessageRequest,
   storeAgentUserMessage,
 } from "../agent-message-service.js";
-import { getMessagesSince } from "../../../db.js";
+import { getMessageRowIdById, getMessagesSince } from "../../../db.js";
 import { detectChannel, formatMessages, formatOutbound } from "../../../router.js";
 import { createAgentProfileBuilder } from "../agent-utils.js";
 import { createAgentEventEmitter, createStreamingEventHandler } from "../agent-events.js";
@@ -122,10 +122,19 @@ export async function processChat(
   const channelName = detectChannel(chatJid);
   const prompt = formatMessages(messages, channelName);
   const prevCursor = channel.state.lastAgentTimestamp[chatJid] || "";
-  channel.state.lastAgentTimestamp[chatJid] = messages[messages.length - 1].timestamp;
+  const lastMessage = messages[messages.length - 1];
+  const pendingThreadRootId = getMessageRowIdById(chatJid, lastMessage.id) ?? null;
+
+  channel.state.setPendingResume(chatJid, {
+    prevTimestamp: prevCursor,
+    messageId: lastMessage.id,
+    threadRootId: pendingThreadRootId,
+    createdAt: new Date().toISOString(),
+  });
+  channel.state.lastAgentTimestamp[chatJid] = lastMessage.timestamp;
   channel.saveState();
 
-  const threadId = messages[messages.length - 1].timestamp;
+  const threadId = lastMessage.timestamp;
 
   const THOUGHT_PREVIEW_LINES = 8;
   const DRAFT_PREVIEW_LINES = 8;
@@ -231,6 +240,7 @@ export async function processChat(
 
   if (output.status === "error") {
     channel.state.lastAgentTimestamp[chatJid] = prevCursor;
+    channel.state.clearPendingResume(chatJid);
     channel.saveState();
     trackedEmitter.status({
       thread_id: threadId,
@@ -262,6 +272,9 @@ export async function processChat(
       channel.saveState();
     }
   }
+
+  channel.state.clearPendingResume(chatJid);
+  channel.saveState();
 
   trackedEmitter.status({
     thread_id: threadId,

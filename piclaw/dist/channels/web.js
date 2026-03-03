@@ -5,7 +5,7 @@ import { handleWorkspaceAttach, handleWorkspaceFile, handleWorkspaceRaw, handleW
 import { SseHub } from "./web/sse-hub.js";
 import { UiBridge } from "./web/ui-bridge.js";
 import { ResponseService } from "./web/http/response-service.js";
-import { getMessageRowIdById, replaceMessageContent, } from "../db.js";
+import { getMessageRowIdById, getMessagesSince, replaceMessageContent, } from "../db.js";
 import { WebChannelState } from "./web/channel-state.js";
 import { storeWebMessage } from "./web/message-store.js";
 import { deletePostResponse, getHashtagResponse, getSearchResponse, getThreadResponse, getTimelineResponse, } from "./web/timeline-service.js";
@@ -125,6 +125,32 @@ export class WebChannel {
     }
     getThreadRootId(chatJid, messageId) {
         return getMessageRowIdById(chatJid, messageId);
+    }
+    resumeChat(chatJid, prevTimestamp, threadRootId) {
+        if (typeof prevTimestamp === "string") {
+            this.state.lastAgentTimestamp[chatJid] = prevTimestamp;
+            this.saveState();
+        }
+        this.queue.enqueue(async () => {
+            await this.processChat(chatJid, DEFAULT_AGENT_ID, threadRootId ?? undefined);
+        }, `resume:${chatJid}:${Date.now()}`);
+    }
+    resumePendingChats(chatJid) {
+        const pending = this.state.getPendingResumes();
+        const entries = chatJid && chatJid !== "all" ? { [chatJid]: pending[chatJid] } : pending;
+        for (const [jid, info] of Object.entries(entries)) {
+            if (!info)
+                continue;
+            const prevTimestamp = typeof info.prevTimestamp === "string" ? info.prevTimestamp : "";
+            const messages = getMessagesSince(jid, prevTimestamp, ASSISTANT_NAME);
+            if (messages.length === 0) {
+                this.state.clearPendingResume(jid);
+                continue;
+            }
+            const threadRootId = info.threadRootId ?? getMessageRowIdById(jid, info.messageId);
+            this.resumeChat(jid, prevTimestamp, threadRootId ?? undefined);
+        }
+        this.saveState();
     }
     loadState() {
         this.state.load();

@@ -142,5 +142,17 @@ async function processTaskCommand(data, deps) {
                 deleteTask(data.taskId);
             break;
         }
+        case "resume_chat": {
+            if (deps.resumeChat) {
+                await deps.resumeChat(data);
+            }
+            break;
+        }
+        case "resume_pending": {
+            if (deps.resumePending) {
+                await deps.resumePending(data);
+            }
+            break;
+        }
     }
 }

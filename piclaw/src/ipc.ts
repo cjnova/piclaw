@@ -9,6 +9,8 @@ export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
   sendNudge?: (text: string) => Promise<void>;
   resolveModel?: (input: string) => { model?: string; error?: string };
+  resumeChat?: (data: Record<string, any>) => Promise<void>;
+  resumePending?: (data?: Record<string, any>) => Promise<void>;
 }
 
 let running = false;
@@ -122,6 +124,18 @@ async function processTaskCommand(data: Record<string, any>, deps: IpcDeps): Pro
     case "cancel_task": {
       const t = data.taskId && getTaskById(data.taskId);
       if (t) deleteTask(data.taskId);
+      break;
+    }
+    case "resume_chat": {
+      if (deps.resumeChat) {
+        await deps.resumeChat(data);
+      }
+      break;
+    }
+    case "resume_pending": {
+      if (deps.resumePending) {
+        await deps.resumePending(data);
+      }
       break;
     }
   }

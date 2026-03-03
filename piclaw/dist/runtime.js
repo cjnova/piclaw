@@ -129,6 +129,20 @@ export async function main() {
         sendMessage,
         sendNudge,
         resolveModel: (input) => agentPool.resolveModelInput(input),
+        resumeChat: async (data) => {
+            const chatJid = typeof data.chatJid === "string" && data.chatJid.trim()
+                ? data.chatJid.trim()
+                : "web:default";
+            const prevTimestamp = typeof data.prevTimestamp === "string" ? data.prevTimestamp : undefined;
+            const threadRootId = typeof data.threadRootId === "number" ? data.threadRootId : null;
+            web.resumeChat(chatJid, prevTimestamp, threadRootId);
+        },
+        resumePending: async (data) => {
+            const chatJid = typeof data?.chatJid === "string" && data.chatJid.trim()
+                ? data.chatJid.trim()
+                : undefined;
+            web.resumePendingChats(chatJid);
+        },
     });
     startSchedulerLoop({
         queue,

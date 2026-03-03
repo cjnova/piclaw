@@ -9,6 +9,7 @@ import { UiBridge } from "./web/ui-bridge.js";
 import { ResponseService } from "./web/http/response-service.js";
 import {
   getMessageRowIdById,
+  getMessagesSince,
   replaceMessageContent,
 } from "../db.js";
 import type { InteractionRow } from "../db.js";
@@ -163,6 +164,35 @@ export class WebChannel {
 
   getThreadRootId(chatJid: string, messageId: string): number | null {
     return getMessageRowIdById(chatJid, messageId);
+  }
+
+  resumeChat(chatJid: string, prevTimestamp?: string, threadRootId?: number | null): void {
+    if (typeof prevTimestamp === "string") {
+      this.state.lastAgentTimestamp[chatJid] = prevTimestamp;
+      this.saveState();
+    }
+    this.queue.enqueue(async () => {
+      await this.processChat(chatJid, DEFAULT_AGENT_ID, threadRootId ?? undefined);
+    }, `resume:${chatJid}:${Date.now()}`);
+  }
+
+  resumePendingChats(chatJid?: string): void {
+    const pending = this.state.getPendingResumes();
+    const entries = chatJid && chatJid !== "all" ? { [chatJid]: pending[chatJid] } : pending;
+
+    for (const [jid, info] of Object.entries(entries)) {
+      if (!info) continue;
+      const prevTimestamp = typeof info.prevTimestamp === "string" ? info.prevTimestamp : "";
+      const messages = getMessagesSince(jid, prevTimestamp, ASSISTANT_NAME);
+      if (messages.length === 0) {
+        this.state.clearPendingResume(jid);
+        continue;
+      }
+      const threadRootId = info.threadRootId ?? getMessageRowIdById(jid, info.messageId);
+      this.resumeChat(jid, prevTimestamp, threadRootId ?? undefined);
+    }
+
+    this.saveState();
   }
 
   loadState(): void {
