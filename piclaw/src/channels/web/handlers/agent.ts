@@ -73,8 +73,12 @@ export async function handleAgentMessage(
     // Broadcast model changes so the UI hint updates immediately
     const modelCommands = ["model", "thinking", "cycle_model", "cycle_thinking"];
     if (result.status === "success" && modelCommands.includes(command.type)) {
-      const model = await channel.agentPool.getCurrentModelLabel(chatJid).catch(() => null);
-      channel.broadcastEvent("model_changed", { chat_jid: chatJid, model: model ?? null });
+      const getModel = (channel.agentPool as { getCurrentModelLabel?: (jid: string) => Promise<string | null> })
+        .getCurrentModelLabel;
+      if (typeof getModel === "function") {
+        const model = await getModel(chatJid).catch(() => null);
+        channel.broadcastEvent("model_changed", { chat_jid: chatJid, model: model ?? null });
+      }
     }
 
     markCommandHandled();
