@@ -8,3 +8,7 @@ export function setRouterState(key, value) {
     const db = getDb();
     db.prepare("INSERT OR REPLACE INTO router_state (key, value) VALUES (?, ?)").run(key, value);
 }
+export function deleteRouterState(key) {
+    const db = getDb();
+    db.prepare("DELETE FROM router_state WHERE key = ?").run(key);
+}

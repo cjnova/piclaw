@@ -58,33 +58,88 @@ export async function handleLast(session, _command) {
     return { status: "success", message: `Last assistant response:\n\n${last}` };
 }
 export async function handleCommands(session, _command) {
-    const lines = ["Available commands:"];
-    const addLine = (name, description) => {
-        const suffix = description ? ` - ${description}` : "";
-        lines.push(`• ${name}${suffix}`);
+    const describeSource = (source, detail) => {
+        const base = source === "core" ? "core"
+            : source === "extension" ? "workspace extension"
+                : source === "pi-extension" ? "pi extension"
+                    : source === "template" ? "prompt template"
+                        : "skill";
+        return detail ? `${base} (${detail})` : base;
+    };
+    const entries = new Map();
+    const addEntry = (name, description, source, detail) => {
+        const trimmed = name.trim();
+        if (!trimmed)
+            return;
+        const key = trimmed.toLowerCase();
+        const existing = entries.get(key);
+        if (!existing) {
+            entries.set(key, { name: trimmed, description, source, detail, extensions: [] });
+            return;
+        }
+        if (!existing.description && description) {
+            existing.description = description;
+        }
+        if (existing.source === "core") {
+            existing.extensions.push({ source, detail });
+            return;
+        }
+        if (source === "core") {
+            const previous = { source: existing.source, detail: existing.detail };
+            entries.set(key, {
+                name: trimmed,
+                description: description ?? existing.description,
+                source: "core",
+                detail: undefined,
+                extensions: [...existing.extensions, previous],
+            });
+            return;
+        }
+        existing.extensions.push({ source, detail });
     };
     for (const command of CONTROL_COMMAND_DEFINITIONS) {
-        addLine(command.name, command.description);
+        addEntry(command.name, command.description, "core");
     }
     const extensionRunner = session.extensionRunner;
     if (extensionRunner) {
         const extCommands = extensionRunner.getRegisteredCommandsWithPaths();
+        const isPiBuiltin = (extensionPath) => {
+            if (!extensionPath)
+                return false;
+            return extensionPath.includes("node_modules/@mariozechner/pi-");
+        };
         for (const entry of extCommands) {
             const name = entry.command?.name;
             if (!name)
                 continue;
             const description = entry.command.description || `extension (${entry.extensionPath})`;
-            addLine(`/${name}`, description);
+            const source = isPiBuiltin(entry.extensionPath) ? "pi-extension" : "extension";
+            addEntry(`/${name}`, description, source, entry.extensionPath || undefined);
         }
     }
     for (const template of session.promptTemplates) {
         const description = template.description || "prompt template";
-        addLine(`/${template.name}`, description);
+        addEntry(`/${template.name}`, description, "template", template.name);
     }
     const skills = session.resourceLoader.getSkills().skills;
     for (const skill of skills) {
         const description = skill.description || "skill";
-        addLine(`/skill:${skill.name}`, description);
+        addEntry(`/skill:${skill.name}`, description, "skill", skill.name);
+    }
+    const sorted = Array.from(entries.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    const lines = ["Available commands:"];
+    for (const entry of sorted) {
+        const suffix = entry.description ? ` - ${entry.description}` : "";
+        const notes = [];
+        if (entry.source !== "core") {
+            notes.push(describeSource(entry.source, entry.detail));
+        }
+        if (entry.extensions.length) {
+            const extNotes = entry.extensions.map((ext) => describeSource(ext.source, ext.detail));
+            notes.push(`extended by ${extNotes.join(", ")}`);
+        }
+        const noteText = notes.length ? ` [${notes.join("; ")}]` : "";
+        lines.push(`• ${entry.name}${suffix}${noteText}`);
     }
     return {
         status: "success",
