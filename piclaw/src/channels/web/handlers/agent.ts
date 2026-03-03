@@ -69,6 +69,14 @@ export async function handleAgentMessage(
         await channel.sendMessage(chatJid, formatted, interaction.id);
       }
     }
+
+    // Broadcast model changes so the UI hint updates immediately
+    const modelCommands = ["model", "thinking", "cycle_model", "cycle_thinking"];
+    if (result.status === "success" && modelCommands.includes(command.type)) {
+      const model = await channel.agentPool.getCurrentModelLabel(chatJid).catch(() => null);
+      channel.broadcastEvent("model_changed", { chat_jid: chatJid, model: model ?? null });
+    }
+
     markCommandHandled();
     return channel.json(
       { user_message: interaction, thread_id: threadId, command: result },

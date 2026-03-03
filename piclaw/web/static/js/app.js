@@ -959,6 +959,11 @@ function App() {
             return;
         }
 
+        if (eventType === 'model_changed') {
+            if (data?.model) setActiveModel(data.model);
+            return;
+        }
+
         if (eventType === 'workspace_update') {
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(new CustomEvent('workspace-update', { detail: data }));
