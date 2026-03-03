@@ -210,8 +210,9 @@ async function execute(
 export const workspaceSearch: ExtensionFactory = (api) => {
   api.registerTool({
     name: "search_workspace",
+    label: "search_workspace",
     description: "Search indexed workspace content (notes + skills by default).",
-    schema: WorkspaceSearchSchema,
+    parameters: WorkspaceSearchSchema,
     execute,
   });
 };
