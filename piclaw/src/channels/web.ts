@@ -14,7 +14,15 @@ import {
   WEB_TLS_KEY,
 } from "../core/config.js";
 import { handleMedia, handleMediaInfo, handleMediaUpload } from "./web/handlers/media.js";
-import { handleWorkspaceAttach, handleWorkspaceFile, handleWorkspaceRaw, handleWorkspaceTree, startWorkspaceWatcher } from "./web/handlers/workspace.js";
+import {
+  handleWorkspaceAttach,
+  handleWorkspaceDownload,
+  handleWorkspaceFile,
+  handleWorkspaceRaw,
+  handleWorkspaceTree,
+  handleWorkspaceUpload,
+  startWorkspaceWatcher,
+} from "./web/handlers/workspace.js";
 import { SseHub } from "./web/sse-hub.js";
 import { UiBridge } from "./web/ui-bridge.js";
 import { ResponseService } from "./web/http/response-service.js";
@@ -486,6 +494,14 @@ export class WebChannel {
 
   async handleWorkspaceAttach(req: Request): Promise<Response> {
     return handleWorkspaceAttach(this, req);
+  }
+
+  async handleWorkspaceUpload(req: Request): Promise<Response> {
+    return handleWorkspaceUpload(this, req);
+  }
+
+  async handleWorkspaceDownload(req: Request): Promise<Response> {
+    return handleWorkspaceDownload(this, req);
   }
 
   async serveStatic(relPath: string): Promise<Response> {

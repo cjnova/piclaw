@@ -227,6 +227,23 @@ export async function attachWorkspaceFile(path) {
     });
 }
 
+export async function uploadWorkspaceFile(file, targetPath = '') {
+    const formData = new FormData();
+    formData.append('file', file);
+    const url = `/workspace/upload?path=${encodeURIComponent(targetPath || '')}`;
+    const response = await fetch(API_BASE + url, {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    return response.json();
+}
+
 export async function setWorkspaceVisibility(visible, showHidden = false) {
     return request('/workspace/visibility', {
         method: 'POST',
@@ -239,6 +256,14 @@ export async function setWorkspaceVisibility(visible, showHidden = false) {
  */
 export function getWorkspaceRawUrl(path) {
     return `${API_BASE}/workspace/raw?path=${encodeURIComponent(path)}`;
+}
+
+/**
+ * Get workspace folder download URL (zip)
+ */
+export function getWorkspaceDownloadUrl(path, showHidden = false) {
+    const query = `path=${encodeURIComponent(path || '')}&show_hidden=${showHidden ? '1' : '0'}`;
+    return `${API_BASE}/workspace/download?${query}`;
 }
 
 /**

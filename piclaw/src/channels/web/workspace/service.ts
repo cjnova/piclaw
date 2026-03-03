@@ -25,6 +25,14 @@ export class WorkspaceService {
     return this.fileService.attachFile(pathParam);
   }
 
+  uploadFile(pathParam: string | null, file: File) {
+    return this.fileService.uploadFile(pathParam, file);
+  }
+
+  downloadZip(pathParam: string | null, includeHidden = false) {
+    return this.fileService.downloadZip(pathParam, includeHidden);
+  }
+
   startWatcher(
     onUpdate: (updates: Array<{ path: string; root: unknown; truncated: boolean }>) => void,
     includeHidden: () => boolean

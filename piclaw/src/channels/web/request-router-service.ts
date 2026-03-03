@@ -107,8 +107,16 @@ export class RequestRouterService {
       return this.channel.handleWorkspaceRaw(req);
     }
 
+    if (req.method === "GET" && pathname === "/workspace/download") {
+      return this.channel.handleWorkspaceDownload(req);
+    }
+
     if (req.method === "POST" && pathname === "/workspace/attach") {
       return this.channel.handleWorkspaceAttach(req);
+    }
+
+    if (req.method === "POST" && pathname === "/workspace/upload") {
+      return this.channel.handleWorkspaceUpload(req);
     }
 
     if (req.method === "POST" && pathname === "/workspace/visibility") {

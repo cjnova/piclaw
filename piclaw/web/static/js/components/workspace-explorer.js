@@ -1,13 +1,15 @@
 // @ts-nocheck
-import { html, useEffect, useMemo, useRef, useState } from '../vendor/preact-htm.js';
+import { html, useCallback, useEffect, useMemo, useRef, useState } from '../vendor/preact-htm.js';
 import {
     attachWorkspaceFile,
     getMediaInfo,
     getMediaUrl,
+    getWorkspaceDownloadUrl,
     getWorkspaceFile,
     getWorkspaceRawUrl,
     getWorkspaceTree,
     setWorkspaceVisibility,
+    uploadWorkspaceFile,
 } from '../api.js';
 import { formatFileSize, formatTimestamp } from '../utils/format.js';
 import { renderMarkdown } from '../markdown.js';
@@ -139,6 +141,9 @@ export function WorkspaceExplorer({ onFileSelect, visible = true }) {
         if (typeof window === 'undefined') return false;
         return localStorage.getItem('workspaceShowHidden') === 'true';
     });
+    const [dragActive,   setDragActive]    = useState(false);
+    const [dropTarget,   setDropTarget]    = useState(null);
+    const [uploading,    setUploading]     = useState(false);
 
     // ── Stable refs (never trigger re-renders) ────────────────────────────────
     const expandedRef     = useRef(expanded);
@@ -157,12 +162,17 @@ export function WorkspaceExplorer({ onFileSelect, visible = true }) {
     const previewHeightRef= useRef(0);
     const showHiddenRef   = useRef(showHidden);
     const visibleRef      = useRef(visible);
+    const dragDepthRef    = useRef(0);
+    const dropTargetRef   = useRef(dropTarget);
+    const dragActiveRef   = useRef(dragActive);
 
     // Sync mutable refs each render
     onFileSelectRef.current = onFileSelect;
     useEffect(() => { expandedRef.current = expanded; }, [expanded]);
     useEffect(() => { showHiddenRef.current = showHidden; }, [showHidden]);
     useEffect(() => { visibleRef.current = visible; }, [visible]);
+    useEffect(() => { dropTargetRef.current = dropTarget; }, [dropTarget]);
+    useEffect(() => { dragActiveRef.current = dragActive; }, [dragActive]);
 
     // ── loadPreview ───────────────────────────────────────────────────────────
     const loadPreview = async (path) => {
@@ -223,6 +233,18 @@ export function WorkspaceExplorer({ onFileSelect, visible = true }) {
         }
     };
     loadSubtreeRef.current = loadSubtree;
+
+    const resolveDropTargetPath = useCallback(() => {
+        const selected = selectedPath;
+        if (!selected) return '.';
+        const node = nodeMapRef.current?.get(selected);
+        if (node && node.type === 'dir') return node.path;
+        if (selected === '.' || !selected.includes('/')) return '.';
+        const parts = selected.split('/');
+        parts.pop();
+        const parent = parts.join('/');
+        return parent || '.';
+    }, [selectedPath]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -322,6 +344,8 @@ export function WorkspaceExplorer({ onFileSelect, visible = true }) {
     const rows = useMemo(() => flattenTree(tree, expanded, showHidden), [tree, expanded, showHidden]);
     const nodeMap = useMemo(() => new Map(rows.map(r => [r.node.path, r.node])), [rows]);
     nodeMapRef.current = nodeMap;
+    const selectedNode = selectedPath ? nodeMapRef.current.get(selectedPath) : null;
+    const selectedIsDir = selectedNode?.type === 'dir';
 
     // ── Single stable click handler via event delegation ──────────────────────
     // Created once; reads live state through refs so it never needs recreation.
@@ -331,6 +355,10 @@ export function WorkspaceExplorer({ onFileSelect, visible = true }) {
         const clickedPath = rowEl.dataset.path;
         const clickedType = rowEl.dataset.type;
         if (clickedType === 'dir') {
+            setSelectedPath(clickedPath);
+            setPreview(null);
+            setDownloadId(null);
+            setLoadingPreview(false);
             const wasExpanded = expandedRef.current.has(clickedPath);
             if (!wasExpanded) loadSubtreeRef.current?.(clickedPath);
             setExpanded(prev => {
@@ -464,9 +492,76 @@ export function WorkspaceExplorer({ onFileSelect, visible = true }) {
         }
     };
 
+    const isFileDrag = (event) => {
+        const types = Array.from(event?.dataTransfer?.types || []);
+        return types.includes('Files');
+    };
+
+    const handleDragEnter = useCallback((event) => {
+        if (!isFileDrag(event)) return;
+        event.preventDefault();
+        dragDepthRef.current += 1;
+        if (!dragActiveRef.current) setDragActive(true);
+        const target = resolveDropTargetPath();
+        setDropTarget(target);
+    }, [resolveDropTargetPath]);
+
+    const handleDragOver = useCallback((event) => {
+        if (!isFileDrag(event)) return;
+        event.preventDefault();
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+        if (!dragActiveRef.current) setDragActive(true);
+        const target = resolveDropTargetPath();
+        if (dropTargetRef.current !== target) setDropTarget(target);
+    }, [resolveDropTargetPath]);
+
+    const handleDragLeave = useCallback((event) => {
+        if (!isFileDrag(event)) return;
+        event.preventDefault();
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) {
+            setDragActive(false);
+            setDropTarget(null);
+        }
+    }, []);
+
+    const handleDrop = useCallback(async (event) => {
+        if (!isFileDrag(event)) return;
+        event.preventDefault();
+        dragDepthRef.current = 0;
+        setDragActive(false);
+        setDropTarget(null);
+        const files = Array.from(event?.dataTransfer?.files || []);
+        if (files.length === 0) return;
+        const target = resolveDropTargetPath();
+        setUploading(true);
+        try {
+            let lastResult = null;
+            for (const file of files) {
+                lastResult = await uploadWorkspaceFile(file, target);
+            }
+            if (lastResult?.path) {
+                setSelectedPath(lastResult.path);
+                loadPreviewRef.current?.(lastResult.path);
+            }
+            loadSubtreeRef.current?.(target);
+        } catch (err) {
+            setError(err.message || 'Failed to upload file');
+        } finally {
+            setUploading(false);
+        }
+    }, [resolveDropTargetPath]);
+
     // ── Render ────────────────────────────────────────────────────────────────
     return html`
-        <aside class="workspace-sidebar" ref=${sidebarRef}>
+        <aside
+            class=${`workspace-sidebar${dragActive ? ' workspace-drop-active' : ''}`}
+            ref=${sidebarRef}
+            onDragEnter=${handleDragEnter}
+            onDragOver=${handleDragOver}
+            onDragLeave=${handleDragLeave}
+            onDrop=${handleDrop}
+        >
             <div class="workspace-header">
                 <span>Workspace</span>
                 <div class="workspace-header-actions">
@@ -493,6 +588,8 @@ export function WorkspaceExplorer({ onFileSelect, visible = true }) {
                 </div>
             </div>
             <div class="workspace-tree" onClick=${handleBackgroundClick}>
+                ${dragActive && html`<div class="workspace-drop-hint">Drop to upload to ${dropTarget || '.'}</div>`}
+                ${uploading && html`<div class="workspace-drop-hint">Uploading…</div>`}
                 ${initialLoad && html`<div class="workspace-loading">Loading…</div>`}
                 ${error && html`<div class="workspace-error">${error}</div>`}
                 ${tree && html`
@@ -501,10 +598,11 @@ export function WorkspaceExplorer({ onFileSelect, visible = true }) {
                             const isDir     = node.type === 'dir';
                             const isSelected= node.path === selectedPath;
                             const isOpen    = isDir && expanded.has(node.path);
+                            const isDropTarget = dropTarget && node.path === dropTarget;
                             return html`
                                 <div
                                     key=${node.path}
-                                    class=${`workspace-row${isSelected ? ' selected' : ''}`}
+                                    class=${`workspace-row${isSelected ? ' selected' : ''}${isDropTarget ? ' drop-target' : ''}`}
                                     style=${{ paddingLeft: `${8 + depth * INDENT}px` }}
                                     data-path=${node.path}
                                     data-type=${node.type}
@@ -536,18 +634,31 @@ export function WorkspaceExplorer({ onFileSelect, visible = true }) {
                 <div class="workspace-preview">
                     <div class="workspace-preview-header">
                         <span class="workspace-preview-title">${selectedPath}</span>
-                        <button class="workspace-download" onClick=${handleDownload} title="Download">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                                <polyline points="7 10 12 15 17 10"/>
-                                <line x1="12" y1="15" x2="12" y2="3"/>
-                            </svg>
-                        </button>
+                        ${selectedIsDir
+                            ? html`<a class="workspace-download" href=${getWorkspaceDownloadUrl(selectedPath, showHidden)}
+                                title="Download folder as zip" onClick=${(e) => e.stopPropagation()}>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="7 10 12 15 17 10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                            </a>`
+                            : html`<button class="workspace-download" onClick=${handleDownload} title="Download">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                    <polyline points="7 10 12 15 17 10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                            </button>`}
                     </div>
                     ${loadingPreview && html`<div class="workspace-loading">Loading preview…</div>`}
                     ${preview?.error && html`<div class="workspace-error">${preview.error}</div>`}
-                    ${preview && !preview.error && html`
+                    ${selectedIsDir && html`
+                        <div class="workspace-preview-text">Folder selected — download as zip.</div>
+                    `}
+                    ${preview && !preview.error && !selectedIsDir && html`
                         <div class="workspace-preview-meta">
                             ${preview.size  ? html`<span>${formatFileSize(preview.size)}</span>` : ''}
                             ${preview.mtime ? html`<span>${formatTimestamp(preview.mtime)}</span>` : ''}
