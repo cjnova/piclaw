@@ -94,9 +94,14 @@ export async function handleCommands(session: AgentSession, _command: CommandsCo
   const extensionRunner = session.extensionRunner;
   if (extensionRunner) {
     const extCommands = extensionRunner.getRegisteredCommandsWithPaths();
+    const isPiBuiltin = (extensionPath: string | undefined) => {
+      if (!extensionPath) return false;
+      return extensionPath.includes("node_modules/@mariozechner/pi-");
+    };
     for (const entry of extCommands) {
       const name = entry.command?.name;
       if (!name) continue;
+      if (isPiBuiltin(entry.extensionPath)) continue;
       const description = entry.command.description || `extension (${entry.extensionPath})`;
       addEntry(`/${name}`, description);
     }
