@@ -44,6 +44,9 @@
     --chat-min-width: 640px;
     --chat-max-width: 900px;
     --workspace-tab-width: 20px;
+
+    /* Misc */
+    --placeholder-opacity: 0.65;
 }
 
 /* Dark mode */
@@ -646,6 +649,7 @@ body {
 
 .compose-box textarea::placeholder {
     color: var(--text-secondary);
+    opacity: var(--placeholder-opacity, 0.65);
 }
 
 /* Model hint — bottom-left of input, low opacity */
@@ -655,7 +659,7 @@ body {
     left: 2px;
     font-size: 9px;
     color: var(--text-secondary);
-    opacity: 0.45;
+    opacity: var(--placeholder-opacity, 0.65);
     pointer-events: none;
     white-space: nowrap;
     overflow: hidden;

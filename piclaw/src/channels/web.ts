@@ -1,6 +1,7 @@
 import { AgentQueue } from "../queue.js";
 import type { AgentPool } from "../agent-pool.js";
 import { initTheme, type AgentSession } from "@mariozechner/pi-coding-agent";
+import { randomSessionToken, verifyTotp } from "./web/auth.js";
 import {
   ASSISTANT_AVATAR,
   ASSISTANT_NAME,
@@ -12,6 +13,10 @@ import {
   WEB_PORT,
   WEB_TLS_CERT,
   WEB_TLS_KEY,
+  WEB_SESSION_TTL,
+  WEB_TOTP_SECRET,
+  WEB_TOTP_WINDOW,
+  WEB_INTERNAL_SECRET,
 } from "../core/config.js";
 import { handleMedia, handleMediaInfo, handleMediaUpload } from "./web/handlers/media.js";
 import {
@@ -68,6 +73,8 @@ export class WebChannel {
   workspaceShowHidden = false;
   pendingSteering = new Map<string, string[]>();
   activeAgentStatuses = new Map<string, Record<string, unknown>>();
+  lastCommandInteractionId: number | null = null;
+  authSessions = new Map<string, number>();
   thoughtBuffers = new Map<string, { text: string; totalLines: number; updatedAt: number }>();
   draftBuffers = new Map<string, { text: string; totalLines: number; updatedAt: number }>();
   expandedPanels = new Map<string, { thought: boolean; draft: boolean }>();
@@ -301,6 +308,120 @@ export class WebChannel {
     }
   }
 
+  isAuthEnabled(): boolean {
+    return Boolean(WEB_TOTP_SECRET && WEB_TOTP_SECRET.trim());
+  }
+
+  isInternalSecretEnabled(): boolean {
+    return Boolean(WEB_INTERNAL_SECRET && WEB_INTERNAL_SECRET.trim());
+  }
+
+  private cleanupAuthSessions(now = Date.now()): void {
+    for (const [token, expiresAt] of this.authSessions.entries()) {
+      if (expiresAt <= now) this.authSessions.delete(token);
+    }
+  }
+
+  private parseCookies(req: Request): Record<string, string> {
+    const header = req.headers.get("cookie") || "";
+    if (!header) return {};
+    return header.split(";").reduce((acc, part) => {
+      const [rawKey, ...rest] = part.trim().split("=");
+      if (!rawKey) return acc;
+      acc[rawKey] = decodeURIComponent(rest.join("=") || "");
+      return acc;
+    }, {} as Record<string, string>);
+  }
+
+  verifyInternalSecret(req: Request): boolean {
+    const secret = (WEB_INTERNAL_SECRET || "").trim();
+    if (!secret) return false;
+    const header = req.headers.get("x-piclaw-internal-secret") || "";
+    if (header && header === secret) return true;
+    const auth = req.headers.get("authorization") || "";
+    if (auth.toLowerCase().startsWith("bearer ")) {
+      const token = auth.slice(7).trim();
+      if (token === secret) return true;
+    }
+    return false;
+  }
+
+  private getSessionToken(req: Request): string | null {
+    const cookies = this.parseCookies(req);
+    return cookies.piclaw_session || null;
+  }
+
+  isAuthenticated(req: Request): boolean {
+    if (!this.isAuthEnabled()) return true;
+    this.cleanupAuthSessions();
+    const token = this.getSessionToken(req);
+    if (!token) return false;
+    const expiresAt = this.authSessions.get(token);
+    if (!expiresAt || expiresAt <= Date.now()) {
+      this.authSessions.delete(token);
+      return false;
+    }
+    return true;
+  }
+
+  private buildSessionCookie(token: string, req: Request): string {
+    const rawTtl = Number.isFinite(WEB_SESSION_TTL) ? WEB_SESSION_TTL : 0;
+    const ttl = Math.max(60, rawTtl || 0);
+    const secure = req.url.startsWith("https://") || Boolean(WEB_TLS_CERT && WEB_TLS_KEY);
+    const parts = [
+      `piclaw_session=${encodeURIComponent(token)}`,
+      `Max-Age=${ttl}`,
+      "Path=/",
+      "HttpOnly",
+      "SameSite=Strict",
+    ];
+    if (secure) parts.push("Secure");
+    return parts.join("; ");
+  }
+
+  async handleAuthVerify(req: Request): Promise<Response> {
+    if (!this.isAuthEnabled()) return this.json({ error: "Auth disabled" }, 404);
+    let body: { code?: string };
+    try {
+      body = await req.json();
+    } catch {
+      return this.json({ error: "Invalid JSON" }, 400);
+    }
+    const code = (body.code || "").trim();
+    const windowSteps = Number.isFinite(WEB_TOTP_WINDOW) ? Math.max(0, WEB_TOTP_WINDOW) : 1;
+    if (!code) return this.json({ error: "Missing code" }, 400);
+    if (!verifyTotp(WEB_TOTP_SECRET, code, windowSteps)) {
+      return this.json({ error: "Invalid code" }, 401);
+    }
+
+    const rawTtl = Number.isFinite(WEB_SESSION_TTL) ? WEB_SESSION_TTL : 0;
+    const ttlSeconds = Math.max(60, rawTtl || 0);
+    const token = randomSessionToken();
+    this.authSessions.set(token, Date.now() + ttlSeconds * 1000);
+
+    const payload = JSON.stringify({ ok: true });
+    return new Response(payload, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Set-Cookie": this.buildSessionCookie(token, req),
+      },
+    });
+  }
+
+  async serveLoginPage(): Promise<Response> {
+    return this.serveStatic("login.html");
+  }
+
+  redirectToLogin(): Response {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: "/login",
+      },
+    });
+  }
+
   async handleRequest(req: Request): Promise<Response> {
     const { RequestRouterService } = await import("./web/request-router-service.js");
     const router = new RequestRouterService(this);
@@ -452,6 +573,69 @@ export class WebChannel {
       this.broadcastEvent("interaction_deleted", { ids: result.deletedIds });
     }
     return this.json(result.body, result.status);
+  }
+
+  async handleUpdatePost(req: Request, id: number | null): Promise<Response> {
+    if (!id) return this.json({ error: "Missing post id" }, 400);
+    let body: { content?: string; thread_id?: number };
+    try {
+      body = await req.json();
+    } catch {
+      return this.json({ error: "Invalid JSON" }, 400);
+    }
+    if (!body.content && body.content !== "") {
+      return this.json({ error: "Missing content" }, 400);
+    }
+    const updated = replaceMessageContent(DEFAULT_CHAT_JID, id, body.content!, {});
+    if (!updated) return this.json({ error: "Post not found" }, 404);
+
+    if (body.thread_id) {
+      const { getDb } = await import("../db/connection.js");
+      getDb().prepare("UPDATE messages SET thread_id = ? WHERE rowid = ?").run(body.thread_id, id);
+      updated.data.thread_id = body.thread_id;
+    }
+
+    broadcastInteractionUpdated(
+      this,
+      updated,
+      ASSISTANT_NAME,
+      resolveAvatarUrl("agent", ASSISTANT_AVATAR),
+      USER_NAME || null,
+      resolveAvatarUrl("user", USER_AVATAR),
+      USER_AVATAR_BACKGROUND || null
+    );
+    return this.json({ ok: true, id: updated.id });
+  }
+
+  async handleInternalPost(req: Request): Promise<Response> {
+    let body: { content?: string; thread_id?: number };
+    try {
+      body = await req.json();
+    } catch {
+      return this.json({ error: "Invalid JSON" }, 400);
+    }
+    if (!body.content) return this.json({ error: "Missing content" }, 400);
+
+    const threadId = body.thread_id || this.lastCommandInteractionId || undefined;
+    const interaction = this.storeMessage(
+      DEFAULT_CHAT_JID,
+      body.content,
+      true,
+      [],
+      threadId ? { threadId } : undefined
+    );
+    if (!interaction) return this.json({ error: "Failed to store" }, 500);
+
+    broadcastAgentResponse(
+      this,
+      interaction,
+      ASSISTANT_NAME,
+      resolveAvatarUrl("agent", ASSISTANT_AVATAR),
+      USER_NAME || null,
+      resolveAvatarUrl("user", USER_AVATAR),
+      USER_AVATAR_BACKGROUND || null
+    );
+    return this.json({ ok: true, id: interaction.id }, 201);
   }
 
   handleSse(): Response {

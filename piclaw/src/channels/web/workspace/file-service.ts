@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from "fs";
 import { readdir } from "fs/promises";
 import path from "path";
 
-import { AsyncZipDeflate, Zip, ZipPassThrough } from "fflate";
+import { Zip, ZipDeflate, ZipPassThrough } from "fflate";
 
 import { createMedia } from "../../../db.js";
 import { MAX_ATTACH_BYTES, MAX_PREVIEW_BYTES, MAX_UPLOAD_BYTES } from "./constants.js";
@@ -229,7 +229,7 @@ export class WorkspaceFileService {
               dirEntry.push(new Uint8Array(), true);
               await addDir(absPath, zipPath);
             } else if (entry.isFile()) {
-              const deflate = new AsyncZipDeflate(zipPath);
+              const deflate = new ZipDeflate(zipPath);
               zip.add(deflate);
               const file = Bun.file(absPath);
               const fileStream = file.stream();
