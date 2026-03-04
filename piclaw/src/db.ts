@@ -1,3 +1,13 @@
+/**
+ * db.ts – Public barrel export for the database layer.
+ *
+ * Re-exports everything from the db/* sub-modules so consumers can import
+ * from a single path:
+ *   import { initDatabase, storeMessage, getTimeline, ... } from "./db.js";
+ *
+ * This keeps internal module boundaries hidden from the rest of the codebase.
+ */
+
 export { initDatabase, getDb } from "./db/connection.js";
 export { clampWebContent } from "./db/web-content.js";
 export {
