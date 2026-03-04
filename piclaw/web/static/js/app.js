@@ -1139,6 +1139,17 @@ function App() {
         };
     }, [handleConnectionStatusChange, handleSseEvent, loadPosts]);
 
+    // Poll for latest posts periodically as a backstop (main timeline only).
+    useEffect(() => {
+        if (connectionStatus !== 'connected') return;
+        const interval = setInterval(() => {
+            const { currentHashtag: activeHashtag, searchQuery: activeSearch } = viewStateRef.current || {};
+            if (activeHashtag || activeSearch) return;
+            refreshTimeline();
+        }, 60000);
+        return () => clearInterval(interval);
+    }, [connectionStatus, refreshTimeline]);
+
     // ── Splitter drag: zero re-renders, direct CSS var manipulation ───────────
     const handleSplitterMouseDown = useRef((e) => {
         e.preventDefault();

@@ -238,6 +238,14 @@ export function searchMessages(chatJid: string, query: string, limit: number, of
     return rows.map((row) => buildInteraction(row, getMediaIdsForMessage(row.rowid)));
   }
 
+  const rawQuery = query.trim();
+  const hasOperators = /(?:\bAND\b|\bOR\b|\bNOT\b|\bNEAR\b|["():*])/i.test(rawQuery);
+  const terms = rawQuery
+    .split(/\s+/)
+    .map((term) => term.replace(/^["']+|["']+$/g, ""))
+    .filter(Boolean);
+  const ftsQuery = !hasOperators && terms.length > 1 ? terms.join(" AND ") : rawQuery;
+
   try {
     const rows = db
       .prepare(
@@ -248,14 +256,15 @@ export function searchMessages(chatJid: string, query: string, limit: number, of
          ORDER BY messages.rowid DESC
          LIMIT ? OFFSET ?`
       )
-      .all(chatJid, query, limit, offset) as StoredMessageRow[];
+      .all(chatJid, ftsQuery, limit, offset) as StoredMessageRow[];
     return rows.map((row) => buildInteraction(row, getMediaIdsForMessage(row.rowid)));
   } catch {
-    const rows = db
-      .prepare(
-        `SELECT ${MESSAGE_COLUMNS} FROM messages WHERE chat_jid = ? AND content LIKE ? COLLATE NOCASE ORDER BY rowid DESC LIMIT ? OFFSET ?`
-      )
-      .all(chatJid, `%${query}%`, limit, offset) as StoredMessageRow[];
+    const fallbackTerms = terms.length > 0 ? terms : rawQuery ? [rawQuery] : [];
+    if (fallbackTerms.length === 0) return [];
+    const clauses = fallbackTerms.map(() => "content LIKE ? COLLATE NOCASE").join(" AND ");
+    const sql = `SELECT ${MESSAGE_COLUMNS} FROM messages WHERE chat_jid = ? AND ${clauses} ORDER BY rowid DESC LIMIT ? OFFSET ?`;
+    const params = [chatJid, ...fallbackTerms.map((term) => `%${term}%`), limit, offset];
+    const rows = db.prepare(sql).all(...params) as StoredMessageRow[];
     return rows.map((row) => buildInteraction(row, getMediaIdsForMessage(row.rowid)));
   }
 }
