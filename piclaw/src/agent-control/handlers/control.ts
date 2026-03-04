@@ -1,3 +1,13 @@
+/**
+ * agent-control/handlers/control.ts – Handlers for session lifecycle commands.
+ *
+ * Handles /restart, /compact, /auto-compact, /auto-retry, /abort,
+ * /abort-retry, and /abort-bash commands that control the agent session's
+ * execution state.
+ *
+ * Consumers: agent-control-handlers.ts dispatches to these handlers.
+ */
+
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { AgentControlCommand, AgentControlResult } from "../agent-control-types.js";
 import { formatCompactNumber } from "../agent-control-helpers.js";

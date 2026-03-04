@@ -1,3 +1,12 @@
+/**
+ * agent-control/handlers/model.ts – Handlers for model and thinking level commands.
+ *
+ * Handles /model (set/list), /cycle-model, /thinking (set/query),
+ * /cycle-thinking, /steering-mode, and /followup-mode commands.
+ *
+ * Consumers: agent-control-handlers.ts dispatches to these handlers.
+ */
+
 import type { AgentSession, ModelRegistry } from "@mariozechner/pi-coding-agent";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import type { Model } from "@mariozechner/pi-ai";

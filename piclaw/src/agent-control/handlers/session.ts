@@ -1,3 +1,12 @@
+/**
+ * agent-control/handlers/session.ts – Handlers for session management commands.
+ *
+ * Handles /session-name, /new-session, /switch-session, /fork, /forks,
+ * and /export-html commands for managing the pi-agent session tree.
+ *
+ * Consumers: agent-control-handlers.ts dispatches to these handlers.
+ */
+
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { AgentControlCommand, AgentControlResult } from "../agent-control-types.js";
 import { truncateText } from "../agent-control-helpers.js";

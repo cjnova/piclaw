@@ -1,3 +1,12 @@
+/**
+ * agent-control/handlers/operations.ts – Handlers for /shell and /bash commands.
+ *
+ * Executes shell commands from the control interface and returns formatted
+ * output blocks. Uses the tracked-bash infrastructure for process management.
+ *
+ * Consumers: agent-control-handlers.ts dispatches to these handlers.
+ */
+
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { AgentControlCommand, AgentControlResult } from "../agent-control-types.js";
 import { createTrackedBashOperations } from "../../tools/tracked-bash.js";

@@ -1,3 +1,12 @@
+/**
+ * agent-control/handlers/agent.ts – Handlers for /agent-name and /agent-avatar.
+ *
+ * Updates the assistant's display name and avatar URL at runtime, persisting
+ * the changes to the config file so they survive restarts.
+ *
+ * Consumers: agent-control-handlers.ts dispatches to these handlers.
+ */
+
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { AgentControlCommand, AgentControlResult } from "../agent-control-types.js";
 import { ASSISTANT_AVATAR, ASSISTANT_NAME, setAssistantAvatar, setAssistantName } from "../../core/config.js";

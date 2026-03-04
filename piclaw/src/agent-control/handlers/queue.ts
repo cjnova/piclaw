@@ -1,3 +1,12 @@
+/**
+ * agent-control/handlers/queue.ts – Handlers for /queue and /queue-all commands.
+ *
+ * Injects a user message directly into the agent's prompt queue, bypassing
+ * the normal message pipeline. Useful for steering the agent mid-conversation.
+ *
+ * Consumers: agent-control-handlers.ts dispatches to these handlers.
+ */
+
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { AgentControlCommand, AgentControlResult } from "../agent-control-types.js";
 import { runPromptAndCapture } from "../agent-control-helpers.js";

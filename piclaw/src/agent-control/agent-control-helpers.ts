@@ -1,3 +1,18 @@
+/**
+ * agent-control/agent-control-helpers.ts – Shared helpers for control handlers.
+ *
+ * Provides utility functions used across multiple handler modules:
+ *   - THINKING_LEVELS constant array.
+ *   - Shell command formatting (formatShellBlock, resolveShellCwd).
+ *   - Session state inspection (getModelLabel, formatSessionState).
+ *   - Config file persistence for identity changes.
+ *   - Context usage and stats formatting.
+ *
+ * Consumers:
+ *   - All handler modules under handlers/*.ts.
+ *   - agent-pool.ts for model label resolution.
+ */
+
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { Model } from "@mariozechner/pi-ai";
 import { existsSync } from "fs";

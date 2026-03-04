@@ -1,3 +1,14 @@
+/**
+ * agent-control/command-parsers.ts – Individual command parsing functions.
+ *
+ * Each exported function takes the argument string and raw text of a command
+ * and returns the corresponding AgentControlCommand variant. These are
+ * registered in the COMMAND_PARSERS map keyed by normalised command name.
+ *
+ * Consumers:
+ *   - agent-control-parser.ts looks up parsers from COMMAND_PARSERS.
+ */
+
 import type { AgentControlCommand } from "./agent-control-types.js";
 import { parseQueueMode, parseToggle, parseTreeArgs, splitArgs } from "./parser-utils.js";
 
