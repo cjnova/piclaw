@@ -20,7 +20,7 @@ import {
   DEFAULT_WEB_USER_ID,
 } from "../../db.js";
 
-const MAX_LINK_MINUTES = 15;
+const MAX_LINK_MINUTES = 5;
 
 type PasskeyCommand = Extract<AgentControlCommand, { type: "passkey" }>;
 

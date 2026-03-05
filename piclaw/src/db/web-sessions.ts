@@ -13,24 +13,30 @@ export const DEFAULT_WEB_USER_ID = "default";
 export interface WebSessionRecord {
   token: string;
   user_id: string;
+  auth_method: string | null;
   created_at: string;
   expires_at: string;
 }
 
-export function createWebSession(token: string, userId: string, ttlSeconds: number): WebSessionRecord {
+export function createWebSession(
+  token: string,
+  userId: string,
+  ttlSeconds: number,
+  authMethod: string | null
+): WebSessionRecord {
   const db = getDb();
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
   db.prepare(
-    "INSERT OR REPLACE INTO web_sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)"
-  ).run(token, userId, createdAt, expiresAt);
-  return { token, user_id: userId, created_at: createdAt, expires_at: expiresAt };
+    "INSERT OR REPLACE INTO web_sessions (token, user_id, auth_method, created_at, expires_at) VALUES (?, ?, ?, ?, ?)"
+  ).run(token, userId, authMethod, createdAt, expiresAt);
+  return { token, user_id: userId, auth_method: authMethod, created_at: createdAt, expires_at: expiresAt };
 }
 
 export function getWebSession(token: string): WebSessionRecord | null {
   const db = getDb();
   const row = db
-    .prepare("SELECT token, user_id, created_at, expires_at FROM web_sessions WHERE token = ?")
+    .prepare("SELECT token, user_id, auth_method, created_at, expires_at FROM web_sessions WHERE token = ?")
     .get(token) as WebSessionRecord | undefined;
   if (!row) return null;
   const expiresAt = Date.parse(row.expires_at);
