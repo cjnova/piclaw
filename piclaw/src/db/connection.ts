@@ -245,6 +245,7 @@ function createSchema(database: Database): void {
     CREATE TABLE IF NOT EXISTS web_sessions (
       token TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
+      auth_method TEXT,
       created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL
     );
@@ -319,6 +320,18 @@ function ensureScheduledTaskColumns(database: Database): void {
   }
 }
 
+function ensureWebSessionColumns(database: Database): void {
+  const columns = database.prepare("PRAGMA table_info(web_sessions)").all() as Array<{ name: string }>;
+  const existing = new Set(columns.map((col) => col.name));
+  if (!existing.has("auth_method")) {
+    try {
+      database.exec("ALTER TABLE web_sessions ADD COLUMN auth_method TEXT");
+    } catch {
+      // ignore if column already exists or cannot be added
+    }
+  }
+}
+
 /**
  * Open (or create) the SQLite database and run all schema migrations.
  * Must be called once at application startup before any other db/* function.
@@ -336,6 +349,7 @@ export function initDatabase(): void {
   createSchema(db);
   ensureMessageColumns(db);
   ensureScheduledTaskColumns(db);
+  ensureWebSessionColumns(db);
   ensureFts(db);
 }
 

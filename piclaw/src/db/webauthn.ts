@@ -30,7 +30,7 @@ export interface WebauthnEnrollment {
   expires_at: string;
 }
 
-export function createWebauthnEnrollment(userId = DEFAULT_PASSKEY_USER_ID, ttlSeconds = 15 * 60): WebauthnEnrollment {
+export function createWebauthnEnrollment(userId = DEFAULT_PASSKEY_USER_ID, ttlSeconds = 5 * 60): WebauthnEnrollment {
   const db = getDb();
   const token = randomBytes(24).toString("base64url");
   const createdAt = new Date().toISOString();
