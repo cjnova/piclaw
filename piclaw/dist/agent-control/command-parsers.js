@@ -180,6 +180,24 @@ export function parsePasskey(args, raw) {
         raw,
     };
 }
+/** Parse /totp arguments: action. */
+export function parseTotp(args, raw) {
+    const tokens = splitArgs(args);
+    const action = tokens[0] ? tokens[0].toLowerCase() : undefined;
+    return {
+        type: "totp",
+        action: action,
+        raw,
+    };
+}
+/** Parse /qr arguments: raw text. */
+export function parseQr(args, raw) {
+    return {
+        type: "qr",
+        text: args || undefined,
+        raw,
+    };
+}
 /** Parse /bash arguments: optional command string. */
 export function parseBash(args, raw) {
     return {
@@ -406,6 +424,8 @@ export const COMMAND_PARSERS = {
     "/forks": simple("forks"),
     "/export-html": parseExportHtml,
     "/passkey": parsePasskey,
+    "/totp": parseTotp,
+    "/qr": parseQr,
     "/search": parseSearch,
     "/bash": parseBash,
     "/tree": parseTree,
