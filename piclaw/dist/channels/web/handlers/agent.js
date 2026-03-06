@@ -69,6 +69,9 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
             }
             channel.broadcastEvent("model_changed", { chat_jid: chatJid, model: nextModel ?? null });
         }
+        if (result.status === "success" && (command.type === "model" || command.type === "cycle_model")) {
+            channel.skipFailedOnModelSwitch(chatJid);
+        }
         markCommandHandled();
         return channel.json({ user_message: interaction, thread_id: threadId, command: result }, 201);
     }
@@ -226,8 +229,8 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
     if (output.status === "error") {
         channel.state.lastAgentTimestamp[chatJid] = prevCursor;
         channel.state.clearPendingResume(chatJid);
-        channel.saveState();
         if (output.error && output.error.includes("already processing")) {
+            channel.saveState();
             trackedEmitter.status({
                 thread_id: threadId,
                 agent_id: agentId,
@@ -237,6 +240,14 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
             });
             throw new Error(output.error);
         }
+        channel.state.setFailedRun(chatJid, {
+            prevTimestamp: prevCursor,
+            failedTimestamp: lastMessage.timestamp,
+            messageId: lastMessage.id,
+            threadRootId: resolvedThreadRootId,
+            createdAt: new Date().toISOString(),
+        });
+        channel.saveState();
         trackedEmitter.status({
             thread_id: threadId,
             agent_id: agentId,
@@ -257,6 +268,7 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
             threadId: resolvedThreadRootId,
         });
     }
+    channel.state.clearFailedRun(chatJid);
     const pendingSteerTimestamp = channel.consumePendingSteering(chatJid);
     if (pendingSteerTimestamp) {
         const current = channel.state.lastAgentTimestamp[chatJid] || "";
