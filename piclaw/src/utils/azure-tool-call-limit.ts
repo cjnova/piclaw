@@ -162,6 +162,8 @@ export function applyToolCallLimit(messages: Array<any>, config: ToolCallLimitCo
     summaryText = `${summaryText}\n\n(${removedToolCalls - summaryLines.length} more tool call(s) omitted.)`;
   }
 
+  const summaryIdBase = `msg_tool_summary_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const summaryId = summaryIdBase.length <= 64 ? summaryIdBase : summaryIdBase.slice(0, 64).replace(/_+$/, "");
   const summaryMessage = {
     type: "message",
     role: "assistant",
@@ -173,7 +175,7 @@ export function applyToolCallLimit(messages: Array<any>, config: ToolCallLimitCo
       },
     ],
     status: "completed",
-    id: `tool_summary_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: summaryId,
   };
 
   const insertIndex = Math.min(...Array.from(removeIndexes));
