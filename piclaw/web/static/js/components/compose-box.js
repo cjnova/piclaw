@@ -749,5 +749,6 @@ export function ComposeBox({
                 </div>
             </div>
         </div>
+        </div>
     `;
 }
