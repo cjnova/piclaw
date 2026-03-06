@@ -168,6 +168,18 @@ export class WebChannel {
             await this.processChat(chatJid, DEFAULT_AGENT_ID, threadRootId ?? undefined);
         }, `resume:${chatJid}:${Date.now()}`);
     }
+    skipFailedOnModelSwitch(chatJid) {
+        const failed = this.state.getFailedRun(chatJid);
+        if (!failed)
+            return;
+        const current = this.state.lastAgentTimestamp[chatJid] || "";
+        if (!current || current < failed.failedTimestamp) {
+            this.state.lastAgentTimestamp[chatJid] = failed.failedTimestamp;
+        }
+        this.state.clearFailedRun(chatJid);
+        this.state.clearPendingResume(chatJid);
+        this.saveState();
+    }
     resumePendingChats(chatJid) {
         const pending = this.state.getPendingResumes();
         const entries = chatJid && chatJid !== "all" ? { [chatJid]: pending[chatJid] } : pending;

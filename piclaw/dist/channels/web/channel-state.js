@@ -13,6 +13,7 @@ export class WebChannelState {
     stateKey;
     lastAgentTimestamp = {};
     pendingResumes = {};
+    failedRuns = {};
     agentStatuses = {};
     queuedFollowupPlaceholders = new Map();
     constructor(stateKey) {
@@ -30,6 +31,9 @@ export class WebChannelState {
                 this.pendingResumes = record.pendingResumes && typeof record.pendingResumes === "object"
                     ? record.pendingResumes
                     : {};
+                this.failedRuns = record.failedRuns && typeof record.failedRuns === "object"
+                    ? record.failedRuns
+                    : {};
                 this.agentStatuses = record.agentStatuses && typeof record.agentStatuses === "object"
                     ? record.agentStatuses
                     : {};
@@ -37,17 +41,20 @@ export class WebChannelState {
             else if (parsed && typeof parsed === "object") {
                 this.lastAgentTimestamp = parsed;
                 this.pendingResumes = {};
+                this.failedRuns = {};
                 this.agentStatuses = {};
             }
             else {
                 this.lastAgentTimestamp = {};
                 this.pendingResumes = {};
+                this.failedRuns = {};
                 this.agentStatuses = {};
             }
         }
         catch {
             this.lastAgentTimestamp = {};
             this.pendingResumes = {};
+            this.failedRuns = {};
             this.agentStatuses = {};
         }
     }
@@ -55,6 +62,7 @@ export class WebChannelState {
         setRouterState(this.stateKey, JSON.stringify({
             lastAgentTimestamp: this.lastAgentTimestamp,
             pendingResumes: this.pendingResumes,
+            failedRuns: this.failedRuns,
             agentStatuses: this.agentStatuses,
         }));
     }
@@ -69,6 +77,15 @@ export class WebChannelState {
     }
     getPendingResumes() {
         return { ...this.pendingResumes };
+    }
+    setFailedRun(chatJid, info) {
+        this.failedRuns[chatJid] = info;
+    }
+    clearFailedRun(chatJid) {
+        delete this.failedRuns[chatJid];
+    }
+    getFailedRun(chatJid) {
+        return this.failedRuns[chatJid];
     }
     setAgentStatus(chatJid, status) {
         if (!status) {
