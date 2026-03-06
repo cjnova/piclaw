@@ -37,7 +37,8 @@ fi
 alias ll='ls -alF'
 alias la='ls -A'
 [ -d /home/linuxbrew/.linuxbrew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-[ -d "$HOME/.bun" ] && export BUN_INSTALL="$HOME/.bun" && export PATH="$BUN_INSTALL/bin:$PATH"
+export BUN_INSTALL="/usr/local/lib/bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
 BASHRC
     fi
 

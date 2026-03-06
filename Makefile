@@ -20,8 +20,8 @@ REGISTRY ?= ghcr.io
 GHCR_OWNER ?= $(shell whoami)
 GHCR_IMAGE := $(REGISTRY)/$(GHCR_OWNER)/$(IMAGE):$(TAG)
 
-GLOBAL_PKG := /home/agent/.bun/install/global/package.json
-GLOBAL_LOCK := /home/agent/.bun/install/global/bun.lock
+GLOBAL_PKG := /usr/local/lib/bun/install/global/package.json
+GLOBAL_LOCK := /usr/local/lib/bun/install/global/bun.lock
 PI_AGENT_VERSION ?= ^0.55.4
 
 .PHONY: help up down enter build build-piclaw build-web build-ts vendor pack \
@@ -76,10 +76,12 @@ local-install: pack ## Pack, install globally, and restart piclaw
 	TGZ="$$(realpath piclaw/piclaw-$${VERSION}.tgz)"; \
 	echo "[local-install] Installing v$${VERSION} globally..."; \
 	printf '{"dependencies":{"@mariozechner/pi-coding-agent":"$(PI_AGENT_VERSION)","piclaw":"%s"}}\n' \
-		"$$TGZ" > $(GLOBAL_PKG); \
-	rm -f $(GLOBAL_LOCK); \
-	BUN_INSTALL_CACHE_DIR=/tmp/bun-cache bun install -g "$$TGZ" \
+		"$$TGZ" | sudo tee $(GLOBAL_PKG) >/dev/null; \
+	sudo rm -f $(GLOBAL_LOCK); \
+	sudo BUN_INSTALL=/usr/local/lib/bun BUN_INSTALL_CACHE_DIR=/tmp/bun-cache \
+		/usr/local/lib/bun/bin/bun install -g "$$TGZ" \
 		--registry https://registry.npmjs.org; \
+	sudo chmod -R a+rX /usr/local/lib/bun; \
 	rm -f "$$TGZ"; \
 	echo "[local-install] Restarting piclaw..."; \
 	$(MAKE) restart; \

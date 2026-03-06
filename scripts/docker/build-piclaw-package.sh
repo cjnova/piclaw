@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# scripts/docker/build-piclaw-package.sh – Build piclaw .tgz inside the container.
+# scripts/docker/build-piclaw-package.sh – Build piclaw .tgz and install globally.
 #
-# Runs bun update, tsc, bun pack inside the container and copies the
-# resulting tarball to /tmp for extraction by the Dockerfile.
+# Runs bun update, tsc, bun pack, then `bun add -g` to let bun handle
+# the global install layout under $BUN_INSTALL.
 set -euo pipefail
 
-export BUN_INSTALL="${BUN_INSTALL:-$HOME/.bun}"
-export PATH="$BUN_INSTALL/bin:$PATH"
+export BUN_INSTALL="${BUN_INSTALL:-/usr/local/lib/bun}"
+export PATH="$BUN_INSTALL/bin:/home/linuxbrew/.linuxbrew/bin:$PATH"
 
-rm -f /tmp/piclaw-*.tgz
 cd /home/agent/piclaw
 
 bun update
@@ -29,22 +28,15 @@ if [ -z "$TARBALL" ] || [ ! -f "$TARBALL" ]; then
   exit 1
 fi
 
-DEST="$BUN_INSTALL/install/global/node_modules/piclaw"
-rm -rf "$DEST"
-mkdir -p "$DEST"
-tar -xzf "$TARBALL" -C "$DEST" --strip-components=1
-if [ "${TARBALL#${PACK_DIR}/}" = "$TARBALL" ]; then
-  rm -f "$TARBALL"
-fi
+sudo BUN_INSTALL="$BUN_INSTALL" "$BUN_INSTALL/bin/bun" add -g "$TARBALL"
+
+rm -f "$TARBALL"
 rm -rf "$PACK_DIR"
 
-cd "$DEST"
-bun install --production
+# Ensure world-readable after install
+sudo chmod -R a+rX "$BUN_INSTALL"
 
-mkdir -p "$BUN_INSTALL/bin"
-LAUNCHER="$BUN_INSTALL/bin/piclaw"
-printf '%s\n' \
-  '#!/usr/bin/env bash' \
-  'set -euo pipefail' \
-  "exec \"$BUN_INSTALL/bin/bun\" \"$DEST/src/index.ts\" \"\$@\"" > "$LAUNCHER"
-chmod +x "$LAUNCHER"
+# Symlink piclaw into /usr/local/bin if bun placed it under $BUN_INSTALL/bin
+if [ -f "$BUN_INSTALL/bin/piclaw" ]; then
+  sudo ln -sf "$BUN_INSTALL/bin/piclaw" /usr/local/bin/piclaw
+fi
