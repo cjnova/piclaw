@@ -47,6 +47,9 @@ if [ -z "$TARBALL" ] || [ ! -f "$TARBALL" ]; then
   exit 1
 fi
 
+# Use an absolute path so bun add -g works reliably under sudo/buildkit.
+TARBALL="$(realpath "$TARBALL")"
+
 sudo BUN_INSTALL="$BUN_INSTALL" "$BUN_INSTALL/bin/bun" add -g "$TARBALL"
 
 rm -f "$TARBALL"
