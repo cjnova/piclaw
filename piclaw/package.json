@@ -19,7 +19,7 @@
     "test:coverage": "bun test --max-concurrency=1 --coverage --coverage-reporter=text --coverage-reporter=lcov"
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "0.56.1",
+    "@mariozechner/pi-coding-agent": "0.56.2",
     "@simplewebauthn/server": "9.0.1",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
     "cron-parser": "5.5.0",
