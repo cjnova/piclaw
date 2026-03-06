@@ -9,9 +9,10 @@
 import { THINKING_LEVELS, normalizeModelMatch } from "../agent-control-helpers.js";
 /** Handle /model: switch model, list models, or show current model. */
 export async function handleModel(session, modelRegistry, command) {
-    modelRegistry.refresh();
+    const registry = (session.modelRegistry ?? modelRegistry);
+    registry.refresh();
     if (!command.modelId) {
-        const available = modelRegistry.getAvailable();
+        const available = registry.getAvailable();
         if (available.length === 0) {
             return {
                 status: "error",
@@ -37,7 +38,7 @@ export async function handleModel(session, modelRegistry, command) {
             ].join("\n"),
         };
     }
-    const models = modelRegistry.getAll();
+    const models = registry.getAll();
     let selected;
     if (command.provider) {
         selected = normalizeModelMatch(models, command.provider, command.modelId);

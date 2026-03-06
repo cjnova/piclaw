@@ -376,7 +376,8 @@ export class AgentPool {
     const current = session.model;
     if (current && current.provider === provider && current.id === modelId) return;
 
-    const resolved = this.modelRegistry.find(provider, modelId);
+    const sessionRegistry = (session as AgentSession & { modelRegistry?: ModelRegistry }).modelRegistry ?? this.modelRegistry;
+    const resolved = sessionRegistry.find(provider, modelId);
     if (!resolved) return;
 
     const setModel = (session as { setModel?: (model: typeof resolved) => Promise<void> }).setModel;

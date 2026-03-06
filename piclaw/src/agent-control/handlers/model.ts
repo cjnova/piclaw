@@ -20,10 +20,11 @@ type CycleThinkingCommand = Extract<AgentControlCommand, { type: "cycle_thinking
 
 /** Handle /model: switch model, list models, or show current model. */
 export async function handleModel(session: AgentSession, modelRegistry: ModelRegistry, command: ModelCommand): Promise<AgentControlResult> {
-  modelRegistry.refresh();
+  const registry = ((session as AgentSession & { modelRegistry?: ModelRegistry }).modelRegistry ?? modelRegistry);
+  registry.refresh();
 
   if (!command.modelId) {
-    const available = modelRegistry.getAvailable();
+    const available = registry.getAvailable();
     if (available.length === 0) {
       return {
         status: "error",
@@ -55,7 +56,7 @@ export async function handleModel(session: AgentSession, modelRegistry: ModelReg
     };
   }
 
-  const models = modelRegistry.getAll();
+  const models = registry.getAll();
   let selected: Model<any> | undefined;
 
   if (command.provider) {
