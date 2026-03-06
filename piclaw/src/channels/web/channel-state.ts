@@ -17,10 +17,19 @@ interface PendingResume {
   createdAt: string;
 }
 
+interface FailedRun {
+  prevTimestamp: string;
+  failedTimestamp: string;
+  messageId: string;
+  threadRootId: number | null;
+  createdAt: string;
+}
+
 /** Persistent per-chat state manager for the web channel. */
 export class WebChannelState {
   lastAgentTimestamp: Record<string, string> = {};
   pendingResumes: Record<string, PendingResume> = {};
+  failedRuns: Record<string, FailedRun> = {};
   agentStatuses: Record<string, Record<string, unknown>> = {};
   queuedFollowupPlaceholders = new Map<string, number[]>();
 
@@ -34,6 +43,7 @@ export class WebChannelState {
         const record = parsed as {
           lastAgentTimestamp?: Record<string, string>;
           pendingResumes?: Record<string, PendingResume>;
+          failedRuns?: Record<string, FailedRun>;
           agentStatuses?: Record<string, Record<string, unknown>>;
         };
         this.lastAgentTimestamp = record.lastAgentTimestamp && typeof record.lastAgentTimestamp === "object"
@@ -42,21 +52,27 @@ export class WebChannelState {
         this.pendingResumes = record.pendingResumes && typeof record.pendingResumes === "object"
           ? record.pendingResumes
           : {};
+        this.failedRuns = record.failedRuns && typeof record.failedRuns === "object"
+          ? record.failedRuns
+          : {};
         this.agentStatuses = record.agentStatuses && typeof record.agentStatuses === "object"
           ? record.agentStatuses
           : {};
       } else if (parsed && typeof parsed === "object") {
         this.lastAgentTimestamp = parsed as Record<string, string>;
         this.pendingResumes = {};
+        this.failedRuns = {};
         this.agentStatuses = {};
       } else {
         this.lastAgentTimestamp = {};
         this.pendingResumes = {};
+        this.failedRuns = {};
         this.agentStatuses = {};
       }
     } catch {
       this.lastAgentTimestamp = {};
       this.pendingResumes = {};
+      this.failedRuns = {};
       this.agentStatuses = {};
     }
   }
@@ -67,6 +83,7 @@ export class WebChannelState {
       JSON.stringify({
         lastAgentTimestamp: this.lastAgentTimestamp,
         pendingResumes: this.pendingResumes,
+        failedRuns: this.failedRuns,
         agentStatuses: this.agentStatuses,
       })
     );
@@ -86,6 +103,18 @@ export class WebChannelState {
 
   getPendingResumes(): Record<string, PendingResume> {
     return { ...this.pendingResumes };
+  }
+
+  setFailedRun(chatJid: string, info: FailedRun): void {
+    this.failedRuns[chatJid] = info;
+  }
+
+  clearFailedRun(chatJid: string): void {
+    delete this.failedRuns[chatJid];
+  }
+
+  getFailedRun(chatJid: string): FailedRun | undefined {
+    return this.failedRuns[chatJid];
   }
 
   setAgentStatus(chatJid: string, status: Record<string, unknown> | null): void {
