@@ -44,6 +44,7 @@ test("applyToolCallLimit trims oldest tool calls and inserts summary", () => {
   const summary = result.messages.find((item) => item?.type === "message" && item?.role === "assistant");
   expect(summary).toBeTruthy();
   expect(summary?.content?.[0]?.text || "").toContain("Earlier tool calls (1)");
+  expect(summary?.id || "").toMatch(/^msg_/);
 });
 
 test("applyToolCallLimit dedupes tool_output_search calls", () => {
@@ -68,4 +69,5 @@ test("applyToolCallLimit dedupes tool_output_search calls", () => {
   const summary = result.messages.find((item) => item?.type === "message" && item?.role === "assistant");
   expect(summary).toBeTruthy();
   expect(summary?.content?.[0]?.text || "").toContain("Earlier tool calls (1)");
+  expect(summary?.id || "").toMatch(/^msg_/);
 });
