@@ -2039,7 +2039,9 @@ body {
     animation: fadeIn 0.2s ease-out;
     --turn-color: var(--accent-color);
     max-width: 100%;
+    min-width: 0;
     box-sizing: border-box;
+    overflow: hidden;
     transition: background-color var(--ui-transition-fast), border-color var(--ui-transition-fast);
 }
 
@@ -2062,6 +2064,7 @@ body {
 
 .agent-thinking-body {
     margin: 0;
+    min-width: 0;
     word-break: break-word;
     overflow-wrap: anywhere;
     font-family: inherit;

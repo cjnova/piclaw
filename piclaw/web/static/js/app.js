@@ -130,6 +130,7 @@ function App() {
     const [editorSavedAt, setEditorSavedAt] = useState(null);
     const [userProfile, setUserProfile] = useState({ name: 'You', avatar_url: null, avatar_background: null });
     const hasConnectedOnceRef = useRef(false);
+    const wasAgentActiveRef = useRef(false); // tracks active→idle transition for timeline refresh
     const agentsRef = useRef({});
     const userProfileRef = useRef({ name: null, avatar_url: null });
     const viewStateRef = useRef({ currentHashtag: null, searchQuery: null });
@@ -634,6 +635,13 @@ function App() {
         try {
             const res = await getAgentStatus('web:default');
             if (!res || res.status !== 'active' || !res.data) {
+                // If the agent just transitioned active → idle, refresh the timeline
+                // to catch any final response that arrived while SSE was gapped.
+                if (wasAgentActiveRef.current) {
+                    const { currentHashtag: ah, searchQuery: sq } = viewStateRef.current || {};
+                    if (!ah && !sq) refreshTimeline();
+                }
+                wasAgentActiveRef.current = false;
                 clearAgentRunState();
                 setAgentStatus(null);
                 setAgentDraft({ text: '', totalLines: 0 });
@@ -643,6 +651,7 @@ function App() {
                 pendingRequestRef.current = null;
                 return;
             }
+            wasAgentActiveRef.current = true;
             const payload = res.data;
             const activeTurn = payload.turn_id || payload.turnId;
             if (activeTurn) setActiveTurn(activeTurn);
@@ -669,7 +678,7 @@ function App() {
         } catch (err) {
             console.warn('Failed to fetch agent status:', err);
         }
-    }, [clearAgentRunState, clearLastActivityFlag, noteAgentActivity, setActiveTurn]);
+    }, [clearAgentRunState, clearLastActivityFlag, noteAgentActivity, refreshTimeline, setActiveTurn]);
 
     const handleConnectionStatusChange = useCallback((status) => {
         setConnectionStatus(status);
@@ -685,6 +694,9 @@ function App() {
         }
         if (!hasConnectedOnceRef.current) {
             hasConnectedOnceRef.current = true;
+            // On initial page load, fetch agent status immediately so any
+            // in-progress turn (e.g. auto-compaction) is shown right away.
+            refreshAgentStatus();
             return;
         }
         // On reconnect: refresh timeline for any missed posts and restore
@@ -1005,7 +1017,12 @@ function App() {
                 }
                 if (data.type === 'done') {
                     notifyForFinalResponse(turnId || currentTurnIdRef.current);
+                    // Refresh timeline to surface any final response that arrived
+                    // during an SSE gap (agent_response event may have been missed).
+                    const { currentHashtag: ah, searchQuery: sq } = viewStateRef.current || {};
+                    if (!ah && !sq) refreshTimeline();
                 }
+                wasAgentActiveRef.current = false;
                 clearAgentRunState();
                 setAgentStatus(null);
                 setAgentDraft({ text: '', totalLines: 0 });
@@ -1201,7 +1218,7 @@ function App() {
                 }
             }
         }
-    }, [clearAgentRunState, clearLastActivityFlag, noteAgentActivity, notifyForFinalResponse, preserveTimelineScrollTop, removeStalledPost, setActiveTurn, showLastActivity, updateAgentProfile, updateUserProfile]);
+    }, [clearAgentRunState, clearLastActivityFlag, noteAgentActivity, notifyForFinalResponse, preserveTimelineScrollTop, refreshTimeline, removeStalledPost, setActiveTurn, showLastActivity, updateAgentProfile, updateUserProfile]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -1246,18 +1263,28 @@ function App() {
         };
     }, [handleConnectionStatusChange, handleSseEvent, loadPosts]);
 
-    // Poll for latest posts periodically as a backstop (main timeline only).
+    // Adaptive backstop poller — SSE is the primary event source; this is
+    // a safety net only. 15 s when a turn is active (keeps compaction status
+    // visible and catches any SSE-gap missed turn completion). 60 s when
+    // idle (timeline + status refresh as a general backstop).
+    const isAgentActive = agentStatus !== null;
     useEffect(() => {
         if (connectionStatus !== 'connected') return;
+        const intervalMs = isAgentActive ? 15000 : 60000;
         const interval = setInterval(() => {
-            const { currentHashtag: activeHashtag, searchQuery: activeSearch } = viewStateRef.current || {};
-            if (!activeHashtag && !activeSearch) {
-                refreshTimeline();
+            if (isAgentActive) {
+                // Active: only refresh status; avoid noisy timeline fetches.
+                refreshAgentStatus();
+            } else {
+                const { currentHashtag: activeHashtag, searchQuery: activeSearch } = viewStateRef.current || {};
+                if (!activeHashtag && !activeSearch) {
+                    refreshTimeline();
+                }
+                refreshAgentStatus();
             }
-            refreshAgentStatus();
-        }, 60000);
+        }, intervalMs);
         return () => clearInterval(interval);
-    }, [connectionStatus, refreshAgentStatus, refreshTimeline]);
+    }, [connectionStatus, isAgentActive, refreshAgentStatus, refreshTimeline]);
 
     // ── Splitter drag: zero re-renders, direct CSS var manipulation ───────────
     const handleSplitterMouseDown = useRef((e) => {
