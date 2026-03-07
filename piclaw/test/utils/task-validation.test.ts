@@ -1,22 +1,8 @@
 /**
  * test/utils/task-validation.test.ts – Validation tests for scheduled shell tasks.
  */
-import { describe, expect, test, beforeAll, afterAll } from "bun:test";
-import { getTestWorkspace, setEnv } from "../helpers.js";
+import { describe, expect, test } from "bun:test";
 import { validateShellCommand, validateShellCwd } from "../../src/utils/task-validation.js";
-
-let restoreEnv: (() => void) | null = null;
-
-beforeAll(() => {
-  const ws = getTestWorkspace();
-  restoreEnv = setEnv({
-    PICLAW_WORKSPACE: ws.workspace,
-  });
-});
-
-afterAll(() => {
-  restoreEnv?.();
-});
 
 describe("validateShellCommand", () => {
   test("rejects empty command", () => {

@@ -151,11 +151,12 @@ async function runShellTask(task: ScheduledTask): Promise<{ result: string | nul
     const trimmed = output.trim();
     const summary = trimmed ? trimmed : "(no output)";
     const suffix = truncated ? `\n…(truncated; ${outputBytes} bytes total)` : "";
+    const formatted = `\`\`\`\n${summary}${suffix}\n\`\`\``;
 
     if (res.exitCode && res.exitCode !== 0) {
-      return { result: null, error: `Command failed (exit ${res.exitCode}).\n${summary}${suffix}` };
+      return { result: null, error: `Command failed (exit ${res.exitCode}).\n${formatted}` };
     }
-    return { result: `${summary}${suffix}`, error: null };
+    return { result: formatted, error: null };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { result: null, error: `Command error: ${message}` };
