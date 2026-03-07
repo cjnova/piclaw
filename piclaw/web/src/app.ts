@@ -1001,6 +1001,11 @@ function App() {
                     totalLines: estimatePreviewLines(fullText),
                     fullText,
                 }));
+            } else {
+                // Collapsed: update preview text so the panel shows content, not empty
+                const fullText = draftBufferRef.current;
+                const totalLines = estimatePreviewLines(fullText);
+                setAgentDraft({ text: fullText, totalLines });
             }
             return;
         }
@@ -1102,6 +1107,8 @@ function App() {
             if (data?.model !== undefined) setActiveModel(data.model);
             if (data?.thinking_level !== undefined) setActiveThinkingLevel(data.thinking_level ?? null);
             if (data?.supports_thinking !== undefined) setSupportsThinking(Boolean(data.supports_thinking));
+            // Refresh context usage — the context window size changes with the model
+            getAgentContext().then((ctx) => { if (ctx) setContextUsage(ctx); }).catch(() => {});
             return;
         }
 
