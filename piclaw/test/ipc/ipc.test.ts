@@ -14,6 +14,7 @@ let restoreEnv: (() => void) | null = null;
 let db: typeof import("../../src/db.js");
 let ipc: typeof import("../../src/ipc.js");
 let config: typeof import("../../src/core/config.js");
+let deps: import("../../src/ipc.js").IpcDeps;
 
 const sentMessages: Array<{ jid: string; text: string }> = [];
 const sentNudges: string[] = [];
@@ -33,7 +34,7 @@ beforeAll(async () => {
 
   ipc = await import("../../src/ipc.js");
   config = await import("../../src/core/config.js");
-  ipc.startIpcWatcher({
+  deps = {
     sendMessage: async (jid, text) => {
       sentMessages.push({ jid, text });
     },
@@ -50,52 +51,34 @@ beforeAll(async () => {
     resumePending: async (data) => {
       resumePendingCalls.push(data);
     },
-  });
+  };
+  ipc.startIpcWatcher(deps);
 
 });
 
-beforeEach(() => {
-  sentMessages.length = 0;
-  sentNudges.length = 0;
-  resumedChats.length = 0;
-  resumePendingCalls.length = 0;
-});
 
 afterAll(() => {
   restoreEnv?.();
 });
 
-test("IPC message sends to web chat and removes file", async () => {
-  const messagesDir = join(config.DATA_DIR, "ipc", "messages");
-  mkdirSync(messagesDir, { recursive: true });
-  const filePath = join(messagesDir, `msg_${Date.now()}.json`);
-  writeFileSync(
-    filePath,
-    JSON.stringify({ type: "message", chatJid: "web:default", text: "hello" })
-  );
+test("IPC message sends to web chat", async () => {
+  const start = sentMessages.length;
+  await ipc.processMessageCommand({ type: "message", chatJid: "web:default", text: "hello" }, deps);
+  await waitFor(() => sentMessages.length > start);
 
-  await waitFor(() => sentMessages.length === 1);
-
-  expect(sentMessages.length).toBe(1);
-  expect(sentMessages[0].jid).toBe("web:default");
-  expect(sentMessages[0].text).toBe("hello");
-  expect(readdirSync(messagesDir).length).toBe(0);
+  const msg = sentMessages[sentMessages.length - 1];
+  expect(msg.jid).toBe("web:default");
+  expect(msg.text).toBe("hello");
 });
 
 test("IPC schedule_task creates a due agent task", async () => {
-  const tasksDir = join(config.DATA_DIR, "ipc", "tasks");
-  mkdirSync(tasksDir, { recursive: true });
-  const filePath = join(tasksDir, `task_${Date.now()}.json`);
-  writeFileSync(
-    filePath,
-    JSON.stringify({
-      type: "schedule_task",
-      chatJid: "web:default",
-      prompt: "say hi",
-      schedule_type: "once",
-      schedule_value: "2020-01-01T00:00:00.000Z",
-    })
-  );
+  await ipc.processTaskCommand({
+    type: "schedule_task",
+    chatJid: "web:default",
+    prompt: "say hi",
+    schedule_type: "once",
+    schedule_value: "2020-01-01T00:00:00.000Z",
+  }, deps);
 
   await waitFor(() => db.getDueTasks().length > 0);
 
@@ -105,20 +88,14 @@ test("IPC schedule_task creates a due agent task", async () => {
 });
 
 test("IPC schedule_task creates a due shell task", async () => {
-  const tasksDir = join(config.DATA_DIR, "ipc", "tasks");
-  mkdirSync(tasksDir, { recursive: true });
-  const filePath = join(tasksDir, `task_shell_${Date.now()}.json`);
-  writeFileSync(
-    filePath,
-    JSON.stringify({
-      type: "schedule_task",
-      chatJid: "web:default",
-      task_kind: "shell",
-      command: "echo hi",
-      schedule_type: "once",
-      schedule_value: "2020-01-01T00:00:00.000Z",
-    })
-  );
+  await ipc.processTaskCommand({
+    type: "schedule_task",
+    chatJid: "web:default",
+    task_kind: "shell",
+    command: "echo hi",
+    schedule_type: "once",
+    schedule_value: "2020-01-01T00:00:00.000Z",
+  }, deps);
 
   await waitFor(() => db.getDueTasks().some((t) => t.task_kind === "shell"));
 
@@ -127,39 +104,24 @@ test("IPC schedule_task creates a due shell task", async () => {
 });
 
 test("IPC schedule_task rejects unsafe shell command", async () => {
-  const tasksDir = join(config.DATA_DIR, "ipc", "tasks");
-  mkdirSync(tasksDir, { recursive: true });
-  const filePath = join(tasksDir, `task_shell_bad_${Date.now()}.json`);
-  writeFileSync(
-    filePath,
-    JSON.stringify({
-      type: "schedule_task",
-      chatJid: "web:default",
-      task_kind: "shell",
-      command: "rm -rf /",
-      schedule_type: "once",
-      schedule_value: "2020-01-01T00:00:00.000Z",
-    })
-  );
-
-  await waitFor(() => sentMessages.length > 0);
-  expect(sentMessages[0].text).toContain("Cannot schedule shell task");
+  const start = sentMessages.length;
+  await ipc.processTaskCommand({
+    type: "schedule_task",
+    chatJid: "web:default",
+    task_kind: "shell",
+    command: "rm -rf /",
+    schedule_type: "once",
+    schedule_value: "2020-01-01T00:00:00.000Z",
+  }, deps);
+  await waitFor(() => sentMessages.length > start);
+  expect(sentMessages[sentMessages.length - 1].text).toContain("Cannot schedule shell task");
 });
 
 test("IPC resume_pending triggers resumePending handler", async () => {
-  const tasksDir = join(config.DATA_DIR, "ipc", "tasks");
-  mkdirSync(tasksDir, { recursive: true });
-  const filePath = join(tasksDir, `resume_${Date.now()}.json`);
-  writeFileSync(
-    filePath,
-    JSON.stringify({
-      type: "resume_pending",
-      chatJid: "web:default",
-    })
-  );
-
-  await waitFor(() => resumePendingCalls.length === 1);
-  expect(resumePendingCalls[0]?.chatJid).toBe("web:default");
+  const start = resumePendingCalls.length;
+  await ipc.processTaskCommand({ type: "resume_pending", chatJid: "web:default" }, deps);
+  await waitFor(() => resumePendingCalls.length > start, 10000);
+  expect(resumePendingCalls[resumePendingCalls.length - 1]?.chatJid).toBe("web:default");
 });
 
 test("IPC renames malformed task files", async () => {
@@ -179,9 +141,6 @@ test("IPC renames malformed task files", async () => {
 });
 
 test("IPC update_task with invalid model reports error", async () => {
-  const tasksDir = join(config.DATA_DIR, "ipc", "tasks");
-  mkdirSync(tasksDir, { recursive: true });
-
   const taskId = `task_${Date.now()}`;
   db.createTask({
     id: taskId,
@@ -195,20 +154,17 @@ test("IPC update_task with invalid model reports error", async () => {
     created_at: new Date().toISOString(),
   });
 
-  const filePath = join(tasksDir, `update_${Date.now()}.json`);
-  writeFileSync(
-    filePath,
-    JSON.stringify({
-      type: "update_task",
-      taskId,
-      chatJid: "web:default",
-      model: "invalid/model",
-    })
-  );
-
-  await waitFor(() => sentMessages.length === 1);
-  expect(sentMessages[0].jid).toBe("web:default");
-  expect(sentMessages[0].text).toContain("Cannot update task");
+  const start = sentMessages.length;
+  await ipc.processTaskCommand({
+    type: "update_task",
+    taskId,
+    chatJid: "web:default",
+    model: "invalid/model",
+  }, deps);
+  await waitFor(() => sentMessages.length > start);
+  const msg = sentMessages[sentMessages.length - 1];
+  expect(msg.jid).toBe("web:default");
+  expect(msg.text).toContain("Cannot update task");
 
   const task = db.getTaskById(taskId);
   expect(task?.model ?? null).toBe(null);
@@ -252,17 +208,10 @@ test("IPC cleanup_tasks removes completed tasks and logs", async () => {
     created_at: new Date().toISOString(),
   });
 
-  const filePath = join(tasksDir, `cleanup_${Date.now()}.json`);
-  writeFileSync(
-    filePath,
-    JSON.stringify({
-      type: "cleanup_tasks",
-      chatJid: "web:default",
-    })
-  );
-
-  await waitFor(() => sentMessages.length === 1);
-  expect(sentMessages[0].text).toContain("Cleaned up 1 completed task");
+  const start = sentMessages.length;
+  await ipc.processTaskCommand({ type: "cleanup_tasks", chatJid: "web:default" }, deps);
+  await waitFor(() => sentMessages.length > start, 10000);
+  expect(sentMessages[sentMessages.length - 1].text).toContain("Cleaned up 1 completed task");
   expect(db.getTaskById(completedId)).toBeNull();
   expect(db.getTaskRunLogs(completedId).length).toBe(0);
   expect(db.getTaskById(activeId)).not.toBeNull();

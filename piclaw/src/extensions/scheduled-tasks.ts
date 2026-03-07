@@ -9,6 +9,15 @@ import { computeNextRun } from "../task-scheduler.js";
 import { validateShellCommand, validateShellCwd } from "../utils/task-validation.js";
 import { createUuid } from "../utils/ids.js";
 
+function computeInitialRun(scheduleType: string, scheduleValue: string): string | null {
+  if (scheduleType === "once") {
+    const d = new Date(scheduleValue);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString();
+  }
+  return computeNextRun(scheduleType, scheduleValue);
+}
+
 interface ScheduledTaskRow {
   id: string;
   chat_jid: string;
@@ -162,7 +171,7 @@ export const scheduledTasks: ExtensionFactory = (pi: ExtensionAPI) => {
           return { content: [{ type: "text", text: "Missing prompt for agent task." }], details: failureDetails };
         }
 
-        const nextRun = computeNextRun(params.schedule_type, params.schedule_value);
+        const nextRun = computeInitialRun(params.schedule_type, params.schedule_value);
         if (!nextRun) {
           return { content: [{ type: "text", text: "Invalid schedule value." }], details: failureDetails };
         }
@@ -204,7 +213,7 @@ export const scheduledTasks: ExtensionFactory = (pi: ExtensionAPI) => {
         return { content: [{ type: "text", text: cwdResult.error || "Invalid cwd." }], details: failureDetails };
       }
 
-      const nextRun = computeNextRun(params.schedule_type, params.schedule_value);
+      const nextRun = computeInitialRun(params.schedule_type, params.schedule_value);
       if (!nextRun) {
         return { content: [{ type: "text", text: "Invalid schedule value." }], details: failureDetails };
       }

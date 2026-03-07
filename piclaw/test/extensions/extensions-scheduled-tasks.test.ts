@@ -167,7 +167,7 @@ describe("scheduled-tasks extension", () => {
       task_kind: "shell",
       command: "echo hi",
       schedule_type: "once",
-      schedule_value: "2020-01-01T00:00:00.000Z",
+      schedule_value: new Date(Date.now() + 60_000).toISOString(),
     });
 
     expect(res.content?.[0]?.text).toContain("Scheduled shell task");

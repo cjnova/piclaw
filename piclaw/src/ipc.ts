@@ -71,12 +71,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
           const fp = join(messagesDir, file);
           try {
             const data = JSON.parse(readFileSync(fp, "utf-8"));
-            if (data.type === "message" && data.chatJid && data.text) {
-              await deps.sendMessage(data.chatJid, data.text);
-              if (data.noNudge !== true) {
-                await deps.sendNudge?.(data.text);
-              }
-            }
+            await processMessageCommand(data, deps);
             unlinkSync(fp);
           } catch (e) { console.error(`[ipc] Error processing message ${file}:`, e); try { renameSync(fp, join(ipcDir, `error-${file}`)); } catch {} }
         }
@@ -105,10 +100,22 @@ export function startIpcWatcher(deps: IpcDeps): void {
 }
 
 /**
+ * Dispatch a single IPC message command.
+ */
+export async function processMessageCommand(data: Record<string, any>, deps: IpcDeps): Promise<void> {
+  if (data.type === "message" && data.chatJid && data.text) {
+    await deps.sendMessage(data.chatJid, data.text);
+    if (data.noNudge !== true) {
+      await deps.sendNudge?.(data.text);
+    }
+  }
+}
+
+/**
  * Dispatch a single IPC task command. The `data.type` field determines
  * which operation is performed (schedule, pause, resume, cancel, etc.).
  */
-async function processTaskCommand(data: Record<string, any>, deps: IpcDeps): Promise<void> {
+export async function processTaskCommand(data: Record<string, any>, deps: IpcDeps): Promise<void> {
   switch (data.type) {
     // --- Create a new scheduled task ---
     case "schedule_task": {
