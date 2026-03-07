@@ -97,13 +97,17 @@ export const modelControl = (pi) => {
                     seen.set(key, m);
             }
             const query = params.query?.trim().toLowerCase();
-            let entries = Array.from(seen.values()).map((m) => ({
-                id: m.id,
-                provider: m.provider,
-                label: `${m.provider}/${m.id}`,
-                reasoning: m.reasoning || undefined,
-                context_window: m.contextWindow || undefined,
-            }));
+            let entries = Array.from(seen.values()).map((m) => {
+                const rateLimits = m.rateLimits;
+                return {
+                    id: m.id,
+                    provider: m.provider,
+                    label: `${m.provider}/${m.id}`,
+                    reasoning: m.reasoning || undefined,
+                    context_window: m.contextWindow || undefined,
+                    rate_limits: rateLimits,
+                };
+            });
             if (query)
                 entries = entries.filter((e) => e.label.toLowerCase().includes(query));
             entries.sort((a, b) => a.label.localeCompare(b.label));
@@ -118,7 +122,13 @@ export const modelControl = (pi) => {
             const header = query
                 ? `Available models (filtered): ${page.length} of ${entries.length}.`
                 : `Available models: ${page.length} of ${entries.length}.`;
-            const lines = page.map((e) => `• ${e.label}${e.label === current ? " (current)" : ""}`);
+            const lines = page.map((e) => {
+                const currentSuffix = e.label === current ? " (current)" : "";
+                const rpm = e.rate_limits?.rpm;
+                const tpm = e.rate_limits?.tpm;
+                const rateNote = rpm || tpm ? ` (RPM ${rpm ?? "?"}, TPM ${tpm ?? "?"})` : "";
+                return `• ${e.label}${currentSuffix}${rateNote}`;
+            });
             return {
                 content: [{ type: "text", text: `${header}\n${lines.join("\n")}` }],
                 details: { total: entries.length, count: page.length, offset, limit, current_model: current, models: page },

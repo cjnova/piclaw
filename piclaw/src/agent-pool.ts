@@ -160,7 +160,18 @@ export class AgentPool {
           // callers where this is harmless. In our queue-based context it causes the
           // next processChat to call session.prompt() while isStreaming is still true,
           // producing "already processing" errors. Poll until truly idle.
-          while (session.isStreaming) {
+          // Wait until the session is truly idle. Auto-compaction can start
+          // after the main response finishes and may kick off a follow-up
+          // continue() call (e.g., overflow recovery). Keep listening until
+          // streaming + compaction fully settle.
+          const idleSettleTicks = 10;
+          let idleTicks = 0;
+          while (idleTicks < idleSettleTicks) {
+            if (!session.isStreaming && !session.isCompacting && !session.isRetrying) {
+              idleTicks += 1;
+            } else {
+              idleTicks = 0;
+            }
             await Bun.sleep(50);
           }
         } finally {

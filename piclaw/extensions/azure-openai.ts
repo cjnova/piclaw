@@ -161,8 +161,26 @@ type ModelCapability = {
   chatCompletion?: boolean;
 };
 
+type RateLimit = {
+  rpm?: number;
+  tpm?: number;
+};
+
+const MODEL_RATE_LIMIT_DEFAULTS: Record<string, RateLimit> = {
+  "gpt-4o": { rpm: 100, tpm: 100000 },
+  "gpt-4o-mini": { rpm: 1000, tpm: 100000 },
+  "gpt-5-1": { rpm: 1000, tpm: 100000 },
+  "gpt-5-1-codex-mini": { rpm: 100, tpm: 100000 },
+  "gpt-5-2-codex": { rpm: 1000, tpm: 100000 },
+  "gpt-5-3-codex": { rpm: 1000, tpm: 100000 },
+  "gpt-5-4": { rpm: 1000, tpm: 100000 },
+  "gpt-5-4-pro": { rpm: 100, tpm: 100000 },
+  "gpt-5-mini": { rpm: 100, tpm: 100000 },
+};
+
 let MODEL_SPECS = { ...BASE_MODEL_SPECS };
 const MODEL_CAPABILITIES: Record<string, ModelCapability> = {};
+const MODEL_RATE_LIMITS: Record<string, RateLimit> = { ...MODEL_RATE_LIMIT_DEFAULTS };
 const DEFAULT_AZURE_SPEC = { contextWindow: 400000, maxTokens: 128000, reasoning: true };
 const DEFAULT_FOUNDRY_SPEC = { contextWindow: 200000, maxTokens: 64000, reasoning: false };
 let extensionLogged = false;
@@ -365,12 +383,30 @@ function applyAzureModelCaps(models: any[], deployments: any[]): number {
     if (caps.responses !== undefined) nextCaps.responses = caps.responses;
     if (caps.chatCompletion !== undefined) nextCaps.chatCompletion = caps.chatCompletion;
 
+    const rateLimits = deployment?.properties?.rateLimits || [];
+    let rpm: number | undefined;
+    let tpm: number | undefined;
+    for (const rl of rateLimits) {
+      const key = rl?.key ? String(rl.key) : "";
+      if (!key) continue;
+      if (key === "request") rpm = parseCapabilityNumber(rl.count);
+      if (key === "token") tpm = parseCapabilityNumber(rl.count);
+    }
+
+    const existingRates = MODEL_RATE_LIMITS[deploymentName] || {};
+    const nextRates: RateLimit = { ...existingRates };
+    if (rpm !== undefined) nextRates.rpm = rpm;
+    if (tpm !== undefined) nextRates.tpm = tpm;
+
     const specChanged =
       next.contextWindow !== existing.contextWindow ||
       next.maxTokens !== existing.maxTokens;
     const capsChanged =
       nextCaps.responses !== existingCaps.responses ||
       nextCaps.chatCompletion !== existingCaps.chatCompletion;
+    const ratesChanged =
+      nextRates.rpm !== existingRates.rpm ||
+      nextRates.tpm !== existingRates.tpm;
 
     if (specChanged) {
       MODEL_SPECS[deploymentName] = next;
@@ -378,7 +414,10 @@ function applyAzureModelCaps(models: any[], deployments: any[]): number {
     if (capsChanged) {
       MODEL_CAPABILITIES[deploymentName] = nextCaps;
     }
-    if (specChanged || capsChanged) {
+    if (ratesChanged) {
+      MODEL_RATE_LIMITS[deploymentName] = nextRates;
+    }
+    if (specChanged || capsChanged || ratesChanged) {
       updated += 1;
     }
   }
@@ -1225,6 +1264,7 @@ export function registerAzureProviders(register: (name: string, config: any) => 
   const openaiModels = MODEL_IDS.flatMap((id, idx) => {
     const spec = MODEL_SPECS[id] || DEFAULT_AZURE_SPEC;
     const caps = MODEL_CAPABILITIES[id];
+    const rateLimits = MODEL_RATE_LIMITS[id];
     if (caps?.responses === false) {
       console.error(`[azure-openai] Skipping ${id}: responses not supported by this deployment.`);
       return [];
@@ -1238,6 +1278,7 @@ export function registerAzureProviders(register: (name: string, config: any) => 
         input: ["text"],
         contextWindow: spec.contextWindow ?? 200000,
         maxTokens: spec.maxTokens ?? 64000,
+        rateLimits,
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       },
     ];

@@ -72,6 +72,43 @@ export function createStreamingEventHandler(options: StreamingEventHandlerOption
     turn_id: options.turnId,
   };
 
+  const isRateLimitError = (message?: string): boolean => {
+    if (!message) return false;
+    return /429|rate.?limit|too many requests|requests per minute|tokens per minute|rpm|tpm/i.test(message);
+  };
+
+  const describeRateLimit = (message?: string): string => {
+    const lower = (message || "").toLowerCase();
+    const hasTpm = /(tpm|tokens per minute|token per minute)/.test(lower);
+    const hasRpm = /(rpm|requests per minute|request per minute)/.test(lower);
+    if (hasTpm && hasRpm) return "Rate limited (TPM/RPM)";
+    if (hasTpm) return "Rate limited (TPM)";
+    if (hasRpm) return "Rate limited (RPM)";
+    return "Rate limited (HTTP 429)";
+  };
+
+  let pendingRateLimit: { message: string } | null = null;
+  let pendingRateLimitTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const scheduleRateLimitIntent = () => {
+    if (pendingRateLimitTimer) return;
+    pendingRateLimitTimer = setTimeout(() => {
+      if (!pendingRateLimit) {
+        pendingRateLimitTimer = null;
+        return;
+      }
+      const detail = pendingRateLimit.message;
+      options.emitter.status({
+        ...base,
+        type: "intent",
+        title: describeRateLimit(detail),
+        detail,
+      });
+      pendingRateLimit = null;
+      pendingRateLimitTimer = null;
+    }, 0);
+  };
+
   return (event: AgentSessionEvent) => {
     if (event.type === "message_update") {
       const messageEvent = event.assistantMessageEvent;
@@ -240,27 +277,51 @@ export function createStreamingEventHandler(options: StreamingEventHandlerOption
       });
     }
 
+    if (event.type === "message_end") {
+      const message = event.message as { role?: string; stopReason?: string; errorMessage?: string };
+      if (message?.role === "assistant" && message.stopReason === "error" && isRateLimitError(message.errorMessage)) {
+        pendingRateLimit = { message: message.errorMessage || "429" };
+        scheduleRateLimitIntent();
+      }
+    }
+
     // Surface provider/API errors and retries so the user sees what's happening
     // instead of silent waiting. These events are emitted by the upstream
     // agent-session for any provider (not just Azure).
     if (event.type === "auto_retry_start") {
       const e = event as { attempt?: number; maxAttempts?: number; delayMs?: number; errorMessage?: string };
       const delaySec = e.delayMs ? Math.round(e.delayMs / 1000) : "?";
+      const errorMessage = e.errorMessage || "";
+      const isRateLimit = isRateLimitError(errorMessage);
+      if (isRateLimit) {
+        pendingRateLimit = null;
+        if (pendingRateLimitTimer) {
+          clearTimeout(pendingRateLimitTimer);
+          pendingRateLimitTimer = null;
+        }
+      }
+      const title = isRateLimit
+        ? `${describeRateLimit(errorMessage)} — retrying (attempt ${e.attempt ?? "?"}/${e.maxAttempts ?? "?"}, ${delaySec}s delay)`
+        : `Retrying after error (attempt ${e.attempt ?? "?"}/${e.maxAttempts ?? "?"}, ${delaySec}s delay)`;
       options.emitter.status({
         ...base,
         type: "intent",
-        title: `Retrying after error (attempt ${e.attempt ?? "?"}/${e.maxAttempts ?? "?"}, ${delaySec}s delay)`,
-        detail: e.errorMessage || undefined,
+        title,
+        detail: errorMessage || undefined,
       });
     }
 
     if (event.type === "auto_retry_end") {
       const e = event as { success?: boolean; attempt?: number; finalError?: string };
       if (!e.success) {
+        const finalError = e.finalError || "Request failed after retries";
+        const title = isRateLimitError(finalError)
+          ? `${describeRateLimit(finalError)} — retry budget exhausted`
+          : finalError;
         options.emitter.status({
           ...base,
           type: "error",
-          title: e.finalError || "Request failed after retries",
+          title,
         });
       }
     }
