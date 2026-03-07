@@ -364,7 +364,7 @@ body {
     cursor: col-resize;
     background: transparent;
     position: relative;
-    z-index: 10;
+    z-index: 50;
     touch-action: none;
     opacity: 1;
     transition: width var(--ui-transition-fast), opacity var(--ui-transition-fast);
@@ -1086,7 +1086,7 @@ body {
     resize: none;
     field-sizing: content;
     font-family: inherit;
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-md);
     color: var(--text-primary);
     background-color: transparent;
     outline: none;
@@ -1302,9 +1302,6 @@ body {
     opacity: 1;
 }
 
-.compose-actions .compose-context-pie {
-    margin-right: 2px;
-}
 
 .compose-actions {
     display: flex;
@@ -2737,7 +2734,7 @@ body {
     
     .compose-box textarea {
         min-height: 50px;
-        font-size: var(--font-size-sm);
+        font-size: var(--font-size-md);
     }
     
     .post {

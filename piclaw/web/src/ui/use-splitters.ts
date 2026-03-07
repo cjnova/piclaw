@@ -19,7 +19,6 @@ export function useSplitters({ appShellRef, sidebarWidthRef, editorWidthRef }) {
       const w = Math.min(Math.max(startW + (me.clientX - startX), 160), 600);
       shell.style.setProperty('--sidebar-width', `${w}px`);
       sidebarWidthRef.current = w;
-      splitter.style.left = `${w}px`;
     };
     const onUp = () => {
       const w = Math.min(Math.max(startW + (lastX - startX), 160), 600);
@@ -54,7 +53,6 @@ export function useSplitters({ appShellRef, sidebarWidthRef, editorWidthRef }) {
       const w = Math.min(Math.max(startW + (t.clientX - startX), 160), 600);
       shell.style.setProperty('--sidebar-width', `${w}px`);
       sidebarWidthRef.current = w;
-      splitter.style.left = `${w}px`;
     };
     const onUp = () => {
       splitter.classList.remove('dragging');
