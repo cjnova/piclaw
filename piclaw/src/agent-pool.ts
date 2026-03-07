@@ -153,6 +153,16 @@ export class AgentPool {
       return await withChatContext(chatJid, channel, async () => {
         try {
           await session.prompt(prompt);
+          // Guard against premature waitForRetry() resolution:
+          // agent-session._resolveRetry() fires at message_end (first successful LLM
+          // response during auto-retry), while the retry _runLoop may still be executing
+          // tool calls (isStreaming=true). The upstream design assumes human-paced TUI
+          // callers where this is harmless. In our queue-based context it causes the
+          // next processChat to call session.prompt() while isStreaming is still true,
+          // producing "already processing" errors. Poll until truly idle.
+          while (session.isStreaming) {
+            await Bun.sleep(50);
+          }
         } finally {
           if (timeoutId) clearTimeout(timeoutId);
           unsub();
