@@ -95,7 +95,7 @@ export function signPayload(identity: InteropIdentity, payload: string): string 
 
 export function verifyPayload(publicKey: string, payload: string, signature: string): boolean {
   try {
-    const key = createPublicKey({ key: base64UrlDecode(publicKey), format: "der", type: "spki" });
+    const key = createPublicKey({ key: Buffer.from(base64UrlDecode(publicKey)), format: "der", type: "spki" });
     return verify(null, Buffer.from(payload, "utf8"), key, base64UrlDecode(signature));
   } catch {
     return false;
