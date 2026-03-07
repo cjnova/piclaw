@@ -10,6 +10,8 @@
  *   - messageSearch: search_messages tool for querying chat history.
  *   - modelControl: get_model_state, list_models, switch_model, switch_thinking.
  *   - internalTools: list_internal_tools for tool discovery.
+ *   - keychainTools: keychain for listing/retrieving keychain entries.
+ *   - sqlIntrospect: sql_introspect for read-only DB introspection.
  *   - scheduledTasks: /tasks and /scheduled commands for task listing.
  *   - workspaceSearch: search_workspace tool for FTS over workspace files.
  *
@@ -21,6 +23,8 @@ import { fileAttachments } from "./file-attachments.js";
 import { messageSearch } from "./message-search.js";
 import { modelControl } from "./model-control.js";
 import { internalTools } from "./internal-tools.js";
+import { keychainTools } from "./keychain-tools.js";
+import { sqlIntrospect } from "./sql-introspect.js";
 import { scheduledTasks } from "./scheduled-tasks.js";
 import { workspaceSearch } from "./workspace-search.js";
 
@@ -30,6 +34,8 @@ export const builtinExtensionFactories: ExtensionFactory[] = [
   messageSearch,
   modelControl,
   internalTools,
+  keychainTools,
+  sqlIntrospect,
   scheduledTasks,
   workspaceSearch,
 ];
