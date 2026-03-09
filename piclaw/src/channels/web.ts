@@ -25,7 +25,6 @@ import {
   handleWebauthnRegisterStartEndpoint,
   redirectToLoginResponse,
   serveLoginPageResponse,
-  type AuthEndpointsContext,
 } from "./web/auth-endpoints.js";
 import { WebauthnChallengeTracker } from "./web/webauthn-challenges.js";
 import { TotpFailureTracker } from "./web/totp-failure-tracker.js";
@@ -78,7 +77,6 @@ import {
   handleAgentContextRequest,
   handleAgentModelsRequest,
   handleAgentStatusRequest,
-  type AgentStatusContext,
 } from "./web/agent-status.js";
 import { AgentBuffers, type WebAgentBufferEntry } from "./web/agent-buffers.js";
 import { bindWebUiSessionBinder } from "./web/agent-pool-binder.js";
@@ -88,13 +86,10 @@ import {
   handleThoughtRequest,
   handleThreadRequest,
   handleTimelineRequest,
-  type ContentEndpointsContext,
 } from "./web/content-endpoints.js";
 import {
   handleAgentsRequest,
   handleAvatarRequest,
-  type AgentsEndpointContext,
-  type AvatarEndpointContext,
 } from "./web/identity-endpoints.js";
 import { handleManifestRequest } from "./web/manifest.js";
 import {
@@ -109,24 +104,18 @@ import {
   type WebRecoveryContext,
 } from "./web/recovery.js";
 import {
-  createAgentStatusContext,
-  createAgentsEndpointContext,
-  createAvatarEndpointContext,
-  createContentEndpointsContext,
-  createPostMutationsContext,
-  createUiEndpointsContext,
-} from "./web/endpoint-contexts.js";
-import {
   handleInternalPostRequest,
   handleUpdatePostRequest,
-  type PostMutationsContext,
 } from "./web/post-mutations.js";
 import {
   handleAgentRespondRequest,
   handleThoughtVisibilityRequest,
   handleWorkspaceVisibilityRequest,
-  type UiEndpointsContext,
 } from "./web/ui-endpoints.js";
+import {
+  createWebChannelEndpointContexts,
+  type WebChannelEndpointContexts,
+} from "./web/channel-endpoint-context-factory.js";
 import { createInteractionBroadcaster, type InteractionBroadcaster } from "./web/interaction-broadcaster.js";
 import { WebAuthGateway } from "./web/auth-gateway.js";
 import { RemoteInteropService } from "../remote/service.js";
@@ -151,6 +140,7 @@ export class WebChannel {
   remoteInterop: RemoteInteropService;
   responses = new ResponseService();
   requestRouter: RequestRouterService;
+  endpointContexts: WebChannelEndpointContexts;
   pendingLinkPreviews = new Set<number>();
   workspaceWatcher: { close: () => Promise<void> } | null = null;
   workspaceVisible = false;
@@ -193,6 +183,17 @@ export class WebChannel {
       }
     );
     this.requestRouter = new RequestRouterService(this);
+    this.endpointContexts = createWebChannelEndpointContexts(this, {
+      defaultChatJid: DEFAULT_CHAT_JID,
+      defaultAgentId: DEFAULT_AGENT_ID,
+      agentName: ASSISTANT_NAME,
+      agentAvatar: resolveAvatarUrl("agent", ASSISTANT_AVATAR),
+      userName: USER_NAME || null,
+      userAvatar: resolveAvatarUrl("user", USER_AVATAR),
+      userAvatarBackground: USER_AVATAR_BACKGROUND || null,
+      assistantAvatarRaw: ASSISTANT_AVATAR || null,
+      userAvatarRaw: USER_AVATAR || null,
+    });
     bindWebUiSessionBinder(this.agentPool, (session, chatJid) =>
       this.uiBridge.bindSession(session, chatJid)
     );
@@ -425,120 +426,32 @@ export class WebChannel {
     return this.authGateway.isAuthenticated(req);
   }
 
-  private getPostMutationsContext(): PostMutationsContext {
-    return createPostMutationsContext({
-      defaultChatJid: DEFAULT_CHAT_JID,
-      getLastCommandInteractionId: () => this.lastCommandInteractionId,
-      json: (payload, status = 200) => this.json(payload, status),
-      replaceMessageContent: (chatJid, id, content) => replaceMessageContent(chatJid, id, content, {}),
-      setThreadId: (messageId, threadId) => {
-        getDb().prepare("UPDATE messages SET thread_id = ? WHERE rowid = ?").run(threadId, messageId);
-      },
-      broadcastInteractionUpdated: (interaction) => {
-        this.interactionBroadcaster.broadcastInteractionUpdated(interaction);
-      },
-      storeMessage: (chatJid, content, isBot, mediaIds, options = {}) =>
-        this.storeMessage(chatJid, content, isBot, mediaIds, options),
-      broadcastAgentResponse: (interaction) => {
-        this.interactionBroadcaster.broadcastAgentResponse(interaction);
-      },
-    });
-  }
-
-  private getAgentStatusContext(): AgentStatusContext {
-    return createAgentStatusContext({
-      defaultChatJid: DEFAULT_CHAT_JID,
-      json: (payload, status = 200) => this.json(payload, status),
-      getAgentStatus: (chatJid) => this.getAgentStatus(chatJid),
-      getBuffer: (turnId, panel) => this.getBuffer(turnId, panel),
-      getContextUsageForChat: (chatJid) => this.agentPool.getContextUsageForChat(chatJid),
-      getAvailableModels: (chatJid) => this.agentPool.getAvailableModels(chatJid),
-    });
-  }
-
-  private getContentEndpointsContext(): ContentEndpointsContext {
-    return createContentEndpointsContext({
-      defaultChatJid: DEFAULT_CHAT_JID,
-      json: (payload, status = 200) => this.json(payload, status),
-      getBuffer: (turnId, panel) => this.getBuffer(turnId, panel),
-    });
-  }
-
-  private getUiEndpointsContext(): UiEndpointsContext {
-    return createUiEndpointsContext({
-      json: (payload, status = 200) => this.json(payload, status),
-      getWorkspaceVisible: () => this.workspaceVisible,
-      setWorkspaceVisible: (value) => {
-        this.workspaceVisible = value;
-      },
-      getWorkspaceShowHidden: () => this.workspaceShowHidden,
-      setWorkspaceShowHidden: (value) => {
-        this.workspaceShowHidden = value;
-      },
-      setPanelExpanded: (turnId, panel, expanded) => {
-        this.setPanelExpanded(turnId, panel, expanded);
-      },
-      handleUiResponse: (requestId, outcome) => this.uiBridge.handleUiResponse(requestId, outcome),
-    });
-  }
-
-  private getAgentsEndpointsContext(): AgentsEndpointContext {
-    return createAgentsEndpointContext({
-      agentPool: this.agentPool,
-      defaultChatJid: DEFAULT_CHAT_JID,
-      defaultAgentId: DEFAULT_AGENT_ID,
-      agentName: ASSISTANT_NAME,
-      agentAvatar: resolveAvatarUrl("agent", ASSISTANT_AVATAR),
-      userName: USER_NAME || null,
-      userAvatar: resolveAvatarUrl("user", USER_AVATAR),
-      userAvatarBackground: USER_AVATAR_BACKGROUND || null,
-      json: (payload, status = 200) => this.json(payload, status),
-    });
-  }
-
-  private getAvatarEndpointsContext(): AvatarEndpointContext {
-    return createAvatarEndpointContext({
-      assistantAvatar: ASSISTANT_AVATAR || null,
-      userAvatar: USER_AVATAR || null,
-      json: (payload, status = 200) => this.json(payload, status),
-    });
-  }
-
-  private getAuthEndpointsContext(): AuthEndpointsContext {
-    return {
-      createTotpContext: () => this.authGateway.createTotpContext(),
-      createWebauthnContext: () => this.authGateway.createWebauthnContext(),
-      createWebauthnEnrolPageContext: () => this.authGateway.createWebauthnEnrolPageContext(),
-      serveStatic: (relPath) => this.serveStatic(relPath),
-    };
-  }
-
   async handleAuthVerify(req: Request): Promise<Response> {
-    return await handleAuthVerifyEndpoint(req, this.getAuthEndpointsContext());
+    return await handleAuthVerifyEndpoint(req, this.endpointContexts.auth());
   }
 
   async handleWebauthnLoginStart(req: Request): Promise<Response> {
-    return await handleWebauthnLoginStartEndpoint(req, this.getAuthEndpointsContext());
+    return await handleWebauthnLoginStartEndpoint(req, this.endpointContexts.auth());
   }
 
   async handleWebauthnLoginFinish(req: Request): Promise<Response> {
-    return await handleWebauthnLoginFinishEndpoint(req, this.getAuthEndpointsContext());
+    return await handleWebauthnLoginFinishEndpoint(req, this.endpointContexts.auth());
   }
 
   async handleWebauthnRegisterStart(req: Request): Promise<Response> {
-    return await handleWebauthnRegisterStartEndpoint(req, this.getAuthEndpointsContext());
+    return await handleWebauthnRegisterStartEndpoint(req, this.endpointContexts.auth());
   }
 
   async handleWebauthnRegisterFinish(req: Request): Promise<Response> {
-    return await handleWebauthnRegisterFinishEndpoint(req, this.getAuthEndpointsContext());
+    return await handleWebauthnRegisterFinishEndpoint(req, this.endpointContexts.auth());
   }
 
   async handleWebauthnEnrollPage(_req: Request): Promise<Response> {
-    return await handleWebauthnEnrollPageEndpoint(this.getAuthEndpointsContext());
+    return await handleWebauthnEnrollPageEndpoint(this.endpointContexts.auth());
   }
 
   async serveLoginPage(): Promise<Response> {
-    return await serveLoginPageResponse(this.getAuthEndpointsContext());
+    return await serveLoginPageResponse(this.endpointContexts.auth());
   }
 
   redirectToLogin(): Response {
@@ -550,7 +463,7 @@ export class WebChannel {
   }
 
   async handleAgents(): Promise<Response> {
-    return await handleAgentsRequest(this.getAgentsEndpointsContext());
+    return await handleAgentsRequest(this.endpointContexts.agents());
   }
 
   async handleManifest(req: Request): Promise<Response> {
@@ -562,35 +475,35 @@ export class WebChannel {
   }
 
   async handleAvatar(kind: "agent" | "user", req: Request): Promise<Response> {
-    return await handleAvatarRequest(kind, req, this.getAvatarEndpointsContext());
+    return await handleAvatarRequest(kind, req, this.endpointContexts.avatar());
   }
 
   async handleWorkspaceVisibility(req: Request): Promise<Response> {
-    return await handleWorkspaceVisibilityRequest(req, this.getUiEndpointsContext());
+    return await handleWorkspaceVisibilityRequest(req, this.endpointContexts.ui());
   }
 
   handleTimeline(limit: number, before?: number): Response {
-    return handleTimelineRequest(limit, before, this.getContentEndpointsContext());
+    return handleTimelineRequest(limit, before, this.endpointContexts.content());
   }
 
   handleHashtag(tag: string, limit: number, offset: number): Response {
-    return handleHashtagRequest(tag, limit, offset, this.getContentEndpointsContext());
+    return handleHashtagRequest(tag, limit, offset, this.endpointContexts.content());
   }
 
   handleSearch(query: string, limit: number, offset: number): Response {
-    return handleSearchRequest(query, limit, offset, this.getContentEndpointsContext());
+    return handleSearchRequest(query, limit, offset, this.endpointContexts.content());
   }
 
   handleThread(id: number | null): Response {
-    return handleThreadRequest(id, this.getContentEndpointsContext());
+    return handleThreadRequest(id, this.endpointContexts.content());
   }
 
   handleThought(panel: string | null, turnId: string | null): Response {
-    return handleThoughtRequest(panel, turnId, this.getContentEndpointsContext());
+    return handleThoughtRequest(panel, turnId, this.endpointContexts.content());
   }
 
   async handleThoughtVisibility(req: Request): Promise<Response> {
-    return await handleThoughtVisibilityRequest(req, this.getUiEndpointsContext());
+    return await handleThoughtVisibilityRequest(req, this.endpointContexts.ui());
   }
 
   handleDeletePost(id: number | null, cascade = false): Response {
@@ -607,7 +520,7 @@ export class WebChannel {
    * positive integer if provided. Uses parameterized queries (no SQL injection).
    */
   async handleUpdatePost(req: Request, id: number | null): Promise<Response> {
-    return await handleUpdatePostRequest(req, id, this.getPostMutationsContext());
+    return await handleUpdatePostRequest(req, id, this.endpointContexts.postMutations());
   }
 
   /**
@@ -616,7 +529,7 @@ export class WebChannel {
    * Content is capped at 100 KB to prevent DB bloat.
    */
   async handleInternalPost(req: Request): Promise<Response> {
-    return await handleInternalPostRequest(req, this.getPostMutationsContext());
+    return await handleInternalPostRequest(req, this.endpointContexts.postMutations());
   }
 
   handleSse(): Response {
@@ -632,17 +545,17 @@ export class WebChannel {
   }
 
   handleAgentStatus(req: Request): Response {
-    return handleAgentStatusRequest(req, this.getAgentStatusContext());
+    return handleAgentStatusRequest(req, this.endpointContexts.agentStatus());
   }
 
   /** GET /agent/context — return context window usage for the compose box indicator. */
   async handleAgentContext(req: Request): Promise<Response> {
-    return await handleAgentContextRequest(req, this.getAgentStatusContext());
+    return await handleAgentContextRequest(req, this.endpointContexts.agentStatus());
   }
 
   /** GET /agent/models — return available model labels and current selection. */
   async handleAgentModels(req: Request): Promise<Response> {
-    return await handleAgentModelsRequest(req, this.getAgentStatusContext());
+    return await handleAgentModelsRequest(req, this.endpointContexts.agentStatus());
   }
 
   /**
@@ -650,7 +563,7 @@ export class WebChannel {
    * Validates request_id is a non-empty string of ≤ 256 chars.
    */
   async handleAgentRespond(req: Request): Promise<Response> {
-    return await handleAgentRespondRequest(req, this.getUiEndpointsContext());
+    return await handleAgentRespondRequest(req, this.endpointContexts.ui());
   }
 
   async handleAgentMessage(req: Request, pathname: string): Promise<Response> {
