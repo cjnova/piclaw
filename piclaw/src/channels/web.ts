@@ -87,6 +87,7 @@ import {
 import type { InteractionRow } from "../db.js";
 import { WebChannelState } from "./web/channel-state.js";
 import { AgentStatusStore } from "./web/agent-status-store.js";
+import { FollowupPlaceholderStore } from "./web/followup-placeholders.js";
 import { PendingSteeringStore } from "./web/pending-steering.js";
 import { storeWebMessage } from "./web/message-store.js";
 import { deletePostResponse } from "./web/timeline-service.js";
@@ -157,6 +158,7 @@ export class WebChannel {
   workspaceWatcher: { close: () => Promise<void> } | null = null;
   workspaceVisible = false;
   workspaceShowHidden = false;
+  followupPlaceholderStore = new FollowupPlaceholderStore();
   pendingSteeringStore = new PendingSteeringStore();
   agentStatusStore: AgentStatusStore;
   interactionBroadcaster: InteractionBroadcaster;
@@ -241,7 +243,7 @@ export class WebChannel {
     const interaction = this.storeMessage(chatJid, text, true, [], { threadId });
     if (!interaction) return null;
 
-    this.state.enqueueFollowupPlaceholder(chatJid, interaction.id);
+    this.followupPlaceholderStore.enqueue(chatJid, interaction.id);
 
     this.interactionBroadcaster.broadcastAgentResponse(interaction);
 
@@ -249,7 +251,7 @@ export class WebChannel {
   }
 
   consumeQueuedFollowupPlaceholder(chatJid: string): number | null {
-    return this.state.consumeFollowupPlaceholder(chatJid);
+    return this.followupPlaceholderStore.consume(chatJid);
   }
 
   queuePendingSteering(chatJid: string, timestamp: string | undefined): void {
