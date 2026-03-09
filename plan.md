@@ -5,12 +5,12 @@ Scope reviewed: `piclaw/piclaw/src`, `piclaw/piclaw/extensions`, `piclaw/piclaw/
 
 ## Review snapshot (updated)
 
-- Backend size: **181 TS files / 24,028 LOC** (`src/`)
+- Backend size: **185 TS files / 24,106 LOC** (`src/`)
 - Frontend size: **7,095 LOC** (`web/src/`)
-- Tests: **618 passing, 0 failing**
+- Tests: **621 passing, 0 failing**
 - Lint: passing (for current backend tranche)
 - Coverage (line): **57.97%** (`coverage/lcov.info`)
-- Review comment coverage: Added focused regression/unit tests for each recent extraction seam (`web/recovery.ts`, `web/agent-buffers.ts`, `web/auth-runtime.ts`, `web/auth-gateway.ts`, `web/auth-endpoints.ts`, `web/channel-endpoint-context-factory.ts`, `web/endpoint-contexts.ts`, `web/agent-status-store.ts`, `web/pending-steering.ts`, `web/interaction-broadcaster.ts`, `web/followup-placeholders.ts`, `web/chat-run-control.ts`, `web/message-write-flows.ts`, `web/handlers/workspace.ts`, `web/http/dispatch-workspace.ts`, `web/http/dispatch-media.ts`, `web/http/dispatch-auth.ts`, `web/http/request-guards.ts`, `runtime/composition.ts`, `runtime/bootstrap.ts`, runtime wiring/provider bootstrap, `agent-pool/orphan-tool-results.ts`, and `remote/execute-concurrency.ts`) so refactors remain behavior-preserving.
+- Review comment coverage: Added focused regression/unit tests for each recent extraction seam (`web/recovery.ts`, `web/agent-buffers.ts`, `web/auth-runtime.ts`, `web/auth-gateway.ts`, `web/auth-endpoints.ts`, `web/channel-endpoint-context-factory.ts`, `web/endpoint-contexts.ts`, `web/agent-status-store.ts`, `web/pending-steering.ts`, `web/interaction-broadcaster.ts`, `web/followup-placeholders.ts`, `web/chat-run-control.ts`, `web/message-write-flows.ts`, `web/handlers/workspace.ts`, `web/http/dispatch-workspace.ts`, `web/http/dispatch-media.ts`, `web/http/dispatch-auth.ts`, `web/http/request-guards.ts`, `runtime/composition.ts`, `runtime/bootstrap.ts`, runtime wiring/provider bootstrap, `agent-pool/orphan-tool-results.ts`, `remote/execute-concurrency.ts`, and `utils/totp-qr.ts`) so refactors remain behavior-preserving.
 - Commenting standards coverage: New extraction seams include module headers plus exported type/function JSDoc, and this remains an explicit tracked goal (see checklist + quality bars below). Re-audit (2026-03-09, completion sweep): module headers are present across `src/**/*.ts` (shebang-aware check) and exported-JSDoc heuristic reports **0** uncovered exports across **0** files after completing the remaining hotspot/doc sweeps in web/auth/runtime/agent-control support modules.
 
 ---
@@ -83,6 +83,7 @@ Scope reviewed: `piclaw/piclaw/src`, `piclaw/piclaw/extensions`, `piclaw/piclaw/
   - extracted orphan tool-result pruning logic from `src/agent-pool.ts` into `src/agent-pool/orphan-tool-results.ts` with dedicated unit coverage, reducing `agent-pool.ts` below the 600 LOC architecture bar while preserving behavior
   - hardened remote interop JSON/body parsing in `src/remote/service.ts` by replacing `any`-typed payload parsing with `Record<string, unknown>` DTO guards and shared field access helpers, preserving endpoint behavior while tightening contracts
   - decomposed remote interop endpoint orchestration by extracting shared HTTP helpers (`src/remote/http-utils.ts`), callback/audit security helpers (`src/remote/service-security.ts`), pairing handlers (`src/remote/service-pairing.ts`), signed-operation handlers (`src/remote/service-operations.ts`), and execute admission tracking (`src/remote/execute-concurrency.ts`), reducing `src/remote/service.ts` to router/state composition responsibilities
+  - decomposed `src/utils/totp-qr.ts` by extracting QR lookup tables (`src/utils/qr/tables.ts`), low-level encoding engine (`src/utils/qr/engine.ts`), mask-loss scoring (`src/utils/qr/lost-point.ts`), and SVG rendering (`src/utils/qr/svg.ts`), leaving `totp-qr.ts` focused on TOTP payload assembly + public export surface
   - tightened Azure tool-call limit utilities in `src/utils/azure-tool-call-limit.ts` by removing `any` from message/item handling and introducing guarded record access helpers for reasoning/function-call parsing
   - removed residual `as [any, ...any[]]` SQL update spread casts in `src/db/tasks.ts` and `src/db/remote-interop.ts` by using unknown-value spread arrays directly
   - tightened control helper typing in `src/agent-control/agent-control-helpers.ts` by replacing `any` event/content parameters with `AgentSessionEvent` + guarded unknown content parsing and `Model<unknown>` model matching signatures
@@ -104,6 +105,7 @@ Scope reviewed: `piclaw/piclaw/src`, `piclaw/piclaw/extensions`, `piclaw/piclaw/
 
 ### Recent commit sequence (latest first)
 
+- `b32e237` Decompose remote interop service handlers
 - `ef5d390` Refresh plan after Azure extension bridge tranche
 - `2dbf204` Consolidate Azure extension imports behind stable bridge
 - `4c6029a` Harden extension import boundaries and update factory coverage
@@ -296,7 +298,7 @@ Scope reviewed: `piclaw/piclaw/src`, `piclaw/piclaw/extensions`, `piclaw/piclaw/
 - [x] SSRF callback validation includes DNS/IP private-range protections.
 
 ## Architecture bars
-- [ ] No backend module > 600 LOC in `src/` (except justified cases). (`agent-pool.ts` and `remote/service.ts` now below threshold; remaining over-bar module: `src/utils/totp-qr.ts`)
+- [x] No backend module > 600 LOC in `src/` (except justified cases). (`agent-pool.ts`, `remote/service.ts`, and `totp-qr.ts` are now below threshold after remote + QR decompositions)
 - [x] `runtime.ts` reduced to composition/bootstrap responsibilities.
 - [ ] No cross-layer internal peeking via `as any`/private field casts.
 
