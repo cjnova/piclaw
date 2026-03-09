@@ -72,6 +72,7 @@ Scope reviewed: `piclaw/piclaw/src`, `piclaw/piclaw/extensions`, `piclaw/piclaw/
 
 ### Recent commit sequence (latest first)
 
+- `9233ac6` Reduce web endpoint test fixture duplication
 - `8491d98` Add web/runtime test redundancy inventory
 - `e198134` Document runtime seam contracts with JSDoc
 - `0aad6d5` Extract runtime bootstrap orchestration module
@@ -130,7 +131,7 @@ Scope reviewed: `piclaw/piclaw/src`, `piclaw/piclaw/extensions`, `piclaw/piclaw/
 | Type safety / best practices | `any` usage still elevated in selected core modules | Medium | P1 | Add typed DTO/schemas for IPC/runtime/events and reduce high-density `any` hotspots |
 | Security (local/web/remote) | P0 hardening implemented and covered by tests | Low | P0 (done) | Maintain + regressions + audit for new surfaces |
 | Dead code / stale artifacts | Stale-dist detection in place (allowlist-based); destructive cleanup deferred due in-progress feature constraint | Medium | P1 | Non-destructive inventory -> confirm ownership -> gradual allowlist burn-down |
-| Quality gates | Lint/tests/package guard checks in use; coverage bar still below target and redundancy analysis is now inventoried but not yet consolidated | Medium | P1 | Add CI coverage floor + architecture/static analysis guardrails + execute redundancy consolidation |
+| Quality gates | Lint/tests/package guard checks in use; coverage bar still below target and redundancy consolidation has started but remains partial | Medium | P1 | Add CI coverage floor + architecture/static analysis guardrails + continue redundancy consolidation |
 | Documentation/commenting standards | Partial consistency; recently extracted seams are documented but standards were not explicit in plan goals | Medium | P1 | Track and enforce module headers + exported API JSDoc for new/refactored seams |
 
 ---
@@ -194,7 +195,8 @@ Scope reviewed: `piclaw/piclaw/src`, `piclaw/piclaw/extensions`, `piclaw/piclaw/
 
 - [ ] **Test redundancy analysis (suite signal-to-noise)**
   - In progress: initial inventory captured in `docs/testing/test-redundancy-inventory.md` covering web/runtime hotspots and concrete dedupe candidates (JSON response/request fixtures, route-flag fixture builders, env/workspace setup helpers).
-  - Pending: consolidate redundant cases while preserving behavior-critical/security regression coverage.
+  - In progress: started consolidation by introducing shared web test HTTP helpers (`test/channels/web/helpers/http.ts`) and reducing repeated JSON response/request scaffolding across endpoint helper suites.
+  - Pending: continue consolidating redundant cases while preserving behavior-critical/security regression coverage.
 
 - [ ] **Dead code review and removal**
   - Pending confirmation for `src/db/auto-compaction.ts`, `src/channels/web/ui-context.ts`, and stale dist allowlist items.
