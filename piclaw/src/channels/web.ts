@@ -16,15 +16,6 @@
 import { AgentQueue } from "../queue.js";
 import type { AgentPool } from "../agent-pool.js";
 import { initTheme, type AgentSession } from "@mariozechner/pi-coding-agent";
-import {
-  generateAuthenticationOptions,
-  generateRegistrationOptions,
-  verifyAuthenticationResponse,
-  verifyRegistrationResponse,
-  type AuthenticationResponseJSON,
-  type RegistrationResponseJSON,
-  type WebAuthnCredential,
-} from "@simplewebauthn/server";
 import { randomSessionToken, verifyTotp } from "./web/auth.js";
 import {
   buildSessionCookieHeader,
@@ -33,11 +24,13 @@ import {
 } from "./web/session-auth.js";
 import { isInternalSecretRequestAuthorized } from "./web/internal-secret.js";
 import {
-  base64UrlToBuffer,
-  bufferToBase64Url,
-  resolveWebauthnRpInfo,
-  WebauthnChallengeTracker,
-} from "./web/webauthn-challenges.js";
+  handleWebauthnLoginFinish as handleWebauthnLoginFinishRequest,
+  handleWebauthnLoginStart as handleWebauthnLoginStartRequest,
+  handleWebauthnRegisterFinish as handleWebauthnRegisterFinishRequest,
+  handleWebauthnRegisterStart as handleWebauthnRegisterStartRequest,
+  type WebauthnAuthContext,
+} from "./web/webauthn-auth.js";
+import { WebauthnChallengeTracker } from "./web/webauthn-challenges.js";
 import { TotpFailureTracker } from "./web/totp-failure-tracker.js";
 import {
   ASSISTANT_AVATAR,
@@ -77,12 +70,6 @@ import {
   replaceMessageContent,
   createWebSession,
   DEFAULT_WEB_USER_ID,
-  getWebauthnEnrollment,
-  consumeWebauthnEnrollment,
-  getWebauthnCredentialsForRpId,
-  getWebauthnCredentialById,
-  storeWebauthnCredential,
-  updateWebauthnCredentialCounter,
   getAllChatCursors,
   getChatCursor,
   setChatCursor,
@@ -514,6 +501,17 @@ export class WebChannel {
     return buildSessionCookieHeader(token, req, WEB_SESSION_TTL, Boolean(WEB_TLS_CERT && WEB_TLS_KEY));
   }
 
+  private getWebauthnAuthContext(): WebauthnAuthContext {
+    return {
+      isPasskeyEnabled: () => this.isPasskeyEnabled(),
+      json: (payload, status = 200) => this.json(payload, status),
+      buildSessionCookie: (token, req) => this.buildSessionCookie(token, req),
+      logAuthEvent: (req, event) => this.logAuthEvent(req, event),
+      getClientKey: (req) => this.getClientKey(req),
+      challenges: this.webauthnChallenges,
+    };
+  }
+
   async handleAuthVerify(req: Request): Promise<Response> {
     if (!this.isAuthEnabled() || !this.isTotpEnabled()) return this.json({ error: "Auth disabled" }, 404);
     let body: { code?: string };
@@ -561,222 +559,19 @@ export class WebChannel {
   }
 
   async handleWebauthnLoginStart(req: Request): Promise<Response> {
-    if (!this.isPasskeyEnabled()) return this.json({ error: "Passkeys disabled" }, 404);
-
-    const { rpId } = resolveWebauthnRpInfo(req);
-    const credentials = getWebauthnCredentialsForRpId(DEFAULT_WEB_USER_ID, rpId);
-    if (credentials.length === 0) {
-      this.logAuthEvent(req, "WebAuthn login requested but no passkeys registered");
-      return this.json({ error: "No passkeys registered" }, 404);
-    }
-
-    const allowCredentials = credentials.map((cred) => {
-      const transports = cred.transports ? JSON.parse(cred.transports) : undefined;
-      return {
-        id: cred.credential_id,
-        transports: Array.isArray(transports) ? transports : undefined,
-      };
-    });
-
-    const options = await generateAuthenticationOptions({
-      rpID: rpId,
-      allowCredentials,
-      userVerification: "preferred",
-    });
-
-    const challengeToken = randomSessionToken();
-    this.webauthnChallenges.trackLogin(challengeToken, {
-      challenge: options.challenge,
-      rpId,
-      userId: DEFAULT_WEB_USER_ID,
-    });
-
-    return this.json({ token: challengeToken, options });
+    return await handleWebauthnLoginStartRequest(req, this.getWebauthnAuthContext());
   }
 
   async handleWebauthnLoginFinish(req: Request): Promise<Response> {
-    if (!this.isPasskeyEnabled()) return this.json({ error: "Passkeys disabled" }, 404);
-    let body: { token?: string; credential?: AuthenticationResponseJSON };
-    try {
-      body = await req.json();
-    } catch {
-      return this.json({ error: "Invalid JSON" }, 400);
-    }
-    const token = body.token || "";
-    const credential = body.credential;
-    if (!token || !credential) {
-      this.logAuthEvent(req, "WebAuthn login missing credential payload");
-      return this.json({ error: "Missing credential" }, 400);
-    }
-
-    const pending = this.webauthnChallenges.consumeLogin(token);
-    if (!pending) {
-      this.logAuthEvent(req, "WebAuthn login expired or unknown token");
-      return this.json({ error: "Login expired" }, 400);
-    }
-
-    const stored = getWebauthnCredentialById(credential.id);
-    if (!stored || stored.rp_id !== pending.rpId) {
-      this.logAuthEvent(req, "WebAuthn login unknown credential");
-      return this.json({ error: "Unknown credential" }, 400);
-    }
-
-    const credentialRecord: WebAuthnCredential = {
-      id: stored.credential_id,
-      publicKey: base64UrlToBuffer(stored.public_key),
-      counter: stored.sign_count || 0,
-      transports: stored.transports ? JSON.parse(stored.transports) : undefined,
-    };
-
-    const { origin } = resolveWebauthnRpInfo(req);
-    let result;
-    try {
-      result = await verifyAuthenticationResponse({
-        response: credential,
-        expectedChallenge: pending.challenge,
-        expectedOrigin: origin,
-        expectedRPID: pending.rpId,
-        credential: credentialRecord,
-        requireUserVerification: false,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Passkey verification failed";
-      console.warn(`[webauthn] Login verification error (ip=${this.getClientKey(req)}):`, err);
-      return this.json({ error: message }, 401);
-    }
-
-    if (!result.verified) {
-      this.logAuthEvent(req, "WebAuthn login verification failed");
-      return this.json({ error: "Passkey verification failed" }, 401);
-    }
-
-    updateWebauthnCredentialCounter(stored.credential_id, result.authenticationInfo.newCounter);
-
-    const rawTtl = Number.isFinite(WEB_SESSION_TTL) ? WEB_SESSION_TTL : 0;
-    const ttlSeconds = Math.max(60, rawTtl || 0);
-    const sessionToken = randomSessionToken();
-    createWebSession(sessionToken, DEFAULT_WEB_USER_ID, ttlSeconds, "passkey");
-
-    return new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Set-Cookie": this.buildSessionCookie(sessionToken, req),
-      },
-    });
+    return await handleWebauthnLoginFinishRequest(req, this.getWebauthnAuthContext());
   }
 
   async handleWebauthnRegisterStart(req: Request): Promise<Response> {
-    if (!this.isPasskeyEnabled()) return this.json({ error: "Passkeys disabled" }, 404);
-    let body: { token?: string };
-    try {
-      body = await req.json();
-    } catch {
-      return this.json({ error: "Invalid JSON" }, 400);
-    }
-    const token = (body.token || "").trim();
-    if (!token) {
-      this.logAuthEvent(req, "WebAuthn registration missing enrol token");
-      return this.json({ error: "Missing enrol token" }, 400);
-    }
-
-    const enrollment = getWebauthnEnrollment(token);
-    if (!enrollment) {
-      this.logAuthEvent(req, "WebAuthn registration invalid or expired enrol token");
-      return this.json({ error: "Invalid or expired enrol token" }, 400);
-    }
-
-    const { rpId } = resolveWebauthnRpInfo(req);
-    const existing = getWebauthnCredentialsForRpId(enrollment.user_id, rpId);
-    const excludeCredentials = existing.map((cred) => ({
-      id: cred.credential_id,
-    }));
-
-    const options = await generateRegistrationOptions({
-      rpName: ASSISTANT_NAME || "PiClaw",
-      rpID: rpId,
-      userID: new TextEncoder().encode(enrollment.user_id),
-      userName: USER_NAME || enrollment.user_id,
-      userDisplayName: USER_NAME || "User",
-      attestationType: "none",
-      excludeCredentials,
-    });
-
-    this.webauthnChallenges.trackRegistration(token, {
-      challenge: options.challenge,
-      rpId,
-      userId: enrollment.user_id,
-    });
-
-    return this.json({ token, options });
+    return await handleWebauthnRegisterStartRequest(req, this.getWebauthnAuthContext());
   }
 
   async handleWebauthnRegisterFinish(req: Request): Promise<Response> {
-    if (!this.isPasskeyEnabled()) return this.json({ error: "Passkeys disabled" }, 404);
-    let body: { token?: string; credential?: RegistrationResponseJSON };
-    try {
-      body = await req.json();
-    } catch {
-      return this.json({ error: "Invalid JSON" }, 400);
-    }
-    const token = (body.token || "").trim();
-    const credential = body.credential;
-    if (!token || !credential) {
-      this.logAuthEvent(req, "WebAuthn registration missing credential payload");
-      return this.json({ error: "Missing credential" }, 400);
-    }
-
-    const pending = this.webauthnChallenges.consumeRegistration(token);
-    if (!pending) {
-      this.logAuthEvent(req, "WebAuthn registration expired or unknown token");
-      return this.json({ error: "Registration expired" }, 400);
-    }
-
-    const enrollment = consumeWebauthnEnrollment(token);
-    if (!enrollment) {
-      this.logAuthEvent(req, "WebAuthn registration invalid or expired enrol token");
-      return this.json({ error: "Invalid or expired enrol token" }, 400);
-    }
-    if (enrollment.user_id !== pending.userId) {
-      this.logAuthEvent(req, "WebAuthn registration enrollment mismatch");
-      return this.json({ error: "Enrollment mismatch" }, 400);
-    }
-
-    const { origin } = resolveWebauthnRpInfo(req);
-    let result;
-    try {
-      result = await verifyRegistrationResponse({
-        response: credential,
-        expectedChallenge: pending.challenge,
-        expectedOrigin: origin,
-        expectedRPID: pending.rpId,
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Passkey verification failed";
-      console.warn(`[webauthn] Registration verification error (ip=${this.getClientKey(req)}):`, err);
-      return this.json({ error: message }, 401);
-    }
-
-    if (!result.verified || !result.registrationInfo) {
-      this.logAuthEvent(req, "WebAuthn registration verification failed");
-      return this.json({ error: "Passkey verification failed" }, 401);
-    }
-
-    const info = result.registrationInfo;
-    const transports = Array.isArray(credential.response.transports)
-      ? JSON.stringify(credential.response.transports)
-      : null;
-
-    storeWebauthnCredential({
-      user_id: pending.userId,
-      rp_id: pending.rpId,
-      credential_id: info.credential.id,
-      public_key: bufferToBase64Url(info.credential.publicKey),
-      sign_count: info.credential.counter || 0,
-      transports,
-    });
-
-    return this.json({ ok: true });
+    return await handleWebauthnRegisterFinishRequest(req, this.getWebauthnAuthContext());
   }
 
   async handleWebauthnEnrollPage(_req: Request): Promise<Response> {
