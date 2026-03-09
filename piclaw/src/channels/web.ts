@@ -18,11 +18,19 @@ import type { AgentPool } from "../agent-pool.js";
 import { initTheme } from "@mariozechner/pi-coding-agent";
 import { handleAuthVerifyRequest, type TotpAuthContext } from "./web/totp-auth.js";
 import {
-  buildSessionCookieHeader,
-  isRequestAuthenticated,
-  isRequestTotpSession,
-} from "./web/session-auth.js";
-import { isInternalSecretRequestAuthorized } from "./web/internal-secret.js";
+  createTotpAuthContext,
+  createWebauthnAuthContext,
+  createWebauthnEnrolPageContext,
+  isAuthEnabled as isWebAuthEnabled,
+  isAuthenticated as isWebRequestAuthenticated,
+  isInternalSecretEnabled as isWebInternalSecretEnabled,
+  isPasskeyEnabled as isWebPasskeyEnabled,
+  isPasskeyOnly as isWebPasskeyOnly,
+  isTotpEnabled as isWebTotpEnabled,
+  isTotpSession as isWebTotpSession,
+  verifyInternalSecret as verifyWebInternalSecret,
+  type WebAuthRuntimeConfig,
+} from "./web/auth-runtime.js";
 import {
   handleWebauthnLoginFinish as handleWebauthnLoginFinishRequest,
   handleWebauthnLoginStart as handleWebauthnLoginStartRequest,
@@ -417,31 +425,38 @@ export class WebChannel {
     }
   }
 
+  private getAuthRuntimeConfig(): WebAuthRuntimeConfig {
+    return {
+      passkeyMode: WEB_PASSKEY_MODE || "",
+      totpSecret: WEB_TOTP_SECRET || "",
+      internalSecret: WEB_INTERNAL_SECRET || "",
+      sessionTtlSeconds: WEB_SESSION_TTL,
+      hasTls: Boolean(WEB_TLS_CERT && WEB_TLS_KEY),
+    };
+  }
+
   isAuthEnabled(): boolean {
-    return this.isTotpEnabled() || this.isPasskeyEnabled();
+    return isWebAuthEnabled(this.getAuthRuntimeConfig());
   }
 
   isInternalSecretEnabled(): boolean {
-    return Boolean(WEB_INTERNAL_SECRET && WEB_INTERNAL_SECRET.trim());
+    return isWebInternalSecretEnabled(this.getAuthRuntimeConfig());
   }
 
   isPasskeyEnabled(): boolean {
-    const mode = (WEB_PASSKEY_MODE || "").toLowerCase();
-    if (mode === "totp-only") return false;
-    if (mode === "passkey-only") return true;
-    return this.isTotpEnabled();
+    return isWebPasskeyEnabled(this.getAuthRuntimeConfig());
   }
 
   isPasskeyOnly(): boolean {
-    return (WEB_PASSKEY_MODE || "").toLowerCase() === "passkey-only";
+    return isWebPasskeyOnly(this.getAuthRuntimeConfig());
   }
 
   isTotpEnabled(): boolean {
-    return Boolean(WEB_TOTP_SECRET && WEB_TOTP_SECRET.trim());
+    return isWebTotpEnabled(this.getAuthRuntimeConfig());
   }
 
   isTotpSession(req: Request): boolean {
-    return isRequestTotpSession(req, this.isTotpEnabled());
+    return isWebTotpSession(req, this.getAuthRuntimeConfig());
   }
 
   private getClientKey(req: Request): string {
@@ -454,45 +469,35 @@ export class WebChannel {
   }
 
   verifyInternalSecret(req: Request): boolean {
-    return isInternalSecretRequestAuthorized(req, WEB_INTERNAL_SECRET || "");
+    return verifyWebInternalSecret(req, this.getAuthRuntimeConfig());
   }
 
   isAuthenticated(req: Request): boolean {
-    return isRequestAuthenticated(req, this.isAuthEnabled());
-  }
-
-  private buildSessionCookie(token: string, req: Request): string {
-    return buildSessionCookieHeader(token, req, WEB_SESSION_TTL, Boolean(WEB_TLS_CERT && WEB_TLS_KEY));
+    return isWebRequestAuthenticated(req, this.getAuthRuntimeConfig());
   }
 
   private getWebauthnAuthContext(): WebauthnAuthContext {
-    return {
-      isPasskeyEnabled: () => this.isPasskeyEnabled(),
+    return createWebauthnAuthContext(this.getAuthRuntimeConfig(), {
       json: (payload, status = 200) => this.json(payload, status),
-      buildSessionCookie: (token, req) => this.buildSessionCookie(token, req),
       logAuthEvent: (req, event) => this.logAuthEvent(req, event),
       getClientKey: (req) => this.getClientKey(req),
       challenges: this.webauthnChallenges,
-    };
+    });
   }
 
   private getWebauthnEnrolPageContext(): WebauthnEnrolPageContext {
-    return {
-      isPasskeyEnabled: () => this.isPasskeyEnabled(),
+    return createWebauthnEnrolPageContext(this.getAuthRuntimeConfig(), {
       json: (payload, status = 200) => this.json(payload, status),
-    };
+    });
   }
 
   private getTotpAuthContext(): TotpAuthContext {
-    return {
-      isAuthEnabled: () => this.isAuthEnabled(),
-      isTotpEnabled: () => this.isTotpEnabled(),
+    return createTotpAuthContext(this.getAuthRuntimeConfig(), {
       json: (payload, status = 200) => this.json(payload, status),
       getClientKey: (req) => this.getClientKey(req),
       logAuthEvent: (req, event) => this.logAuthEvent(req, event),
-      buildSessionCookie: (token, req) => this.buildSessionCookie(token, req),
       failureTracker: this.totpFailureTracker,
-    };
+    });
   }
 
   private getPostMutationsContext(): PostMutationsContext {
