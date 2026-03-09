@@ -11,6 +11,8 @@ type ToolCallEntry = {
   deduped?: boolean;
 };
 
+type ToolCallMessage = Record<string, unknown>;
+
 export type ToolCallLimitConfig = {
   limit: number;
   summaryMax: number;
@@ -19,13 +21,23 @@ export type ToolCallLimitConfig = {
 };
 
 export type ToolCallLimitResult = {
-  messages: Array<any>;
+  messages: ToolCallMessage[];
   toolCallTotal: number;
   toolCallKept: number;
   toolCallRemoved: number;
   toolCallDeduped: number;
   summaryText?: string;
 };
+
+function asToolCallMessage(value: unknown): ToolCallMessage | null {
+  if (!value || typeof value !== "object") return null;
+  return value as ToolCallMessage;
+}
+
+function getStringField(message: ToolCallMessage, key: string): string | undefined {
+  const value = message[key];
+  return typeof value === "string" ? value : undefined;
+}
 
 function formatToolCallSnippet(text: string, maxChars: number): string {
   if (!text) return "(no output)";
@@ -38,9 +50,10 @@ function formatToolCallSnippet(text: string, maxChars: number): string {
 function parseToolOutputSearchArgs(args?: string): { handle?: string; query?: string } | null {
   if (!args) return null;
   try {
-    const parsed = JSON.parse(args) as { handle?: string; query?: string };
-    const handle = typeof parsed?.handle === "string" ? parsed.handle.trim() : "";
-    const query = typeof parsed?.query === "string" ? parsed.query.trim() : "";
+    const parsed = asToolCallMessage(JSON.parse(args));
+    if (!parsed) return null;
+    const handle = (getStringField(parsed, "handle") || "").trim();
+    const query = (getStringField(parsed, "query") || "").trim();
     if (!handle && !query) return null;
     return { handle, query };
   } catch {
@@ -54,15 +67,16 @@ type ReasoningEntry = {
   paired: boolean;
 };
 
-function findReasoningForCall(item: any, reasoningItems: ReasoningEntry[]): number | undefined {
-  if (!item || typeof item !== "object") return undefined;
+function findReasoningForCall(item: ToolCallMessage, reasoningItems: ReasoningEntry[]): number | undefined {
+  const reasoningField = item.reasoning;
+  const reasoningRecord = asToolCallMessage(reasoningField);
 
   const explicit =
-    (typeof item.reasoning === "string" ? item.reasoning : undefined) ||
-    (typeof item.reasoning_id === "string" ? item.reasoning_id : undefined) ||
-    (typeof item.reasoning?.id === "string" ? item.reasoning.id : undefined);
+    (typeof reasoningField === "string" ? reasoningField : undefined) ||
+    getStringField(item, "reasoning_id") ||
+    getStringField(reasoningRecord ?? {}, "id");
 
-  const itemId = typeof item.id === "string" ? item.id : "";
+  const itemId = getStringField(item, "id") || "";
   let candidate = explicit;
 
   if (!candidate && itemId) {
@@ -114,28 +128,29 @@ function describeToolCall(entry: ToolCallEntry, outputChars: number): string {
   return `• ${name}: ${outputPreview}`;
 }
 
-export function applyToolCallLimit(messages: Array<any>, config: ToolCallLimitConfig): ToolCallLimitResult {
+export function applyToolCallLimit(messages: ToolCallMessage[], config: ToolCallLimitConfig): ToolCallLimitResult {
   const entries: ToolCallEntry[] = [];
   const entryByCallId = new Map<string, ToolCallEntry>();
   const reasoningItems: ReasoningEntry[] = [];
 
-  messages.forEach((item, index) => {
-    if (!item || typeof item !== "object") return;
+  messages.forEach((rawItem, index) => {
+    const item = asToolCallMessage(rawItem);
+    if (!item) return;
 
-    if (item.type === "reasoning") {
-      const id = typeof item.id === "string" ? item.id : undefined;
-      reasoningItems.push({ index, id, paired: false });
+    const itemType = getStringField(item, "type");
+    if (itemType === "reasoning") {
+      reasoningItems.push({ index, id: getStringField(item, "id"), paired: false });
       return;
     }
 
-    if (item.type === "function_call") {
-      const callId = String(item.call_id || item.id || "").trim();
+    if (itemType === "function_call") {
+      const callId = String(getStringField(item, "call_id") || getStringField(item, "id") || "").trim();
       if (!callId) return;
       const entry: ToolCallEntry = {
         callId,
-        itemId: typeof item.id === "string" ? item.id : undefined,
-        name: typeof item.name === "string" ? item.name : undefined,
-        args: typeof item.arguments === "string" ? item.arguments : undefined,
+        itemId: getStringField(item, "id"),
+        name: getStringField(item, "name"),
+        args: getStringField(item, "arguments"),
         callIndex: index,
       };
       entry.reasoningIndex = findReasoningForCall(item, reasoningItems);
@@ -144,15 +159,15 @@ export function applyToolCallLimit(messages: Array<any>, config: ToolCallLimitCo
       return;
     }
 
-    if (item.type === "function_call_output") {
-      const callId = String(item.call_id || "").trim();
+    if (itemType === "function_call_output") {
+      const callId = String(getStringField(item, "call_id") || "").trim();
       if (!callId) return;
       const entry = entryByCallId.get(callId) || {
         callId,
         callIndex: -1,
       };
       entry.outputIndex = index;
-      entry.output = typeof item.output === "string" ? item.output : undefined;
+      entry.output = getStringField(item, "output");
       if (!entryByCallId.has(callId)) {
         entries.push(entry);
         entryByCallId.set(callId, entry);
@@ -231,7 +246,7 @@ export function applyToolCallLimit(messages: Array<any>, config: ToolCallLimitCo
 
   const summaryIdBase = `msg_tool_summary_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const summaryId = summaryIdBase.length <= 64 ? summaryIdBase : summaryIdBase.slice(0, 64).replace(/_+$/, "");
-  const summaryMessage = {
+  const summaryMessage: ToolCallMessage = {
     type: "message",
     role: "assistant",
     content: [
