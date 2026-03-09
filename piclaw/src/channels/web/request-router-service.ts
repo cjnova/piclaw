@@ -27,7 +27,8 @@
 import { extname, resolve } from "path";
 import type { WebChannel } from "../web.js";
 import { rememberWebOrigin } from "./request-origin.js";
-import { getClientKey } from "../../utils/request-client.js";
+import { getClientKey } from "./http/client.js";
+import { isRateLimited } from "./http/rate-limit.js";
 import { checkCsrfOrigin, rateLimitResponse, withSecurityHeaders } from "./http/security.js";
 
 const STATIC_DIR = resolve(import.meta.dir, "..", "..", "..", "..", "web", "static");
@@ -65,49 +66,6 @@ const DATA_MEDIA_UPLOAD_LIMIT = 20; // POST /media/upload
 const DATA_WORKSPACE_UPLOAD_LIMIT = 20; // POST /workspace/upload
 const DATA_DELETE_LIMIT = 60; // DELETE /post/:id
 const DATA_WRITE_LIMIT = 30; // PUT /workspace/file
-
-// ── Rate bucket storage ──
-// Per-IP sliding-window counters for all rate-limited endpoints.
-// Keys are "ip:bucket" strings, values are arrays of timestamps.
-const rateBuckets = new Map<string, number[]>();
-
-// Prune stale IP entries every 10 minutes to prevent unbounded memory growth.
-const RATE_PRUNE_INTERVAL_MS = 10 * 60 * 1000;
-let lastRatePrune = Date.now();
-
-/** Remove expired entries from all rate buckets. Called lazily on each check. */
-
-function pruneRateBuckets(): void {
-  const now = Date.now();
-  if (now - lastRatePrune < RATE_PRUNE_INTERVAL_MS) return;
-  lastRatePrune = now;
-  const maxWindow = Math.max(ENROLL_RATE_WINDOW_MS, AUTH_RATE_WINDOW_MS, DATA_RATE_WINDOW_MS);
-  const cutoff = now - maxWindow;
-  for (const [key, entries] of rateBuckets.entries()) {
-    const live = entries.filter((ts) => ts > cutoff);
-    if (live.length === 0) {
-      rateBuckets.delete(key);
-    } else {
-      rateBuckets.set(key, live);
-    }
-  }
-}
-
-/**
- * Check if a client has exceeded its rate limit for a given bucket.
- * Records the current attempt and returns true if over the limit.
- */
-function isRateLimited(req: Request, bucket: string, windowMs: number, limit: number): boolean {
-  pruneRateBuckets();
-  const key = `${getClientKey(req)}:${bucket}`;
-  const now = Date.now();
-  const cutoff = now - windowMs;
-  const entries = rateBuckets.get(key) || [];
-  const trimmed = entries.filter((ts) => ts > cutoff);
-  trimmed.push(now);
-  rateBuckets.set(key, trimmed);
-  return trimmed.length > limit;
-}
 
 /**
  * Determine which /static/ paths are safe to serve without authentication.

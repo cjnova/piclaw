@@ -97,7 +97,7 @@ import { getAgentsResponse } from "./web/agents-service.js";
 import { buildAvatarResponse, ensureAvatarCache, resolveAvatarUrl } from "./web/avatar-service.js";
 import { broadcastAgentResponse, broadcastInteractionUpdated } from "./web/interaction-service.js";
 import { RemoteInteropService } from "../remote/service.js";
-import { getClientKey as getRequestClientKey, getRequestOriginParts } from "../utils/request-client.js";
+import { getClientKey as getRequestClientKey, getRequestOriginParts } from "./web/http/client.js";
 
 const DEFAULT_CHAT_JID = "web:default";
 const DEFAULT_AGENT_ID = "default";

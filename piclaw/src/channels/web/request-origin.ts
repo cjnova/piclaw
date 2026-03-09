@@ -5,7 +5,7 @@
  * hostname used by the current browser session, even when behind proxies.
  */
 
-import { getRequestOriginParts } from "../../utils/request-client.js";
+import { getRequestOriginParts } from "./http/client.js";
 
 const originByChatJid = new Map<string, string>();
 

@@ -2,7 +2,7 @@
  * web/http/security.ts – Shared web security helpers.
  */
 
-import { getRequestOriginParts } from "../../../utils/request-client.js";
+import { getRequestOriginParts } from "./client.js";
 
 const SECURITY_HEADERS: Record<string, string> = {
   "X-Content-Type-Options": "nosniff",
