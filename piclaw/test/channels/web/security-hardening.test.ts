@@ -311,12 +311,20 @@ import { RequestRouterService } from "../../../src/channels/web/request-router-s
 
 describe("CSRF origin checks", () => {
   class StubChannel {
-    isAuthEnabled() { return false; }
-    isInternalSecretEnabled() { return false; }
-    verifyInternalSecret() { return false; }
-    isAuthenticated() { return false; }
-    serveLoginPage() { return this.json({ ok: false }, 401); }
-    redirectToLogin() { return this.json({ ok: false }, 401); }
+    authGateway = {
+      isAuthEnabled: () => false,
+      isInternalSecretEnabled: () => false,
+      verifyInternalSecret: () => false,
+      isAuthenticated: () => false,
+    };
+    endpointContexts = {
+      auth: () => ({
+        createTotpContext: () => ({}) as any,
+        createWebauthnContext: () => ({}) as any,
+        createWebauthnEnrolPageContext: () => ({}) as any,
+        serveStatic: async (_relPath: string) => this.json({ ok: false }, 401),
+      }),
+    };
     handlePost() { return this.json({ ok: true }, 200); }
     clampInt(value: string | null, fallback: number) {
       const parsed = value ? parseInt(value, 10) : fallback;
@@ -403,12 +411,20 @@ describe("security headers", () => {
 
   test("CSP and security headers are present on real responses", async () => {
     class StubChannel {
-      isAuthEnabled() { return false; }
-      isInternalSecretEnabled() { return false; }
-      verifyInternalSecret() { return false; }
-      isAuthenticated() { return false; }
-      serveLoginPage() { return this.json({ ok: false }, 401); }
-      redirectToLogin() { return this.json({ ok: false }, 401); }
+      authGateway = {
+        isAuthEnabled: () => false,
+        isInternalSecretEnabled: () => false,
+        verifyInternalSecret: () => false,
+        isAuthenticated: () => false,
+      };
+      endpointContexts = {
+        auth: () => ({
+          createTotpContext: () => ({}) as any,
+          createWebauthnContext: () => ({}) as any,
+          createWebauthnEnrolPageContext: () => ({}) as any,
+          serveStatic: async (_relPath: string) => this.json({ ok: false }, 401),
+        }),
+      };
       handleTimeline() { return this.json({ ok: true }, 200); }
       clampInt(value: string | null, fallback: number, _min: number, _max: number) {
         const parsed = value ? parseInt(value, 10) : fallback;
@@ -440,12 +456,20 @@ describe("security headers", () => {
 
   test("HSTS header is set on HTTPS responses", async () => {
     class StubChannel {
-      isAuthEnabled() { return false; }
-      isInternalSecretEnabled() { return false; }
-      verifyInternalSecret() { return false; }
-      isAuthenticated() { return false; }
-      serveLoginPage() { return this.json({ ok: false }, 401); }
-      redirectToLogin() { return this.json({ ok: false }, 401); }
+      authGateway = {
+        isAuthEnabled: () => false,
+        isInternalSecretEnabled: () => false,
+        verifyInternalSecret: () => false,
+        isAuthenticated: () => false,
+      };
+      endpointContexts = {
+        auth: () => ({
+          createTotpContext: () => ({}) as any,
+          createWebauthnContext: () => ({}) as any,
+          createWebauthnEnrolPageContext: () => ({}) as any,
+          serveStatic: async (_relPath: string) => this.json({ ok: false }, 401),
+        }),
+      };
       handleTimeline() { return this.json({ ok: true }, 200); }
       clampInt(value: string | null, fallback: number, _min: number, _max: number) {
         const parsed = value ? parseInt(value, 10) : fallback;

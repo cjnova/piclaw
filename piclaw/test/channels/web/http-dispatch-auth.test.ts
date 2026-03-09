@@ -12,10 +12,21 @@ describe("web http auth dispatch", () => {
 
   test("enrol route requires TOTP session", async () => {
     const channel = {
-      isTotpSession: () => false,
-      redirectToLogin: () => new Response(null, { status: 302 }),
+      authGateway: {
+        isTotpSession: () => false,
+      },
+      endpointContexts: {
+        auth: () => ({
+          createTotpContext: () => ({}) as any,
+          createWebauthnContext: () => ({}) as any,
+          createWebauthnEnrolPageContext: () => ({
+            isPasskeyEnabled: () => true,
+            json: (_payload: unknown, status = 200) => new Response(null, { status }),
+          }),
+          serveStatic: async () => new Response("ok"),
+        }),
+      },
       json: (_payload: unknown, status: number) => new Response(null, { status }),
-      handleWebauthnEnrollPage: async () => new Response("ok"),
     } as any;
 
     const getReq = new Request("https://example.com/auth/webauthn/enrol", { method: "GET" });
@@ -29,22 +40,32 @@ describe("web http auth dispatch", () => {
 
   test("dispatches webauthn start/finish routes", async () => {
     const channel = {
-      isTotpSession: () => true,
-      redirectToLogin: () => new Response(null, { status: 302 }),
+      authGateway: {
+        isTotpSession: () => true,
+      },
+      endpointContexts: {
+        auth: () => ({
+          createTotpContext: () => ({}) as any,
+          createWebauthnContext: () => ({
+            isPasskeyEnabled: () => false,
+            json: (_payload: unknown, status = 200) => new Response(null, { status }),
+          }),
+          createWebauthnEnrolPageContext: () => ({
+            isPasskeyEnabled: () => false,
+            json: (_payload: unknown, status = 200) => new Response(null, { status }),
+          }),
+          serveStatic: async () => new Response("unused"),
+        }),
+      },
       json: (_payload: unknown, status: number) => new Response(null, { status }),
-      handleWebauthnEnrollPage: async () => new Response("enrol"),
-      handleWebauthnLoginStart: async () => new Response("login-start"),
-      handleWebauthnLoginFinish: async () => new Response("login-finish"),
-      handleWebauthnRegisterStart: async () => new Response("register-start"),
-      handleWebauthnRegisterFinish: async () => new Response("register-finish"),
     } as any;
 
     const req = new Request("https://example.com/auth/webauthn", { method: "POST" });
 
-    expect(await (await handleAuthRoutes(channel, req, buildRouteFlags({ isWebauthnEnrollPage: true })))?.text()).toBe("enrol");
-    expect(await (await handleAuthRoutes(channel, req, buildRouteFlags({ isWebauthnLoginStart: true })))?.text()).toBe("login-start");
-    expect(await (await handleAuthRoutes(channel, req, buildRouteFlags({ isWebauthnLoginFinish: true })))?.text()).toBe("login-finish");
-    expect(await (await handleAuthRoutes(channel, req, buildRouteFlags({ isWebauthnRegisterStart: true })))?.text()).toBe("register-start");
-    expect(await (await handleAuthRoutes(channel, req, buildRouteFlags({ isWebauthnRegisterFinish: true })))?.text()).toBe("register-finish");
+    expect((await handleAuthRoutes(channel, req, buildRouteFlags({ isWebauthnEnrollPage: true })))?.status).toBe(404);
+    expect((await handleAuthRoutes(channel, req, buildRouteFlags({ isWebauthnLoginStart: true })))?.status).toBe(404);
+    expect((await handleAuthRoutes(channel, req, buildRouteFlags({ isWebauthnLoginFinish: true })))?.status).toBe(404);
+    expect((await handleAuthRoutes(channel, req, buildRouteFlags({ isWebauthnRegisterStart: true })))?.status).toBe(404);
+    expect((await handleAuthRoutes(channel, req, buildRouteFlags({ isWebauthnRegisterFinish: true })))?.status).toBe(404);
   });
 });

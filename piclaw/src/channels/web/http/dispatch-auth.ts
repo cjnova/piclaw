@@ -2,41 +2,59 @@
  * web/http/dispatch-auth.ts – WebAuthn/TOTP auth route dispatch helpers.
  */
 
-import type { WebChannel } from "../web.js";
+import {
+  handleWebauthnEnrollPageEndpoint,
+  handleWebauthnLoginFinishEndpoint,
+  handleWebauthnLoginStartEndpoint,
+  handleWebauthnRegisterFinishEndpoint,
+  handleWebauthnRegisterStartEndpoint,
+  redirectToLoginResponse,
+  type AuthEndpointsContext,
+} from "../auth-endpoints.js";
 import type { RouteFlags } from "./route-flags.js";
+
+export interface AuthDispatchChannel {
+  authGateway: {
+    isTotpSession(req: Request): boolean;
+  };
+  endpointContexts: {
+    auth(): AuthEndpointsContext;
+  };
+  json(payload: unknown, status?: number): Response;
+}
 
 /**
  * Handle auth routes when the request matches; otherwise return null.
  */
 export async function handleAuthRoutes(
-  channel: WebChannel,
+  channel: AuthDispatchChannel,
   req: Request,
   flags: RouteFlags
 ): Promise<Response | null> {
   if (flags.isWebauthnEnrollPage) {
-    if (!channel.isTotpSession(req)) {
+    if (!channel.authGateway.isTotpSession(req)) {
       if (flags.isGetOrHead) {
-        return channel.redirectToLogin();
+        return redirectToLoginResponse();
       }
       return channel.json({ error: "TOTP session required" }, 401);
     }
-    return await channel.handleWebauthnEnrollPage(req);
+    return await handleWebauthnEnrollPageEndpoint(channel.endpointContexts.auth());
   }
 
   if (flags.isWebauthnLoginStart) {
-    return await channel.handleWebauthnLoginStart(req);
+    return await handleWebauthnLoginStartEndpoint(req, channel.endpointContexts.auth());
   }
 
   if (flags.isWebauthnLoginFinish) {
-    return await channel.handleWebauthnLoginFinish(req);
+    return await handleWebauthnLoginFinishEndpoint(req, channel.endpointContexts.auth());
   }
 
   if (flags.isWebauthnRegisterStart) {
-    return await channel.handleWebauthnRegisterStart(req);
+    return await handleWebauthnRegisterStartEndpoint(req, channel.endpointContexts.auth());
   }
 
   if (flags.isWebauthnRegisterFinish) {
-    return await channel.handleWebauthnRegisterFinish(req);
+    return await handleWebauthnRegisterFinishEndpoint(req, channel.endpointContexts.auth());
   }
 
   return null;

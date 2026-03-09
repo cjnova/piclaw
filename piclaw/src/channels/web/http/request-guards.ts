@@ -2,7 +2,12 @@
  * web/http/request-guards.ts – Auth/CSRF/rate-limit pre-dispatch guards.
  */
 
-import type { WebChannel } from "../web.js";
+import {
+  handleAuthVerifyEndpoint,
+  redirectToLoginResponse,
+  serveLoginPageResponse,
+  type AuthEndpointsContext,
+} from "../auth-endpoints.js";
 import { getClientKey } from "./client.js";
 import { isRateLimited } from "./rate-limit.js";
 import {
@@ -16,19 +21,32 @@ import {
 import { type RouteFlags, shouldSkipAuthCheck } from "./route-flags.js";
 import { checkCsrfOrigin, rateLimitResponse } from "./security.js";
 
+export interface RequestGuardsChannel {
+  authGateway: {
+    isAuthEnabled(): boolean;
+    isInternalSecretEnabled(): boolean;
+    verifyInternalSecret(req: Request): boolean;
+    isAuthenticated(req: Request): boolean;
+  };
+  endpointContexts: {
+    auth(): AuthEndpointsContext;
+  };
+  json(payload: unknown, status?: number): Response;
+}
+
 /**
  * Apply request guards in the same order as the request-router security pipeline.
  * Returns a response when request processing should stop; otherwise null.
  */
 export async function enforceRequestGuards(
-  channel: WebChannel,
+  channel: RequestGuardsChannel,
   req: Request,
   pathname: string,
   flags: RouteFlags
 ): Promise<Response | null> {
-  const authEnabled = channel.isAuthEnabled();
-  const internalSecretEnabled = channel.isInternalSecretEnabled();
-  const hasInternalAccess = internalSecretEnabled && channel.verifyInternalSecret(req);
+  const authEnabled = channel.authGateway.isAuthEnabled();
+  const internalSecretEnabled = channel.authGateway.isInternalSecretEnabled();
+  const hasInternalAccess = internalSecretEnabled && channel.authGateway.verifyInternalSecret(req);
 
   if (flags.isInternalPost || flags.isInternalPatch) {
     if (internalSecretEnabled && !hasInternalAccess) {
@@ -68,20 +86,20 @@ export async function enforceRequestGuards(
 
   if (authEnabled) {
     if (flags.isAuthVerify) {
-      return await channel.handleAuthVerify(req);
+      return await handleAuthVerifyEndpoint(req, channel.endpointContexts.auth());
     }
 
     if (flags.isLoginPage) {
-      return channel.serveLoginPage();
+      return await serveLoginPageResponse(channel.endpointContexts.auth());
     }
 
-    if (!skipAuthCheck && !channel.isAuthenticated(req)) {
+    if (!skipAuthCheck && !channel.authGateway.isAuthenticated(req)) {
       console.warn(`[auth] Unauthorized request (ip=${getClientKey(req)}, method=${req.method}, path=${pathname})`);
       if (flags.isIndex) {
-        return channel.serveLoginPage();
+        return await serveLoginPageResponse(channel.endpointContexts.auth());
       }
       if (flags.isGetOrHead) {
-        return channel.redirectToLogin();
+        return redirectToLoginResponse();
       }
       return channel.json({ error: "Unauthorized" }, 401);
     }

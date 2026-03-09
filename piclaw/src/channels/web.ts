@@ -16,16 +16,6 @@
 import { AgentQueue } from "../queue.js";
 import type { AgentPool } from "../agent-pool.js";
 import { initTheme } from "@mariozechner/pi-coding-agent";
-import {
-  handleAuthVerifyEndpoint,
-  handleWebauthnEnrollPageEndpoint,
-  handleWebauthnLoginFinishEndpoint,
-  handleWebauthnLoginStartEndpoint,
-  handleWebauthnRegisterFinishEndpoint,
-  handleWebauthnRegisterStartEndpoint,
-  redirectToLoginResponse,
-  serveLoginPageResponse,
-} from "./web/auth-endpoints.js";
 import { WebauthnChallengeTracker } from "./web/webauthn-challenges.js";
 import { TotpFailureTracker } from "./web/totp-failure-tracker.js";
 import {
@@ -392,70 +382,6 @@ export class WebChannel {
       console.error("[web] Failed to load TLS cert/key:", error);
       return null;
     }
-  }
-
-  isAuthEnabled(): boolean {
-    return this.authGateway.isAuthEnabled();
-  }
-
-  isInternalSecretEnabled(): boolean {
-    return this.authGateway.isInternalSecretEnabled();
-  }
-
-  isPasskeyEnabled(): boolean {
-    return this.authGateway.isPasskeyEnabled();
-  }
-
-  isPasskeyOnly(): boolean {
-    return this.authGateway.isPasskeyOnly();
-  }
-
-  isTotpEnabled(): boolean {
-    return this.authGateway.isTotpEnabled();
-  }
-
-  isTotpSession(req: Request): boolean {
-    return this.authGateway.isTotpSession(req);
-  }
-
-  verifyInternalSecret(req: Request): boolean {
-    return this.authGateway.verifyInternalSecret(req);
-  }
-
-  isAuthenticated(req: Request): boolean {
-    return this.authGateway.isAuthenticated(req);
-  }
-
-  async handleAuthVerify(req: Request): Promise<Response> {
-    return await handleAuthVerifyEndpoint(req, this.endpointContexts.auth());
-  }
-
-  async handleWebauthnLoginStart(req: Request): Promise<Response> {
-    return await handleWebauthnLoginStartEndpoint(req, this.endpointContexts.auth());
-  }
-
-  async handleWebauthnLoginFinish(req: Request): Promise<Response> {
-    return await handleWebauthnLoginFinishEndpoint(req, this.endpointContexts.auth());
-  }
-
-  async handleWebauthnRegisterStart(req: Request): Promise<Response> {
-    return await handleWebauthnRegisterStartEndpoint(req, this.endpointContexts.auth());
-  }
-
-  async handleWebauthnRegisterFinish(req: Request): Promise<Response> {
-    return await handleWebauthnRegisterFinishEndpoint(req, this.endpointContexts.auth());
-  }
-
-  async handleWebauthnEnrollPage(_req: Request): Promise<Response> {
-    return await handleWebauthnEnrollPageEndpoint(this.endpointContexts.auth());
-  }
-
-  async serveLoginPage(): Promise<Response> {
-    return await serveLoginPageResponse(this.endpointContexts.auth());
-  }
-
-  redirectToLogin(): Response {
-    return redirectToLoginResponse();
   }
 
   async handleRequest(req: Request): Promise<Response> {
