@@ -6,16 +6,20 @@
  * Downloads use Content-Disposition: attachment for non-image types to
  * prevent stored XSS via HTML/SVG file uploads.
  *
- * Consumers: request-router-service.ts routes media paths here.
+ * Consumers: web/http/dispatch-media.ts routes media paths here.
  */
 
-import type { WebChannel } from "../../web.js";
 import { MediaService } from "../media-service.js";
 
 const mediaService = new MediaService();
 
+/** Minimal response contract needed by media endpoint handlers. */
+export interface MediaResponseContext {
+  json(payload: unknown, status?: number): Response;
+}
+
 /** Handle POST /media: file upload. */
-export async function handleMediaUpload(channel: WebChannel, req: Request): Promise<Response> {
+export async function handleMediaUpload(channel: MediaResponseContext, req: Request): Promise<Response> {
   let form: FormData;
   try {
     form = await req.formData();
@@ -46,7 +50,7 @@ const INLINE_SAFE_TYPES = new Set([
 ]);
 
 /** Route media requests to upload, download, or info handlers. */
-export function handleMedia(channel: WebChannel, id: number, thumbnail: boolean): Response {
+export function handleMedia(channel: MediaResponseContext, id: number, thumbnail: boolean): Response {
   const result = mediaService.getMedia(id, thumbnail);
   if (result.status !== 200) return channel.json({ error: "Media not found" }, result.status);
 
@@ -62,7 +66,7 @@ export function handleMedia(channel: WebChannel, id: number, thumbnail: boolean)
 }
 
 /** Handle GET /media/:id/info: metadata query. */
-export function handleMediaInfo(channel: WebChannel, id: number): Response {
+export function handleMediaInfo(channel: MediaResponseContext, id: number): Response {
   const result = mediaService.getInfo(id);
   return channel.json(result.body, result.status);
 }

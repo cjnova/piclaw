@@ -45,18 +45,13 @@ import {
   WEB_INTERNAL_SECRET,
   WEB_PASSKEY_MODE,
 } from "../core/config.js";
-import { handleMedia, handleMediaInfo, handleMediaUpload } from "./web/handlers/media.js";
+import { startWorkspaceWatcher } from "./web/handlers/workspace.js";
+import { RequestRouterService } from "./web/request-router-service.js";
+import { handlePost as handlePostRequest } from "./web/handlers/posts.js";
 import {
-  handleWorkspaceAttach,
-  handleWorkspaceDelete,
-  handleWorkspaceDownload,
-  handleWorkspaceFile,
-  handleWorkspaceRaw,
-  handleWorkspaceTree,
-  handleWorkspaceUpdate,
-  handleWorkspaceUpload,
-  startWorkspaceWatcher,
-} from "./web/handlers/workspace.js";
+  handleAgentMessage as handleAgentMessageRequest,
+  processChat as processAgentChat,
+} from "./web/handlers/agent.js";
 import { SseHub } from "./web/sse-hub.js";
 import { UiBridge } from "./web/ui-bridge.js";
 import { ResponseService } from "./web/http/response-service.js";
@@ -148,6 +143,7 @@ export class WebChannel {
   uiBridge: UiBridge;
   remoteInterop: RemoteInteropService;
   responses = new ResponseService();
+  requestRouter: RequestRouterService;
   pendingLinkPreviews = new Set<number>();
   workspaceWatcher: { close: () => Promise<void> } | null = null;
   workspaceVisible = false;
@@ -189,6 +185,7 @@ export class WebChannel {
         failureTracker: this.totpFailureTracker,
       }
     );
+    this.requestRouter = new RequestRouterService(this);
     bindWebUiSessionBinder(this.agentPool, (session, chatJid) =>
       this.uiBridge.bindSession(session, chatJid)
     );
@@ -548,9 +545,7 @@ export class WebChannel {
   }
 
   async handleRequest(req: Request): Promise<Response> {
-    const { RequestRouterService } = await import("./web/request-router-service.js");
-    const router = new RequestRouterService(this);
-    return router.handle(req);
+    return this.requestRouter.handle(req);
   }
 
   async handleAgents(): Promise<Response> {
@@ -632,8 +627,7 @@ export class WebChannel {
   }
 
   async handlePost(req: Request, isReply: boolean): Promise<Response> {
-    const { handlePost } = await import("./web/handlers/posts.js");
-    return handlePost(this, req, isReply, DEFAULT_CHAT_JID);
+    return handlePostRequest(this, req, isReply, DEFAULT_CHAT_JID);
   }
 
   handleAgentStatus(req: Request): Response {
@@ -659,13 +653,11 @@ export class WebChannel {
   }
 
   async handleAgentMessage(req: Request, pathname: string): Promise<Response> {
-    const { handleAgentMessage } = await import("./web/handlers/agent.js");
-    return handleAgentMessage(this, req, pathname, DEFAULT_CHAT_JID, DEFAULT_AGENT_ID);
+    return handleAgentMessageRequest(this, req, pathname, DEFAULT_CHAT_JID, DEFAULT_AGENT_ID);
   }
 
   async processChat(chatJid: string, agentId: string, threadRootId?: number | null): Promise<void> {
-    const { processChat } = await import("./web/handlers/agent.js");
-    return processChat(this, chatJid, agentId, threadRootId ?? undefined);
+    return processAgentChat(this, chatJid, agentId, threadRootId ?? undefined);
   }
 
   storeMessage(
@@ -693,52 +685,8 @@ export class WebChannel {
     );
   }
 
-  async handleMediaUpload(req: Request): Promise<Response> {
-    return handleMediaUpload(this, req);
-  }
-
-  handleMedia(id: number, thumbnail: boolean): Response {
-    return handleMedia(this, id, thumbnail);
-  }
-
-  handleMediaInfo(id: number): Response {
-    return handleMediaInfo(this, id);
-  }
-
   async handleRemote(req: Request): Promise<Response> {
     return this.remoteInterop.handleRequest(req);
-  }
-
-  handleWorkspaceTree(req: Request): Response {
-    return handleWorkspaceTree(this, req);
-  }
-
-  handleWorkspaceFile(req: Request): Response {
-    return handleWorkspaceFile(this, req);
-  }
-
-  async handleWorkspaceUpdate(req: Request): Promise<Response> {
-    return handleWorkspaceUpdate(this, req);
-  }
-
-  handleWorkspaceDelete(req: Request): Response {
-    return handleWorkspaceDelete(this, req);
-  }
-
-  handleWorkspaceRaw(req: Request): Response {
-    return handleWorkspaceRaw(this, req);
-  }
-
-  async handleWorkspaceAttach(req: Request): Promise<Response> {
-    return handleWorkspaceAttach(this, req);
-  }
-
-  async handleWorkspaceUpload(req: Request): Promise<Response> {
-    return handleWorkspaceUpload(this, req);
-  }
-
-  async handleWorkspaceDownload(req: Request): Promise<Response> {
-    return handleWorkspaceDownload(this, req);
   }
 
   async serveStatic(relPath: string): Promise<Response> {

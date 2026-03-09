@@ -9,8 +9,8 @@ import {
   type RuntimeBootstrapState,
   type RuntimeBootstrapWeb,
   type RuntimeBootstrapWhatsApp,
+  type RuntimeBootstrapDefaultCoreServices,
 } from "../../src/runtime/bootstrap.js";
-import type { RuntimeCoreServices } from "../../src/runtime/composition.js";
 import type { RuntimeSenders } from "../../src/runtime/wiring.js";
 
 describe("runtime bootstrap", () => {
@@ -117,9 +117,9 @@ describe("runtime bootstrap", () => {
 
   test("createDefaultRuntimeBootstrapDeps preserves provided runtime core", () => {
     const core = {
-      queue: {} as RuntimeCoreServices["queue"],
-      agentPool: {} as RuntimeCoreServices["agentPool"],
-      state: {} as RuntimeCoreServices["state"],
+      queue: {} as RuntimeBootstrapDefaultCoreServices["queue"],
+      agentPool: {} as RuntimeBootstrapDefaultCoreServices["agentPool"],
+      state: {} as RuntimeBootstrapDefaultCoreServices["state"],
     };
 
     const deps = createDefaultRuntimeBootstrapDeps(core);

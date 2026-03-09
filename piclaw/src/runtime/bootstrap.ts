@@ -10,7 +10,7 @@ import {
 import { stopIpcWatcher } from "../ipc.js";
 import type { SchedulerDeps } from "../task-scheduler.js";
 import { stopSchedulerLoop } from "../task-scheduler.js";
-import type { RuntimeCoreServices, RuntimeSignalRegistrar } from "./composition.js";
+import type { RuntimeSignalRegistrar } from "./composition.js";
 import { registerRuntimeShutdownSignals } from "./composition.js";
 import { startRuntimeLoop, type StartRuntimeLoopDeps } from "./coordinator.js";
 import { registerOptionalProviders } from "./provider-bootstrap.js";
@@ -67,6 +67,13 @@ export interface RuntimeBootstrapCoreServices {
   state: RuntimeBootstrapState;
 }
 
+/** Concrete runtime-core contract required to wire production startup modules. */
+export interface RuntimeBootstrapDefaultCoreServices extends RuntimeBootstrapCoreServices {
+  queue: Parameters<typeof startWebChannel>[0];
+  agentPool: Parameters<typeof startWebChannel>[1];
+  state: Parameters<typeof createWhatsAppChannel>[0];
+}
+
 /** Dependency injection contract for the runtime bootstrap sequence. */
 export interface RuntimeBootstrapDeps {
   core: RuntimeBootstrapCoreServices;
@@ -104,7 +111,7 @@ export interface RuntimeBootstrapDeps {
 /**
  * Build default runtime bootstrap dependencies from production modules.
  */
-export function createDefaultRuntimeBootstrapDeps(core: RuntimeCoreServices): RuntimeBootstrapDeps {
+export function createDefaultRuntimeBootstrapDeps(core: RuntimeBootstrapDefaultCoreServices): RuntimeBootstrapDeps {
   return {
     core,
     assistantName: ASSISTANT_NAME,

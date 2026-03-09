@@ -134,10 +134,8 @@ export async function handleAgentMessage(
         if (thinkingLevel == null) thinkingLevel = modelState.thinking_level ?? null;
         supportsThinking = modelState.supports_thinking;
       } catch {
-        const getModel = (channel.agentPool as { getCurrentModelLabel?: (jid: string) => Promise<string | null> })
-          .getCurrentModelLabel;
-        if (typeof getModel === "function") {
-          nextModel = await getModel(chatJid).catch(() => null);
+        if (typeof channel.agentPool.getCurrentModelLabel === "function") {
+          nextModel = await channel.agentPool.getCurrentModelLabel(chatJid).catch(() => null);
         }
       }
 
