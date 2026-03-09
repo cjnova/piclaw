@@ -15,6 +15,7 @@ interface JsonLike {
   json(payload: unknown, status?: number): Response;
 }
 
+/** Dependencies required to assemble the post-mutation endpoint context. */
 export interface PostMutationsContextDeps extends JsonLike {
   defaultChatJid: string;
   getLastCommandInteractionId(): number | null;
@@ -31,6 +32,7 @@ export interface PostMutationsContextDeps extends JsonLike {
   broadcastAgentResponse(interaction: InteractionRow): void;
 }
 
+/** Build the post-mutation endpoint context from live channel dependencies. */
 export function createPostMutationsContext(deps: PostMutationsContextDeps): PostMutationsContext {
   return {
     defaultChatJid: deps.defaultChatJid,
@@ -44,6 +46,7 @@ export function createPostMutationsContext(deps: PostMutationsContextDeps): Post
   };
 }
 
+/** Dependencies required to assemble the agent-status endpoint context. */
 export interface AgentStatusContextDeps extends JsonLike {
   defaultChatJid: string;
   getAgentStatus(chatJid: string): Record<string, unknown> | null;
@@ -54,6 +57,7 @@ export interface AgentStatusContextDeps extends JsonLike {
   getAvailableModels(chatJid: string): Promise<unknown>;
 }
 
+/** Build the agent-status endpoint context from live channel dependencies. */
 export function createAgentStatusContext(deps: AgentStatusContextDeps): AgentStatusContext {
   return {
     defaultChatJid: deps.defaultChatJid,
@@ -65,11 +69,13 @@ export function createAgentStatusContext(deps: AgentStatusContextDeps): AgentSta
   };
 }
 
+/** Dependencies required to assemble timeline/search/thread content endpoint context. */
 export interface ContentEndpointsContextDeps extends JsonLike {
   defaultChatJid: string;
   getBuffer(turnId: string, panel: "thought" | "draft"): WebAgentBufferEntry | undefined;
 }
 
+/** Build the content endpoint context from live channel dependencies. */
 export function createContentEndpointsContext(deps: ContentEndpointsContextDeps): ContentEndpointsContext {
   return {
     defaultChatJid: deps.defaultChatJid,
@@ -78,6 +84,7 @@ export function createContentEndpointsContext(deps: ContentEndpointsContextDeps)
   };
 }
 
+/** Dependencies required to assemble UI endpoint context handlers/state accessors. */
 export interface UiEndpointsContextDeps extends JsonLike {
   getWorkspaceVisible(): boolean;
   setWorkspaceVisible(value: boolean): void;
@@ -87,6 +94,7 @@ export interface UiEndpointsContextDeps extends JsonLike {
   handleUiResponse(requestId: string, outcome: unknown): { status: "ok" | "unknown_request" };
 }
 
+/** Build the UI endpoint context from live channel dependencies. */
 export function createUiEndpointsContext(deps: UiEndpointsContextDeps): UiEndpointsContext {
   return {
     json: deps.json,
@@ -99,6 +107,7 @@ export function createUiEndpointsContext(deps: UiEndpointsContextDeps): UiEndpoi
   };
 }
 
+/** Dependencies required to assemble the agents profile/identity endpoint context. */
 export interface AgentsEndpointContextDeps extends JsonLike {
   agentPool: AgentPool;
   defaultChatJid: string;
@@ -110,6 +119,7 @@ export interface AgentsEndpointContextDeps extends JsonLike {
   userAvatarBackground: string | null;
 }
 
+/** Build the agents endpoint context from live channel dependencies. */
 export function createAgentsEndpointContext(deps: AgentsEndpointContextDeps): AgentsEndpointContext {
   return {
     agentPool: deps.agentPool,
@@ -124,11 +134,13 @@ export function createAgentsEndpointContext(deps: AgentsEndpointContextDeps): Ag
   };
 }
 
+/** Dependencies required to assemble avatar endpoint context. */
 export interface AvatarEndpointContextDeps extends JsonLike {
   assistantAvatar: string | null;
   userAvatar: string | null;
 }
 
+/** Build the avatar endpoint context from live channel dependencies. */
 export function createAvatarEndpointContext(deps: AvatarEndpointContextDeps): AvatarEndpointContext {
   return {
     assistantAvatar: deps.assistantAvatar,
