@@ -2,14 +2,13 @@
  * channels/web/agent-status.ts – Agent status/context/models endpoint helpers.
  */
 
+import type { WebAgentBufferEntry } from "./agent-buffers.js";
+
 export interface AgentStatusContext {
   defaultChatJid: string;
   json(payload: unknown, status?: number): Response;
   getAgentStatus(chatJid: string): Record<string, unknown> | null;
-  getBuffer(
-    turnId: string,
-    panel: "thought" | "draft"
-  ): { text: string; totalLines: number; updatedAt: number } | undefined;
+  getBuffer(turnId: string, panel: "thought" | "draft"): WebAgentBufferEntry | undefined;
   getContextUsageForChat(
     chatJid: string
   ): Promise<{ tokens: number; contextWindow: number; percent: number } | null>;

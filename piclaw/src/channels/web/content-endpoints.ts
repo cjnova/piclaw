@@ -8,14 +8,12 @@ import {
   getThreadResponse,
   getTimelineResponse,
 } from "./timeline-service.js";
+import type { WebAgentBufferEntry } from "./agent-buffers.js";
 
 export interface ContentEndpointsContext {
   defaultChatJid: string;
   json(payload: unknown, status?: number): Response;
-  getBuffer(
-    turnId: string,
-    panel: "thought" | "draft"
-  ): { text: string; totalLines: number; updatedAt: number } | undefined;
+  getBuffer(turnId: string, panel: "thought" | "draft"): WebAgentBufferEntry | undefined;
 }
 
 export function handleTimelineRequest(

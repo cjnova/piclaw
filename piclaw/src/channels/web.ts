@@ -93,6 +93,7 @@ import {
   handleAgentStatusRequest,
   type AgentStatusContext,
 } from "./web/agent-status.js";
+import { AgentBuffers, type WebAgentBufferEntry } from "./web/agent-buffers.js";
 import { bindWebUiSessionBinder } from "./web/agent-pool-binder.js";
 import {
   handleHashtagRequest,
@@ -152,9 +153,7 @@ export class WebChannel {
   lastCommandInteractionId: number | null = null;
   webauthnChallenges = new WebauthnChallengeTracker();
   totpFailureTracker = new TotpFailureTracker();
-  thoughtBuffers = new Map<string, { text: string; totalLines: number; updatedAt: number }>();
-  draftBuffers = new Map<string, { text: string; totalLines: number; updatedAt: number }>();
-  expandedPanels = new Map<string, { thought: boolean; draft: boolean }>();
+  agentBuffers = new AgentBuffers();
 
   constructor(opts: WebChannelOpts) {
     this.queue = opts.queue;
@@ -425,43 +424,23 @@ export class WebChannel {
   }
 
   setPanelExpanded(turnId: string, panel: "thought" | "draft", expanded: boolean): void {
-    if (!turnId) return;
-    const current = this.expandedPanels.get(turnId) ?? { thought: false, draft: false };
-    current[panel] = expanded;
-    if (!current.thought && !current.draft) {
-      this.expandedPanels.delete(turnId);
-    } else {
-      this.expandedPanels.set(turnId, current);
-    }
+    this.agentBuffers.setPanelExpanded(turnId, panel, expanded);
   }
 
   isPanelExpanded(turnId: string, panel: "thought" | "draft"): boolean {
-    return this.expandedPanels.get(turnId)?.[panel] ?? false;
+    return this.agentBuffers.isPanelExpanded(turnId, panel);
   }
 
   updateThoughtBuffer(turnId: string, text: string, totalLines: number): void {
-    if (!turnId) return;
-    this.thoughtBuffers.set(turnId, { text, totalLines, updatedAt: Date.now() });
-    this.pruneBuffers(this.thoughtBuffers);
+    this.agentBuffers.updateBuffer(turnId, "thought", text, totalLines);
   }
 
   updateDraftBuffer(turnId: string, text: string, totalLines: number): void {
-    if (!turnId) return;
-    this.draftBuffers.set(turnId, { text, totalLines, updatedAt: Date.now() });
-    this.pruneBuffers(this.draftBuffers);
+    this.agentBuffers.updateBuffer(turnId, "draft", text, totalLines);
   }
 
-  getBuffer(turnId: string, panel: "thought" | "draft") {
-    return panel === "draft" ? this.draftBuffers.get(turnId) : this.thoughtBuffers.get(turnId);
-  }
-
-  pruneBuffers(map: Map<string, { text: string; totalLines: number; updatedAt: number }>): void {
-    const limit = 50;
-    if (map.size <= limit) return;
-    const entries = Array.from(map.entries()).sort((a, b) => a[1].updatedAt - b[1].updatedAt);
-    for (let i = 0; i < entries.length - limit; i += 1) {
-      map.delete(entries[i][0]);
-    }
+  getBuffer(turnId: string, panel: "thought" | "draft"): WebAgentBufferEntry | undefined {
+    return this.agentBuffers.getBuffer(turnId, panel);
   }
 
   private async loadTlsOptions(): Promise<{ cert: string; key: string } | null> {
