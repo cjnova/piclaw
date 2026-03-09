@@ -31,29 +31,36 @@ import {
   type RuntimeWhatsAppWorkerChannel,
 } from "./wiring.js";
 
+/** Queue contract required by runtime bootstrap orchestration. */
 export type RuntimeBootstrapQueue =
   & StartRuntimeLoopDeps["queue"]
   & SchedulerDeps["queue"]
   & ShutdownDeps["queue"];
 
+/** Agent-pool contract required by runtime bootstrap orchestration. */
 export type RuntimeBootstrapAgentPool =
   & StartRuntimeLoopDeps["agentPool"]
   & SchedulerDeps["agentPool"]
   & RuntimeModelResolver
   & ShutdownDeps["agentPool"];
 
+/** Runtime state contract required by runtime bootstrap orchestration. */
 export type RuntimeBootstrapState = StartRuntimeLoopDeps["state"];
 
+/** Web channel contract required by runtime bootstrap orchestration. */
 export type RuntimeBootstrapWeb = RuntimeWebWorkerChannel & ShutdownDeps["web"];
 
+/** WhatsApp channel contract required by runtime bootstrap orchestration. */
 export type RuntimeBootstrapWhatsApp =
   & StartRuntimeLoopDeps["whatsapp"]
   & RuntimeWhatsAppWorkerChannel
   & ShutdownDeps["whatsapp"]
   & { connect: () => Promise<unknown> };
 
+/** Optional pushover channel contract required by runtime bootstrap orchestration. */
 export type RuntimeBootstrapPushover = RuntimePushoverWorkerChannel & NonNullable<ShutdownDeps["pushover"]>;
 
+/** Dependency injection contract for the runtime bootstrap sequence. */
 export interface RuntimeBootstrapDeps {
   core: RuntimeCoreServices;
   assistantName: string;

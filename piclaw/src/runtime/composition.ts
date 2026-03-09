@@ -7,12 +7,14 @@ import { DATA_DIR } from "../core/config.js";
 import { AgentQueue } from "../queue.js";
 import { RuntimeState } from "./state.js";
 
+/** Core long-lived services that runtime main wiring composes together. */
 export interface RuntimeCoreServices {
   queue: AgentQueue;
   agentPool: AgentPool;
   state: RuntimeState;
 }
 
+/** Optional factory overrides for runtime core service creation. */
 export interface RuntimeCoreFactoryDeps {
   dataDir?: string;
   createQueue?: () => AgentQueue;
@@ -34,8 +36,10 @@ export function createRuntimeCoreServices(deps: RuntimeCoreFactoryDeps = {}): Ru
   };
 }
 
+/** Async runtime shutdown callback signature for signal handlers. */
 export type RuntimeShutdownHandler = (signal: string) => Promise<void>;
 
+/** Minimal process-like signal registrar used by runtime signal wiring. */
 export interface RuntimeSignalRegistrar {
   on(event: "SIGTERM" | "SIGINT", listener: () => void): void;
 }
