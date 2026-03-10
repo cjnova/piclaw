@@ -53,4 +53,18 @@ describe("request-client helpers", () => {
       host: "public.example.com:8443",
     });
   });
+
+  test("uses standard Forwarded header when trustProxy is true", () => {
+    const req = new Request("http://internal.local/path", {
+      headers: {
+        host: "internal.local",
+        forwarded: 'for=203.0.113.9;proto=https;host="public.example.com:9443"',
+      },
+    });
+
+    expect(getRequestOriginParts(req, true)).toEqual({
+      proto: "https",
+      host: "public.example.com:9443",
+    });
+  });
 });

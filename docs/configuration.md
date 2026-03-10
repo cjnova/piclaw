@@ -21,10 +21,43 @@ This document covers all `piclaw` configuration options: environment variables, 
 | `PICLAW_WEB_TLS_CERT` | _(empty)_ | Path to TLS certificate; enables HTTPS |
 | `PICLAW_WEB_TLS_KEY` | _(empty)_ | Path to TLS private key; enables HTTPS |
 | `PICLAW_WEB_MAX_CONTENT_CHARS` | `262144` | Max message size in characters; oversized messages are truncated with metadata |
+| `PICLAW_TRUST_PROXY` | `0` | Trust `Forwarded` / `X-Forwarded-*` headers from a reverse proxy for origin, host, proto, and client IP handling |
 
 If `PICLAW_WEB_TLS_CERT` and `PICLAW_WEB_TLS_KEY` are both omitted, piclaw checks for `.piclaw/certs/sandbox.local.crt` and `.piclaw/certs/sandbox.local.key` and enables HTTPS automatically if both exist.
 
 CLI overrides: `piclaw --port`, `--host`, `--idle-timeout`, `--tls-cert`, `--tls-key`.
+
+### Reverse proxy / tunnel deployments
+
+If piclaw is served behind a reverse proxy or tunnel (for example Cloudflare Tunnel, Caddy, Nginx, or another TLS terminator), set:
+
+```bash
+PICLAW_TRUST_PROXY=1
+```
+
+or in `.piclaw/config.json`:
+
+```json
+{
+  "web": {
+    "trustProxy": true
+  }
+}
+```
+
+This allows piclaw to trust forwarded host/proto information for:
+
+- CSRF origin validation on browser POST/PATCH/DELETE/PUT requests
+- WebAuthn/passkey origin handling
+- absolute origin/link generation in the web channel
+- client IP derivation for logging / rate limiting
+
+Forward either:
+
+- the standard `Forwarded` header, or
+- `X-Forwarded-Host` plus `X-Forwarded-Proto` (and optionally `X-Forwarded-Port`)
+
+Leave this disabled for direct/non-proxied deployments.
 
 ## Runtime and agent
 

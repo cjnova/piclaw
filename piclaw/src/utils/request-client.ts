@@ -12,6 +12,30 @@ export function firstHeaderValue(value: string | null): string | null {
   return value.split(",")[0]?.trim() || null;
 }
 
+function stripOptionalQuotes(value: string): string {
+  return value.replace(/^"|"$/g, "").trim();
+}
+
+function parseForwardedHeader(value: string | null): { proto: string | null; host: string | null } {
+  const first = firstHeaderValue(value);
+  if (!first) return { proto: null, host: null };
+
+  let proto: string | null = null;
+  let host: string | null = null;
+  for (const part of first.split(";")) {
+    const [rawKey, ...rawRest] = part.split("=");
+    const key = rawKey?.trim().toLowerCase();
+    const joined = rawRest.join("=").trim();
+    if (!key || !joined) continue;
+    const next = stripOptionalQuotes(joined);
+    if (!next) continue;
+    if (key === "proto") proto = next;
+    if (key === "host") host = next;
+  }
+
+  return { proto, host };
+}
+
 /** Derive a client key (IP-like token) for logging/rate limiting. */
 export function getClientKey(req: Request, trustProxy = TRUST_PROXY): string {
   if (trustProxy) {
@@ -32,8 +56,13 @@ export function getClientKey(req: Request, trustProxy = TRUST_PROXY): string {
 export function getRequestOriginParts(req: Request, trustProxy = TRUST_PROXY): { proto: string; host: string } {
   const url = new URL(req.url);
 
-  const forwardedProto = trustProxy ? firstHeaderValue(req.headers.get("x-forwarded-proto")) : null;
-  const forwardedHost = trustProxy ? firstHeaderValue(req.headers.get("x-forwarded-host")) : null;
+  const forwarded = trustProxy ? parseForwardedHeader(req.headers.get("forwarded")) : { proto: null, host: null };
+  const forwardedProto = trustProxy
+    ? firstHeaderValue(req.headers.get("x-forwarded-proto")) || forwarded.proto
+    : null;
+  const forwardedHost = trustProxy
+    ? firstHeaderValue(req.headers.get("x-forwarded-host")) || forwarded.host
+    : null;
   const forwardedPort = trustProxy ? firstHeaderValue(req.headers.get("x-forwarded-port")) : null;
 
   const proto = forwardedProto || url.protocol.replace(":", "") || "http";

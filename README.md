@@ -80,7 +80,27 @@ Key environment variables:
 | `PICLAW_ASSISTANT_NAME` | `PiClaw` | Display name in the UI |
 | `PICLAW_KEYCHAIN_KEY` | _(empty)_ | Master key for encrypted secret storage |
 
-For the full list (TLS, timeouts, Pushover, WhatsApp, keychain, external workspaces), see [docs/configuration.md](docs/configuration.md).
+For the full list (TLS, reverse proxies, timeouts, Pushover, WhatsApp, keychain, external workspaces), see [docs/configuration.md](docs/configuration.md).
+
+### Reverse proxies / tunnels
+
+If piclaw is running behind a reverse proxy or tunnel (for example Cloudflare Tunnel, Caddy, or Nginx TLS termination), enable proxy trust so origin checks and absolute URL generation use the external host/proto:
+
+```bash
+PICLAW_TRUST_PROXY=1
+```
+
+or in `.piclaw/config.json`:
+
+```json
+{
+  "web": {
+    "trustProxy": true
+  }
+}
+```
+
+Your proxy should forward either the standard `Forwarded` header or the usual `X-Forwarded-Host` / `X-Forwarded-Proto` headers.
 
 ## Development
 

@@ -10,6 +10,31 @@ export function firstHeaderValue(value) {
         return null;
     return value.split(",")[0]?.trim() || null;
 }
+function stripOptionalQuotes(value) {
+    return value.replace(/^"|"$/g, "").trim();
+}
+function parseForwardedHeader(value) {
+    const first = firstHeaderValue(value);
+    if (!first)
+        return { proto: null, host: null };
+    let proto = null;
+    let host = null;
+    for (const part of first.split(";")) {
+        const [rawKey, ...rawRest] = part.split("=");
+        const key = rawKey?.trim().toLowerCase();
+        const joined = rawRest.join("=").trim();
+        if (!key || !joined)
+            continue;
+        const next = stripOptionalQuotes(joined);
+        if (!next)
+            continue;
+        if (key === "proto")
+            proto = next;
+        if (key === "host")
+            host = next;
+    }
+    return { proto, host };
+}
 /** Derive a client key (IP-like token) for logging/rate limiting. */
 export function getClientKey(req, trustProxy = TRUST_PROXY) {
     if (trustProxy) {
@@ -28,8 +53,13 @@ export function getClientKey(req, trustProxy = TRUST_PROXY) {
  */
 export function getRequestOriginParts(req, trustProxy = TRUST_PROXY) {
     const url = new URL(req.url);
-    const forwardedProto = trustProxy ? firstHeaderValue(req.headers.get("x-forwarded-proto")) : null;
-    const forwardedHost = trustProxy ? firstHeaderValue(req.headers.get("x-forwarded-host")) : null;
+    const forwarded = trustProxy ? parseForwardedHeader(req.headers.get("forwarded")) : { proto: null, host: null };
+    const forwardedProto = trustProxy
+        ? firstHeaderValue(req.headers.get("x-forwarded-proto")) || forwarded.proto
+        : null;
+    const forwardedHost = trustProxy
+        ? firstHeaderValue(req.headers.get("x-forwarded-host")) || forwarded.host
+        : null;
     const forwardedPort = trustProxy ? firstHeaderValue(req.headers.get("x-forwarded-port")) : null;
     const proto = forwardedProto || url.protocol.replace(":", "") || "http";
     let host = forwardedHost || req.headers.get("host") || url.host;

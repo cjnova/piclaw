@@ -166,7 +166,6 @@ function buildFolderSizeHierarchy(node, depth = 0) {
     if (!node || node.type !== 'dir' || depth >= STARBURST_MAX_DEPTH) return out;
     const children = Array.isArray(node.children) ? node.children : [];
     const entries = [];
-    let filesBytes = 0;
 
     for (const child of children) {
         const childSize = Math.max(0, Number(child?.__bytes ?? child?.size ?? 0));
@@ -174,17 +173,8 @@ function buildFolderSizeHierarchy(node, depth = 0) {
         if (child.type === 'dir') {
             entries.push({ kind: 'dir', node: child, size: childSize });
         } else {
-            filesBytes += childSize;
+            entries.push({ kind: 'file', name: child.name, path: child.path, size: childSize });
         }
-    }
-
-    if (filesBytes > 0) {
-        entries.push({
-            kind: 'files',
-            name: '[files]',
-            path: `${out.path}/[files]`,
-            size: filesBytes,
-        });
     }
 
     entries.sort((a, b) => b.size - a.size);
@@ -238,11 +228,15 @@ function polar(cx, cy, radius, angle) {
 }
 
 function describeDonutSegment(cx, cy, innerRadius, outerRadius, startAngle, endAngle) {
+    // Cap near-full-circle arcs to just under 2π so SVG can draw them
+    // (SVG arcs from a point back to the same point draw nothing).
+    const maxSweep = Math.PI * 2 - 0.0001;
+    const clampedEnd = (endAngle - startAngle) > maxSweep ? startAngle + maxSweep : endAngle;
     const outerStart = polar(cx, cy, outerRadius, startAngle);
-    const outerEnd = polar(cx, cy, outerRadius, endAngle);
-    const innerEnd = polar(cx, cy, innerRadius, endAngle);
+    const outerEnd = polar(cx, cy, outerRadius, clampedEnd);
+    const innerEnd = polar(cx, cy, innerRadius, clampedEnd);
     const innerStart = polar(cx, cy, innerRadius, startAngle);
-    const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
+    const largeArc = (clampedEnd - startAngle) > Math.PI ? 1 : 0;
     return [
         `M ${outerStart.x.toFixed(3)} ${outerStart.y.toFixed(3)}`,
         `A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${outerEnd.x.toFixed(3)} ${outerEnd.y.toFixed(3)}`,
@@ -329,14 +323,59 @@ function findHierarchyNode(root, targetPath) {
     return null;
 }
 
+function buildFallbackStarburst(label, pathBase, size, isDarkTheme) {
+    if (!size || size <= 0) return { segments: [], legend: [] };
+    const ring = STARBURST_RINGS[1];
+    if (!ring) return { segments: [], legend: [] };
+    const start = -Math.PI / 2;
+    const end = (Math.PI * 3) / 2;
+    const color = segmentColorFromAngle(start, 1, isDarkTheme);
+    const keyBase = pathBase || '.';
+    const key = `${keyBase}/[files]`;
+    return {
+        segments: [
+            {
+                key,
+                path: key,
+                label,
+                size,
+                color,
+                depth: 1,
+                startAngle: start,
+                endAngle: end,
+                innerRadius: ring[0],
+                outerRadius: ring[1],
+                d: describeDonutSegment(120, 120, ring[0], ring[1], start, end),
+            },
+        ],
+        legend: [
+            {
+                key,
+                name: label,
+                size,
+                pct: 100,
+                color,
+            },
+        ],
+    };
+}
+
 function createFolderStarburstPayload(root, truncated = false, isDarkTheme = false) {
     if (!root) return null;
     const totalSize = computeSubtreeBytes(root);
     const hierarchy = buildFolderSizeHierarchy(root, 0);
-    const { segments, legend } = buildStarburstSegments(hierarchy, hierarchy.size || totalSize, isDarkTheme);
+    const baseSize = hierarchy.size || totalSize;
+    let { segments, legend } = buildStarburstSegments(hierarchy, baseSize, isDarkTheme);
+
+    if (!segments.length && baseSize > 0) {
+        const fallback = buildFallbackStarburst('[files]', hierarchy.path, baseSize, isDarkTheme);
+        segments = fallback.segments;
+        legend = fallback.legend;
+    }
+
     return {
         root: hierarchy,
-        totalSize,
+        totalSize: baseSize,
         segments,
         legend,
         truncated,
@@ -371,8 +410,12 @@ function FolderStarburstChart({ payload }) {
 
     const baseSize = zoomRoot?.size || payload.totalSize || 0;
     const { segments, legend } = useMemo(() => {
-        return buildStarburstSegments(zoomRoot, baseSize, payload.isDarkTheme);
-    }, [zoomRoot, baseSize, payload.isDarkTheme]);
+        const computed = buildStarburstSegments(zoomRoot, baseSize, payload.isDarkTheme);
+        if (computed.segments.length > 0) return computed;
+        if (baseSize <= 0) return computed;
+        const label = zoomRoot?.children?.length ? 'Total' : '[files]';
+        return buildFallbackStarburst(label, zoomRoot?.path || payload?.root?.path || '.', baseSize, payload.isDarkTheme);
+    }, [zoomRoot, baseSize, payload.isDarkTheme, payload?.root?.path]);
 
     const [animatedSegments, setAnimatedSegments] = useState(segments);
     const prevSegmentsRef = useRef(new Map());
@@ -450,7 +493,9 @@ function FolderStarburstChart({ payload }) {
     return html`
         <div class="workspace-folder-starburst">
             <svg viewBox="0 0 240 240" class=${`workspace-folder-starburst-svg${isZooming ? ' is-zooming' : ''}`} role="img"
-                aria-label=${`Folder sizes for ${zoomRoot?.path || payload?.root?.path || '.'}`}>
+                aria-label=${`Folder sizes for ${zoomRoot?.path || payload?.root?.path || '.'}`}
+                data-segments=${displaySegments.length}
+                data-base-size=${baseSize}>
                 ${displaySegments.map((segment) => html`
                     <path
                         key=${segment.key}
@@ -557,10 +602,10 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
     const [showHidden,    setShowHidden]    = useState(() => getLocalStorageBoolean('workspaceShowHidden', false));
     const [dragActive,   setDragActive]    = useState(false);
     const [dragMode,     setDragMode]      = useState(null);
+    const [dragGhost,    setDragGhost]     = useState(null);
     const [dropTarget,   setDropTarget]    = useState(null);
     const [uploading,    setUploading]     = useState(false);
     const [folderChart,  setFolderChart]   = useState(null);
-    const [workspaceUpdateCounter, setWorkspaceUpdateCounter] = useState(0);
     const [isDarkTheme,  setIsDarkTheme]   = useState(() => detectDarkTheme());
 
     // ── Stable refs (never trigger re-renders) ────────────────────────────────
@@ -584,9 +629,13 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
     const uploadTargetRef = useRef('.');
     const longPressTimerRef = useRef(null);
     const touchDragRef     = useRef({ path: null, dragging: false, startX: 0, startY: 0 });
+    const mouseDragRef     = useRef({ path: null, dragging: false, startX: 0, startY: 0 });
+    const dragExpandRef    = useRef({ path: null, timer: 0 });
+    const suppressClickRef = useRef(false);
     const previewHeightRef= useRef(0);
-    const folderChartFetchIdRef = useRef(0);
     const folderChartCacheRef = useRef(new Map());
+    const folderChartPayloadRef = useRef(null);
+    const folderChartPathRef = useRef(null);
     const showHiddenRef   = useRef(showHidden);
     const visibleRef      = useRef(visible);
     const activeRef       = useRef(active ?? visible);
@@ -594,6 +643,9 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
     const dropTargetRef   = useRef(dropTarget);
     const dragActiveRef   = useRef(dragActive);
     const dragModeRef     = useRef(dragMode);
+    const dragGhostRef    = useRef(null);
+    const dragGhostPosRef = useRef({ x: 0, y: 0 });
+    const dragGhostRafRef = useRef(0);
     const moveEntryToTargetRef = useRef(null);
     const selectedPathRef = useRef(selectedPath);
     const renamingPathRef = useRef(renamingPath);
@@ -751,6 +803,77 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
         return resolveDropTargetFromElement(event?.target || null);
     }, [resolveDropTargetFromElement]);
 
+    const updateDropTarget = useCallback((value) => {
+        dropTargetRef.current = value;
+        setDropTarget(value);
+    }, []);
+
+    const clearDragExpandTimer = useCallback(() => {
+        const current = dragExpandRef.current;
+        if (current?.timer) clearTimeout(current.timer);
+        dragExpandRef.current = { path: null, timer: 0 };
+    }, []);
+
+    const scheduleDragExpand = useCallback((targetPath) => {
+        if (!targetPath || targetPath === '.') {
+            clearDragExpandTimer();
+            return;
+        }
+        const node = nodeMapRef.current?.get(targetPath);
+        if (!node || node.type !== 'dir') {
+            clearDragExpandTimer();
+            return;
+        }
+        if (expandedRef.current?.has(targetPath)) {
+            clearDragExpandTimer();
+            return;
+        }
+        if (dragExpandRef.current?.path === targetPath) return;
+
+        clearDragExpandTimer();
+        const timer = setTimeout(() => {
+            dragExpandRef.current = { path: null, timer: 0 };
+            loadSubtreeRef.current?.(targetPath);
+            setExpanded((prev) => {
+                const next = new Set(prev);
+                next.add(targetPath);
+                return next;
+            });
+        }, 600);
+        dragExpandRef.current = { path: targetPath, timer };
+    }, [clearDragExpandTimer]);
+
+    const updateDragGhostPosition = useCallback((x, y) => {
+        dragGhostPosRef.current = { x, y };
+        if (dragGhostRafRef.current) return;
+        dragGhostRafRef.current = requestAnimationFrame(() => {
+            dragGhostRafRef.current = 0;
+            const el = dragGhostRef.current;
+            if (!el) return;
+            const pos = dragGhostPosRef.current;
+            el.style.transform = `translate(${pos.x + 12}px, ${pos.y + 12}px)`;
+        });
+    }, []);
+
+    const startDragGhost = useCallback((path) => {
+        if (!path) return;
+        const node = nodeMapRef.current?.get(path);
+        const label = (node?.name || path.split('/').pop() || path).trim();
+        if (!label) return;
+        setDragGhost({ path, label });
+    }, []);
+
+    const clearDragGhost = useCallback(() => {
+        setDragGhost(null);
+        if (dragGhostRafRef.current) {
+            cancelAnimationFrame(dragGhostRafRef.current);
+            dragGhostRafRef.current = 0;
+        }
+        if (dragGhostRef.current) {
+            dragGhostRef.current.style.transform = 'translate(-9999px, -9999px)';
+        }
+    }, []);
+
     const resolveCreateTargetPath = useCallback((path) => {
         if (!path) return '.';
         const node = nodeMapRef.current?.get(path);
@@ -891,14 +1014,20 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
                 return next;
             });
 
-            if (folderChartCacheRef.current.size) {
+            const selected = selectedPathRef.current;
+            const shouldRefreshStarburst = Boolean(selected) && updates.some((update) => {
+                const path = update?.path || '';
+                if (!path || path === '.') return true;
+                return selected === path
+                    || selected.startsWith(`${path}/`)
+                    || path.startsWith(`${selected}/`);
+            });
+
+            if (shouldRefreshStarburst) {
                 folderChartCacheRef.current.clear();
             }
-            folderChartFetchIdRef.current += 1;
-            setWorkspaceUpdateCounter((prev) => prev + 1);
 
             // If the selected file changed on disk, refresh the preview.
-            const selected = selectedPathRef.current;
             if (!selected || !previewRef.current) return;
             const node = nodeMapRef.current?.get(selected);
             if (node && node.type === 'dir') return;
@@ -999,28 +1128,35 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
     useEffect(() => {
         if (!selectedPath || !selectedIsDir) {
             setFolderChart(null);
+            folderChartPayloadRef.current = null;
+            folderChartPathRef.current = null;
             return;
         }
 
+        const fetchPath = selectedPath;
         const cacheKey = `${showHidden ? 'hidden' : 'visible'}:${selectedPath}`;
         const cache = folderChartCacheRef.current;
-        const fetchId = folderChartFetchIdRef.current + 1;
-        folderChartFetchIdRef.current = fetchId;
 
         const cached = cache.get(cacheKey);
         if (cached?.root) {
             cache.delete(cacheKey);
             cache.set(cacheKey, cached);
             const payload = createFolderStarburstPayload(cached.root, Boolean(cached.truncated), isDarkTheme);
-            setFolderChart({ loading: false, error: null, payload });
+            if (payload) {
+                folderChartPayloadRef.current = payload;
+                folderChartPathRef.current = selectedPath;
+                setFolderChart({ loading: false, error: null, payload });
+            }
             return;
         }
 
-        setFolderChart({ loading: true, error: null, payload: null });
+        const lastPayload = folderChartPayloadRef.current;
+        const lastPath = folderChartPathRef.current;
+        setFolderChart({ loading: true, error: null, payload: lastPath === selectedPath ? lastPayload : null });
 
         getWorkspaceTree(selectedPath, STARBURST_FETCH_DEPTH, showHidden)
             .then((data) => {
-                if (folderChartFetchIdRef.current !== fetchId) return;
+                if (selectedPathRef.current !== fetchPath) return;
                 const entry = { root: data?.root, truncated: Boolean(data?.truncated) };
                 cache.delete(cacheKey);
                 cache.set(cacheKey, entry);
@@ -1030,13 +1166,15 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
                     cache.delete(oldest);
                 }
                 const payload = createFolderStarburstPayload(entry.root, entry.truncated, isDarkTheme);
+                folderChartPayloadRef.current = payload;
+                folderChartPathRef.current = selectedPath;
                 setFolderChart({ loading: false, error: null, payload });
             })
             .catch((err) => {
-                if (folderChartFetchIdRef.current !== fetchId) return;
-                setFolderChart({ loading: false, error: err?.message || 'Failed to load folder size chart', payload: null });
+                if (selectedPathRef.current !== fetchPath) return;
+                setFolderChart({ loading: false, error: err?.message || 'Failed to load folder size chart', payload: lastPath === selectedPath ? lastPayload : null });
             });
-    }, [selectedPath, selectedIsDir, showHidden, isDarkTheme, workspaceUpdateCounter]);
+    }, [selectedPath, selectedIsDir, showHidden, isDarkTheme]);
 
     const canEdit = Boolean(preview && preview.kind === 'text' && !selectedIsDir && (!preview.size || preview.size <= 256 * 1024));
     const editTitle = canEdit
@@ -1045,16 +1183,27 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
             ? 'File too large to edit'
             : 'File is not editable';
 
+    const getEventTargetElement = (event) => {
+        const target = event?.target;
+        if (target instanceof Element) return target;
+        return target?.parentElement || null;
+    };
+
     // ── Single stable click handler via event delegation ──────────────────────
     // Created once; reads live state through refs so it never needs recreation.
     const handleTreeClick = useRef((e) => {
-        const rowEl = e.target.closest('[data-path]');
+        if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+            return;
+        }
+        const targetEl = getEventTargetElement(e);
+        const rowEl = targetEl?.closest?.('[data-path]');
         treeListRef.current?.focus?.();
         if (!rowEl) return;
         const clickedPath = rowEl.dataset.path;
         const clickedType = rowEl.dataset.type;
-        const isCaretClick = Boolean(e.target.closest('.workspace-caret'));
-        const isActionClick = Boolean(e.target.closest('button')) || Boolean(e.target.closest('a')) || Boolean(e.target.closest('input'));
+        const isCaretClick = Boolean(targetEl?.closest?.('.workspace-caret'));
+        const isActionClick = Boolean(targetEl?.closest?.('button')) || Boolean(targetEl?.closest?.('a')) || Boolean(targetEl?.closest?.('input'));
         const isSelected = selectedPathRef.current === clickedPath;
         const renaming = renamingPathRef.current;
 
@@ -1123,7 +1272,8 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
     }).current;
 
     const handleBackgroundClick = useRef((e) => {
-        if (e.target.closest('[data-path]')) return;
+        const targetEl = getEventTargetElement(e);
+        if (targetEl?.closest?.('[data-path]')) return;
         clearSelection();
     }).current;
 
@@ -1292,8 +1442,10 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
         dragDepthRef.current = 0;
         setDragActive(false);
         setDragMode(null);
-        setDropTarget(null);
-    }, [resolveDropTargetPath]);
+        updateDropTarget(null);
+        clearDragExpandTimer();
+        clearDragGhost();
+    }, [resolveDropTargetPath, clearDragGhost, updateDropTarget, clearDragExpandTimer]);
 
     const handleRowTouchMove = useCallback((event) => {
         const dragState = touchDragRef.current;
@@ -1319,15 +1471,18 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
             dragState.dragging = true;
             setDragActive(true);
             setDragMode('move');
+            startDragGhost(dragState.path);
         }
 
         if (dragState.dragging) {
             event.preventDefault();
+            updateDragGhostPosition(touch.clientX, touch.clientY);
             const el = document.elementFromPoint(touch.clientX, touch.clientY);
             const target = resolveDropTargetFromElement(el) || resolveDropTargetPath();
-            if (dropTargetRef.current !== target) setDropTarget(target);
+            if (dropTargetRef.current !== target) updateDropTarget(target);
+            scheduleDragExpand(target);
         }
-    }, [resolveDropTargetFromElement, resolveDropTargetPath]);
+    }, [resolveDropTargetFromElement, resolveDropTargetPath, startDragGhost, updateDragGhostPosition, updateDropTarget, scheduleDragExpand]);
 
     // ── Preview-pane vertical resize — zero re-renders ────────────────────────
     const handlePreviewSplitterMouseDown = useRef((e) => {
@@ -1419,53 +1574,41 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
         return types.includes('Files');
     };
 
-    const isWorkspaceDrag = (event) => {
-        const types = Array.from(event?.dataTransfer?.types || []);
-        return types.includes('text/x-workspace-path');
-    };
-
-    const getWorkspaceDragPath = (event) => {
-        const dt = event?.dataTransfer;
-        if (!dt) return '';
-        return dt.getData('text/x-workspace-path') || dt.getData('text/plain') || '';
-    };
-
     const handleDragEnter = useCallback((event) => {
-        const fileDrag = isFileDrag(event);
-        const workspaceDrag = isWorkspaceDrag(event);
-        if (!fileDrag && !workspaceDrag) return;
+        if (!isFileDrag(event)) return;
         event.preventDefault();
         dragDepthRef.current += 1;
         if (!dragActiveRef.current) setDragActive(true);
-        setDragMode(fileDrag ? 'upload' : 'move');
+        setDragMode('upload');
         const target = resolveDropTargetFromEvent(event) || resolveDropTargetPath();
-        setDropTarget(target);
-    }, [resolveDropTargetPath, resolveDropTargetFromEvent]);
+        updateDropTarget(target);
+        scheduleDragExpand(target);
+    }, [resolveDropTargetPath, resolveDropTargetFromEvent, updateDropTarget, scheduleDragExpand]);
 
     const handleDragOver = useCallback((event) => {
-        const fileDrag = isFileDrag(event);
-        const workspaceDrag = isWorkspaceDrag(event);
-        if (!fileDrag && !workspaceDrag) return;
+        if (!isFileDrag(event)) return;
         event.preventDefault();
-        if (event.dataTransfer) event.dataTransfer.dropEffect = fileDrag ? 'copy' : 'move';
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
         if (!dragActiveRef.current) setDragActive(true);
-        if (dragModeRef.current !== (fileDrag ? 'upload' : 'move')) {
-            setDragMode(fileDrag ? 'upload' : 'move');
+        if (dragModeRef.current !== 'upload') {
+            setDragMode('upload');
         }
         const target = resolveDropTargetFromEvent(event) || resolveDropTargetPath();
-        if (dropTargetRef.current !== target) setDropTarget(target);
-    }, [resolveDropTargetPath, resolveDropTargetFromEvent]);
+        if (dropTargetRef.current !== target) updateDropTarget(target);
+        scheduleDragExpand(target);
+    }, [resolveDropTargetPath, resolveDropTargetFromEvent, updateDropTarget, scheduleDragExpand]);
 
     const handleDragLeave = useCallback((event) => {
-        if (!isFileDrag(event) && !isWorkspaceDrag(event)) return;
+        if (!isFileDrag(event)) return;
         event.preventDefault();
         dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
         if (dragDepthRef.current === 0) {
             setDragActive(false);
             setDragMode(null);
-            setDropTarget(null);
+            updateDropTarget(null);
+            clearDragExpandTimer();
         }
-    }, []);
+    }, [updateDropTarget, clearDragExpandTimer]);
 
     const uploadFilesToTarget = useCallback(async (files, targetPath = '.') => {
         const list = Array.from(files || []);
@@ -1547,28 +1690,19 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
     moveEntryToTargetRef.current = moveEntryToTarget;
 
     const handleDrop = useCallback(async (event) => {
-        const fileDrag = isFileDrag(event);
-        const workspaceDrag = isWorkspaceDrag(event);
-        if (!fileDrag && !workspaceDrag) return;
+        if (!isFileDrag(event)) return;
         event.preventDefault();
         dragDepthRef.current = 0;
         setDragActive(false);
         setDragMode(null);
         setDropTarget(null);
+        clearDragExpandTimer();
 
-        if (fileDrag) {
-            const files = Array.from(event?.dataTransfer?.files || []);
-            if (files.length === 0) return;
-            const target = dropTargetRef.current || resolveDropTargetFromEvent(event) || resolveDropTargetPath();
-            await uploadFilesToTarget(files, target);
-            return;
-        }
-
-        const sourcePath = getWorkspaceDragPath(event);
+        const files = Array.from(event?.dataTransfer?.files || []);
+        if (files.length === 0) return;
         const target = dropTargetRef.current || resolveDropTargetFromEvent(event) || resolveDropTargetPath();
-        if (!sourcePath || !target) return;
-        await moveEntryToTarget(sourcePath, target);
-    }, [resolveDropTargetPath, resolveDropTargetFromEvent, uploadFilesToTarget, moveEntryToTarget]);
+        await uploadFilesToTarget(files, target);
+    }, [resolveDropTargetPath, resolveDropTargetFromEvent, uploadFilesToTarget]);
 
     const handleFolderUploadClick = useCallback((event) => {
         event?.stopPropagation?.();
@@ -1586,29 +1720,77 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
         uploadInputRef.current?.click();
     }, [uploading]);
 
-    const handleRowDragStart = useCallback((event) => {
-        const rowEl = event?.currentTarget;
+    const handleRowMouseDown = useCallback((event) => {
+        if (!event || event.button !== 0) return;
+        const rowEl = event.currentTarget;
         if (!rowEl || !rowEl.dataset) return;
         const path = rowEl.dataset.path;
         if (!path || path === '.') return;
         if (renamingPathRef.current === path) return;
-        if (event.dataTransfer) {
-            event.dataTransfer.setData('text/x-workspace-path', path);
-            event.dataTransfer.setData('text/plain', path);
-            event.dataTransfer.effectAllowed = 'move';
-        }
-        setDragMode('move');
-        setDragActive(true);
-        const target = resolveDropTargetPath();
-        setDropTarget(target);
-    }, [resolveDropTargetPath]);
+        if (event.target?.closest?.('button, a, input, .workspace-caret')) return;
 
-    const handleRowDragEnd = useCallback(() => {
-        dragDepthRef.current = 0;
-        setDragActive(false);
-        setDragMode(null);
-        setDropTarget(null);
-    }, []);
+        event.preventDefault();
+        mouseDragRef.current = {
+            path,
+            dragging: false,
+            startX: event.clientX,
+            startY: event.clientY,
+        };
+
+        const onMove = (me) => {
+            const dragState = mouseDragRef.current;
+            if (!dragState?.path) return;
+            const dx = Math.abs(me.clientX - dragState.startX);
+            const dy = Math.abs(me.clientY - dragState.startY);
+            const moved = dx > 4 || dy > 4;
+
+            if (!dragState.dragging && moved) {
+                dragState.dragging = true;
+                suppressClickRef.current = true;
+                setDragActive(true);
+                setDragMode('move');
+                startDragGhost(dragState.path);
+                updateDragGhostPosition(me.clientX, me.clientY);
+                document.body.style.userSelect = 'none';
+                document.body.style.cursor = 'grabbing';
+            }
+
+            if (dragState.dragging) {
+                me.preventDefault();
+                updateDragGhostPosition(me.clientX, me.clientY);
+                const el = document.elementFromPoint(me.clientX, me.clientY);
+                const target = resolveDropTargetFromElement(el) || resolveDropTargetPath();
+                if (dropTargetRef.current !== target) updateDropTarget(target);
+                scheduleDragExpand(target);
+            }
+        };
+
+        const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+
+            const dragState = mouseDragRef.current;
+            if (dragState?.dragging && dragState.path) {
+                const target = dropTargetRef.current || resolveDropTargetPath();
+                const mover = moveEntryToTargetRef.current;
+                if (typeof mover === 'function') mover(dragState.path, target);
+            }
+
+            mouseDragRef.current = { path: null, dragging: false, startX: 0, startY: 0 };
+            dragDepthRef.current = 0;
+            setDragActive(false);
+            setDragMode(null);
+            updateDropTarget(null);
+            clearDragExpandTimer();
+            clearDragGhost();
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+            setTimeout(() => { suppressClickRef.current = false; }, 0);
+        };
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }, [resolveDropTargetFromElement, resolveDropTargetPath, startDragGhost, updateDragGhostPosition, clearDragGhost, updateDropTarget, scheduleDragExpand, clearDragExpandTimer]);
 
     const handleUploadInputChange = useCallback(async (event) => {
         const files = Array.from(event?.target?.files || []);
@@ -1663,8 +1845,6 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
                 </div>
             </div>
             <div class="workspace-tree" onClick=${handleBackgroundClick}>
-                ${dragActive && dragMode === 'upload' && html`<div class="workspace-drop-hint">Drop to upload to ${dropTarget || '.'}</div>`}
-                ${dragActive && dragMode === 'move' && html`<div class="workspace-drop-hint">Drop to move to ${dropTarget || '.'}</div>`}
                 ${uploading && html`<div class="workspace-drop-hint">Uploading…</div>`}
                 ${initialLoad && html`<div class="workspace-loading">Loading…</div>`}
                 ${error && html`<div class="workspace-error">${error}</div>`}
@@ -1696,9 +1876,7 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
                                     style=${{ paddingLeft: `${8 + depth * INDENT}px` }}
                                     data-path=${node.path}
                                     data-type=${node.type}
-                                    draggable=${!isRenaming && node.path !== '.'}
-                                    onDragStart=${handleRowDragStart}
-                                    onDragEnd=${handleRowDragEnd}
+                                    onMouseDown=${handleRowMouseDown}
                                 >
                                     <span class="workspace-caret" aria-hidden="true">
                                         ${isDir
@@ -1838,10 +2016,10 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
                         <div class="workspace-preview-text">Folder selected — create file, upload files, or download as zip.</div>
                         ${folderChart?.loading && html`<div class="workspace-loading">Loading folder size preview…</div>`}
                         ${folderChart?.error && html`<div class="workspace-error">${folderChart.error}</div>`}
-                        ${folderChart?.payload && folderChart.payload.totalSize > 0 && html`
+                        ${folderChart?.payload && folderChart.payload.segments?.length > 0 && html`
                             <${FolderStarburstChart} payload=${folderChart.payload} />
                         `}
-                        ${folderChart?.payload && folderChart.payload.totalSize <= 0 && html`
+                        ${folderChart?.payload && (!folderChart.payload.segments || folderChart.payload.segments.length === 0) && html`
                             <div class="workspace-preview-text">No file size data available for this folder yet.</div>
                         `}
                     `}
@@ -1874,6 +2052,9 @@ export function WorkspaceExplorer({ onFileSelect, visible = true, active = undef
                         </div>
                     `}
                 </div>
+            `}
+            ${dragGhost && html`
+                <div class="workspace-drag-ghost" ref=${dragGhostRef}>${dragGhost.label}</div>
             `}
         </aside>
     `;
