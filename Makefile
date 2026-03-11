@@ -56,9 +56,9 @@ build: ## Build Docker image
 
 # ── Build pipeline ───────────────────────────────────────────────────
 
-vendor: ## Bundle vendored CodeMirror (minified ESM)
+vendor: ## Bundle vendored CodeMirror + beautiful-mermaid
 	cd piclaw && bun run build:vendor
-	@ls -lh piclaw/web/static/js/vendor/codemirror.js
+	@ls -lh piclaw/web/static/js/vendor/codemirror.js piclaw/web/static/js/vendor/beautiful-mermaid.js
 
 build-web: ## Build web JS/CSS bundles (+ sourcemaps) into static/dist/ (includes vendor bundle)
 	cd piclaw && bun run build:web
