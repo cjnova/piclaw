@@ -161,7 +161,7 @@ export class StandaloneEditorInstance implements PaneInstance {
     // DOM
     private container: HTMLElement;
     private paneEl: HTMLElement;
-    private headerEl: HTMLElement;
+    private headerEl: HTMLElement | null = null;
     private bodyEl: HTMLElement;
     private cmHost: HTMLElement;
     private statusEl: HTMLElement;
@@ -202,7 +202,6 @@ export class StandaloneEditorInstance implements PaneInstance {
         this.paneEl = document.createElement('div');
         this.paneEl.className = 'editor-pane';
 
-        this.headerEl = this.buildHeader();
         this.bodyEl = document.createElement('div');
         this.bodyEl.className = 'editor-body';
 
@@ -212,7 +211,6 @@ export class StandaloneEditorInstance implements PaneInstance {
 
         this.statusEl = this.buildStatusBar();
 
-        this.paneEl.appendChild(this.headerEl);
         this.paneEl.appendChild(this.bodyEl);
         this.paneEl.appendChild(this.statusEl);
         container.appendChild(this.paneEl);
@@ -235,39 +233,6 @@ export class StandaloneEditorInstance implements PaneInstance {
     }
 
     // ── DOM builders ────────────────────────────────────────────
-
-    private buildHeader(): HTMLElement {
-        const header = document.createElement('div');
-        header.className = 'editor-header';
-
-        const title = document.createElement('div');
-        title.className = 'editor-title';
-        title.title = this.path;
-        title.textContent = this.path || 'Untitled file';
-
-        const actions = document.createElement('div');
-        actions.className = 'editor-actions';
-
-        const closeBtn = document.createElement('button');
-        closeBtn.className = 'editor-button';
-        closeBtn.textContent = 'Close';
-        closeBtn.title = 'Close editor';
-        closeBtn.addEventListener('click', () => this.closeCb?.());
-
-        const saveBtn = document.createElement('button');
-        saveBtn.className = 'editor-button primary';
-        saveBtn.textContent = 'Save';
-        saveBtn.title = 'Save changes';
-        saveBtn.addEventListener('click', () => this.handleSave());
-        this._saveBtn = saveBtn;
-
-        actions.appendChild(closeBtn);
-        actions.appendChild(saveBtn);
-        header.appendChild(title);
-        header.appendChild(actions);
-        return header;
-    }
-    private _saveBtn: HTMLButtonElement | null = null;
 
     private buildStatusBar(): HTMLElement {
         const row = document.createElement('div');
@@ -295,8 +260,16 @@ export class StandaloneEditorInstance implements PaneInstance {
         vimBtn.addEventListener('click', () => this.toggleVim());
         this._vimBtn = vimBtn;
 
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'editor-status-button editor-save-btn';
+        saveBtn.title = 'Save (Ctrl+S)';
+        saveBtn.textContent = 'Save';
+        saveBtn.addEventListener('click', () => this.handleSave());
+        this._saveBtn = saveBtn;
+
         actionsDiv.appendChild(wsBtn);
         actionsDiv.appendChild(vimBtn);
+        actionsDiv.appendChild(saveBtn);
         row.appendChild(text);
         row.appendChild(actionsDiv);
         return row;
@@ -304,6 +277,7 @@ export class StandaloneEditorInstance implements PaneInstance {
     private _statusText: HTMLElement | null = null;
     private _wsBtn: HTMLButtonElement | null = null;
     private _vimBtn: HTMLButtonElement | null = null;
+    private _saveBtn: HTMLButtonElement | null = null;
 
     // ── File I/O ────────────────────────────────────────────────
 
@@ -549,6 +523,7 @@ export class StandaloneEditorInstance implements PaneInstance {
             this.updateStatusText('Loading…');
         } else {
             this.bodyEl.classList.remove('disabled');
+            this.updateStatusText('Ready');
         }
     }
 
@@ -684,11 +659,6 @@ export class StandaloneEditorInstance implements PaneInstance {
     /** Update the file path (after rename). */
     setPath(newPath: string): void {
         this.path = newPath;
-        const title = this.headerEl.querySelector('.editor-title');
-        if (title) {
-            title.textContent = newPath;
-            (title as HTMLElement).title = newPath;
-        }
     }
 }
 

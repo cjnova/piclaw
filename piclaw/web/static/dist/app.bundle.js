@@ -1027,9 +1027,6 @@ ${J}
             </div>
         `}
     `}class X4{extensions=new Map;register(_){this.extensions.set(_.id,_)}unregister(_){this.extensions.delete(_)}resolve(_){let $,J=-1/0;for(let Y of this.extensions.values()){if(Y.placement!=="tabs")continue;if(!Y.canHandle)continue;try{let X=Y.canHandle(_);if(X===!1||X===0)continue;let Z=X===!0?0:typeof X==="number"?X:0;if(Z>J)J=Z,$=Y}catch(X){console.warn(`[PaneRegistry] canHandle() error for "${Y.id}":`,X)}}return $}list(){return Array.from(this.extensions.values())}getDockPanes(){return Array.from(this.extensions.values()).filter((_)=>_.placement==="dock")}getTabPanes(){return Array.from(this.extensions.values()).filter((_)=>_.placement==="tabs")}get(_){return this.extensions.get(_)}get size(){return this.extensions.size}}var j0=new X4;var I2=null,N1=null;function Q4(){if(N1)return Promise.resolve(N1);if(!I2)I2=import("/static/dist/editor.bundle.js").then((_)=>{return N1=_,_}).catch((_)=>{throw I2=null,_});return I2}class K4{container;context;real=null;disposed=!1;loadingEl;queuedDirtyCb=null;queuedSaveCb=null;queuedCloseCb=null;queuedViewStateCb=null;queuedViewState=null;constructor(_,$){this.container=_,this.context=$,this.loadingEl=document.createElement("div"),this.loadingEl.className="editor-pane",this.loadingEl.innerHTML=`
-            <div class="editor-header">
-                <div class="editor-title">${this.escapeHtml($.path||"Untitled")}</div>
-            </div>
             <div class="editor-body">
                 <div class="editor-status" style="padding: 2em; text-align: center; color: var(--text-secondary);">Loading editor…</div>
             </div>
@@ -1162,5 +1159,5 @@ ${J}
         </div>
     `}n1(B`<${M8} />`,document.getElementById("app"));
 
-//# debugId=9F28DF02E9631E4B64756E2164756E21
+//# debugId=77420B15D8B0B97F64756E2164756E21
 //# sourceMappingURL=app.bundle.js.map

@@ -59,9 +59,6 @@ class LazyEditorInstance implements PaneInstance {
         this.loadingEl = document.createElement('div');
         this.loadingEl.className = 'editor-pane';
         this.loadingEl.innerHTML = `
-            <div class="editor-header">
-                <div class="editor-title">${this.escapeHtml(context.path || 'Untitled')}</div>
-            </div>
             <div class="editor-body">
                 <div class="editor-status" style="padding: 2em; text-align: center; color: var(--text-secondary);">Loading editor…</div>
             </div>
