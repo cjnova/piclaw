@@ -1,6 +1,6 @@
 ---
 name: kanban-management
-description: Manage the kanban board end-to-end: ideation, implementation planning, quality scoring, and definition-of-done tracking.
+description: "Manage the kanban board end-to-end: ideation, implementation planning, quality scoring, and definition-of-done tracking."
 ---
 
 # Kanban Management Skill
