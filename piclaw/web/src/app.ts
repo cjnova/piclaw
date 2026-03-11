@@ -278,6 +278,11 @@ function App() {
         setFileRefs([]);
     }, []);
 
+    const attachActiveEditorFile = useCallback(() => {
+        const activeId = tabStripActiveId;
+        if (activeId) addFileRef(activeId);
+    }, [tabStripActiveId, addFileRef]);
+
     const addMessageRef = useCallback((id) => {
         if (!id) return;
         setMessageRefs((prev) => (prev.includes(id) ? prev : [...prev, id]));
@@ -1413,6 +1418,8 @@ function App() {
                     messageRefs=${messageRefs}
                     onRemoveMessageRef=${removeMessageRef}
                     onClearMessageRefs=${clearMessageRefs}
+                    activeEditorPath=${tabStripActiveId}
+                    onAttachEditorFile=${attachActiveEditorFile}
                     activeModel=${activeModel}
                     thinkingLevel=${activeThinkingLevel}
                     supportsThinking=${supportsThinking}
