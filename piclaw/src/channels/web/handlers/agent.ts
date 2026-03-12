@@ -367,7 +367,10 @@ export async function processChat(
     timeoutMs,
     onEvent: streamingHandler,
     onTurnComplete: (turn) => {
-      // Intermediate turn completed (follow-up boundary) — store as threaded message
+      // Intermediate turn completed (follow-up boundary) — store as threaded message.
+      // Skip placeholder consumption: this is the original turn's output, not the
+      // follow-up response. The placeholder should only be consumed by the follow-up
+      // turn's final output below.
       if (turn.text || turn.attachments.length > 0) {
         storeAgentTurn(channel, emitter, {
           chatJid,
@@ -375,6 +378,7 @@ export async function processChat(
           attachments: turn.attachments,
           channelName,
           threadId: resolvedThreadRootId,
+          skipPlaceholder: true,
         });
       }
     },

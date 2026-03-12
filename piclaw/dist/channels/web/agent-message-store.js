@@ -24,11 +24,16 @@ export function storeAgentTurn(channel, emitter, params) {
     const { mediaIds, contentBlocks } = buildAttachmentBlocks(params.attachments);
     const formatted = formatOutbound(params.text, params.channelName);
     const resolvedThreadId = params.threadId ?? undefined;
-    const placeholderId = channel.consumeQueuedFollowupPlaceholder(params.chatJid);
-    if (placeholderId) {
-        const updated = channel.replaceQueuedFollowupPlaceholder(params.chatJid, placeholderId, formatted, mediaIds, contentBlocks.length > 0 ? contentBlocks : undefined, resolvedThreadId);
-        if (updated)
-            return;
+    if (!params.skipPlaceholder) {
+        const placeholderId = channel.consumeQueuedFollowupPlaceholder(params.chatJid);
+        if (placeholderId) {
+            // Don't override the placeholder's thread_id — it was set correctly
+            // when the /queue command created the placeholder (threaded under the
+            // /queue message). Passing undefined preserves the original association.
+            const updated = channel.replaceQueuedFollowupPlaceholder(params.chatJid, placeholderId, formatted, mediaIds, contentBlocks.length > 0 ? contentBlocks : undefined, undefined);
+            if (updated)
+                return;
+        }
     }
     const interaction = channel.storeMessage(params.chatJid, formatted, true, mediaIds, {
         contentBlocks: contentBlocks.length > 0 ? contentBlocks : undefined,
