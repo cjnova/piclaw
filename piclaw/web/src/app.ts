@@ -1799,9 +1799,9 @@ function App() {
                         <div class="dock-panel-header">
                             <span class="dock-panel-title">Terminal</span>
                             <button class="dock-panel-close" onClick=${toggleDock} title="Hide terminal (Ctrl+\`)" aria-label="Hide terminal">
-                                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                                    <line x1="4" y1="12" x2="12" y2="4"/>
-                                    <polyline points="4 4 12 4 12 12"/>
+                                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                                    <line x1="4" y1="4" x2="12" y2="12"/>
+                                    <line x1="12" y1="4" x2="4" y2="12"/>
                                 </svg>
                             </button>
                         </div>

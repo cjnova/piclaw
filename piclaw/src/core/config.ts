@@ -57,6 +57,7 @@ const envConfig = readEnvFile([
   "PICLAW_WEB_TERMINAL_ENABLED",
   "PICLAW_TRUST_PROXY",
   "PICLAW_SESSION_MAX_SIZE_MB",
+  "PICLAW_SESSION_AUTO_ROTATE",
   "PICLAW_INTERNAL_SECRET",
   "PICLAW_REMOTE_INTEROP_ENABLED",
   "PICLAW_REMOTE_INTEROP_ALLOW_HTTP",
@@ -493,6 +494,11 @@ const configSessionMaxSizeMb = pickNumber(piclawConfig, [
   "session_max_size_mb",
   "PICLAW_SESSION_MAX_SIZE_MB",
 ]);
+const configSessionAutoRotate = pickBoolean(piclawConfig, [
+  "sessionAutoRotate",
+  "session_auto_rotate",
+  "PICLAW_SESSION_AUTO_ROTATE",
+]);
 
 /** Warning threshold for oversized session files (default 100 MB). */
 export const SESSION_MAX_SIZE_MB =
@@ -502,6 +508,12 @@ export const SESSION_MAX_SIZE_MB =
 
 /** Warning threshold for oversized session files in bytes. */
 export const SESSION_MAX_SIZE_BYTES = SESSION_MAX_SIZE_MB * 1024 * 1024;
+
+/** Automatically rotate oversized persisted session files before the next prompt (default false). */
+export const SESSION_AUTO_ROTATE =
+  pickBoolean({ PICLAW_SESSION_AUTO_ROTATE: process.env.PICLAW_SESSION_AUTO_ROTATE ?? envConfig.PICLAW_SESSION_AUTO_ROTATE }, [
+    "PICLAW_SESSION_AUTO_ROTATE",
+  ]) ?? configSessionAutoRotate ?? false;
 
 // ---------------------------------------------------------------------------
 // Trigger pattern – used by router.ts to decide if a message mentions the bot.

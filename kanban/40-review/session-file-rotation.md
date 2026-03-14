@@ -1,7 +1,7 @@
 ---
 id: session-file-rotation
 title: Add session file size monitoring and rotation
-status: doing
+status: review
 priority: medium
 created: 2026-03-13
 updated: 2026-03-14
@@ -236,6 +236,25 @@ interactions are proven in tests.
 - `piclaw/piclaw/node_modules/@mariozechner/pi-coding-agent/dist/core/session-manager.js`
 
 ## Updates
+
+### 2026-03-14
+- Lane change: `20-doing` → `40-review` after completing the auto-rotation scope.
+- Factored shared rotation logic into `piclaw/piclaw/src/session-rotation.ts` so both manual and automatic rotation use the same safe path.
+- Implemented automatic session rotation before prompt execution in `piclaw/piclaw/src/agent-pool.ts` behind config:
+  - `PICLAW_SESSION_AUTO_ROTATE=1`
+  - threshold uses `PICLAW_SESSION_MAX_SIZE_MB` (default 100 MB)
+- Added integration coverage for automatic rollover in:
+  - `piclaw/piclaw/test/agent-pool/session-auto-rotation.test.ts`
+- Re-validated web command behavior so `/session-rotate` is not silently deferred while streaming.
+- Validation passed:
+  - `cd /workspace/piclaw/piclaw && bun test test/agent-control/agent-control-handlers.test.ts test/agent-control/session-rotate-integration.test.ts test/agent-pool/session-auto-rotation.test.ts`
+  - `cd /workspace/piclaw/piclaw && bun test test/channels/web/agent-message-handler.test.ts`
+  - `cd /workspace/piclaw/piclaw && bun run quality`
+- Review focus:
+  - verify the auto-rotation config naming/defaults are acceptable
+  - verify the blocked-on-pending behavior is sufficient for queued follow-up safety
+  - optionally live-test against the oversized `web_default` session before moving to done
+- Quality: ★★★★★ 9/10 (problem: 2, scope: 2, test: 2, deps: 1, risk: 2)
 
 ### 2026-03-14
 - Lane change: `10-next` → `20-doing` for the first implementation slice.

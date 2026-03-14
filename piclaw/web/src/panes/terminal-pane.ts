@@ -233,6 +233,26 @@ class TerminalPaneInstance implements PaneInstance {
         this.termEl.setAttribute('aria-label', `Terminal ${message}`);
     }
 
+    private syncHostLayout(): void {
+        const host = this.bodyEl.querySelector('.terminal-live-host');
+        if (!(host instanceof HTMLElement)) return;
+
+        const primaryChild = host.firstElementChild;
+        if (primaryChild instanceof HTMLElement) {
+            primaryChild.style.width = '100%';
+            primaryChild.style.height = '100%';
+            primaryChild.style.maxWidth = '100%';
+            primaryChild.style.minWidth = '0';
+            primaryChild.style.display = 'block';
+        }
+
+        const canvas = host.querySelector('canvas');
+        if (canvas instanceof HTMLElement) {
+            canvas.style.display = 'block';
+            canvas.style.maxWidth = 'none';
+        }
+    }
+
     private scheduleResize(): void {
         if (this.disposed) return;
         if (this.resizeFrame) {
@@ -271,6 +291,7 @@ class TerminalPaneInstance implements PaneInstance {
             }
 
             await terminal.open(terminalHost);
+            this.syncHostLayout();
             terminal.loadFonts?.();
             fitAddon?.observeResize?.();
 
@@ -494,6 +515,7 @@ class TerminalPaneInstance implements PaneInstance {
     }
 
     resize(): void {
+        this.syncHostLayout();
         try {
             this.terminal?.renderer?.remeasureFont?.();
         } catch {}
@@ -503,6 +525,7 @@ class TerminalPaneInstance implements PaneInstance {
         try {
             this.terminal?.refresh?.();
         } catch {}
+        this.syncHostLayout();
         this.sendResize();
     }
 
