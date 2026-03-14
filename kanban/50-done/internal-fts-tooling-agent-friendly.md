@@ -1,7 +1,7 @@
 ---
 id: internal-fts-tooling-agent-friendly
 title: Make internal FTS-backed search tooling more agent-friendly
-status: doing
+status: done
 priority: medium
 created: 2026-03-14
 updated: 2026-03-14
