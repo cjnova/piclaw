@@ -186,3 +186,22 @@ recovery gaps were closed without adding another protocol surface.
 - `piclaw/src/runtime/bootstrap.ts`
 - `piclaw/src/db/chat-cursors.ts`
 - `piclaw/web/src/app.ts`
+
+### 2026-03-14 (post-closure hardening)
+
+Two additional recovery bugs were discovered and fixed after this ticket closed:
+
+1. **Empty-output recovery loop** (commit `ff2eb0b`): `processChat` treated
+   successful agent completion with 0 output as an error (`endChatRunWithError`).
+   On restart, `recoverInflightRuns` rolled back the cursor and replayed the same
+   message indefinitely. Fixed by distinguishing empty output (no-op → cursor
+   advances) from persistence failure (DB error → `endChatRunWithError`).
+
+2. **Stale inflight recovery loop** (same commit): `recoverInflightRuns` had no
+   staleness guard, so a message that consistently failed would be retried forever
+   across restarts. Fixed by adding a 30-minute `MAX_INFLIGHT_AGE_MS` threshold —
+   inflight markers older than this are cleared without cursor rollback.
+
+Both fixes include test coverage in `test/channels/web/recovery.test.ts` and
+`test/channels/web/web-channel.test.ts`. Full turn mechanism audit documented
+in `docs/turn-mechanism-audit.md`.

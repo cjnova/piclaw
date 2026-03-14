@@ -3,8 +3,8 @@ id: queue-reparents-inflight-turns
 title: "/queue re-parents in-flight agent turns to queued item"
 status: done
 created: 2026-03-11
-updated: 2026-03-12
-completed: 2026-03-12
+updated: 2026-03-14
+completed: 2026-03-13
 target_release: next
 priority: medium
 estimate: M
@@ -129,6 +129,26 @@ Use **Path A** first to lock parent/thread identity per turn, then evaluate whet
   - `piclaw/src/channels/web/agent-message-service.ts`
 - May also affect `/cancel` behavior if both features share mutable turn state.
 - Fix should ensure message context is immutable for the duration of a turn.
+
+### 2026-03-14 (post-closure annotation)
+
+This ticket was moved to `50-done` during the broader steering/queueing refactor
+(March 2026) which superseded the specific fix planned here. The acceptance
+criteria checkboxes were never individually checked because the fix was delivered
+as part of the larger `compose-input-queue-by-default-steering` work item, which:
+
+- Moved queued follow-ups to server-managed deferred storage (`queued_followups_json`)
+  so they don't share mutable turn state
+- Made `processChat` process exactly one message per turn with `turnCount`-based
+  placeholder skip logic
+- Froze `resolvedThreadRootId` at the start of each turn from `currentMessage.id`
+- Made `onTurnComplete` intermediate turns use the same frozen thread root
+
+The residual stale-thread-root reparenting case (where a queued `processChat` task
+carries a stale explicit `threadRootId`) is tracked separately in
+`kanban/10-next/fix-stale-thread-root-on-queued-web-chat-retry.md`.
+
+All 792 tests pass as of 2026-03-14.
 
 ## Links
 

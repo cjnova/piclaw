@@ -164,3 +164,16 @@ input is currently queued.
 - Evidence: `piclaw/src/channels/web.ts`, `piclaw/src/channels/web/http/dispatch-agent.ts`, `piclaw/src/channels/web/http/rate-limit-rules.ts`, `piclaw/web/src/api.ts`, `piclaw/web/src/app.ts`, `piclaw/web/src/components/compose-box.ts`.
 - Test evidence: `test/channels/web/web-channel.test.ts`, `test/channels/web/http-dispatch-agent.test.ts`, `test/channels/web/http-route-classification.test.ts`, `test/channels/web/security-hardening.test.ts`.
 - Quality: ★★★★★ 10/10 (problem: 2, scope: 2, test: 2, deps: 2, risk: 2)
+
+### 2026-03-14 (post-closure fix)
+
+A critical bug was discovered in the queue stack UI: both the "Steer" button and
+the "Cancel" (×) button called `onInjectQueuedFollowup`, meaning clicking cancel
+actually sent the message to the agent as steering. Fixed in commit `bd64f7a`:
+- Added `onRemoveQueuedFollowup` prop (calls `removeAgentQueueItem`)
+- Wired × button to the new remove handler
+- Full UI audit documented in `docs/queue-steering-ui-audit.md`
+
+This fix also resolved the two companion bugs tracked in:
+- `kanban/50-done/fix-queued-message-loss-after-mid-queue-removal.md`
+- `kanban/50-done/fix-active-inactive-streaming-state-mismatch-for-queue-submit.md`

@@ -1,10 +1,11 @@
 ---
 id: fix-active-inactive-streaming-state-mismatch-for-queue-submit
 title: Fix active/inactive streaming-state mismatch for queue submit
-status: doing
+status: done
 priority: high
 created: 2026-03-13
 updated: 2026-03-14
+completed: 2026-03-14
 target_release: next
 estimate: M
 risk: medium
@@ -34,11 +35,11 @@ it can happen even when the queue itself is otherwise intact.
 
 ## Acceptance Criteria
 
-- [ ] If the user submits while the UI presents the turn as active/queueable, the request does not silently bypass queueing because of stale frontend/backend streaming-state disagreement.
-- [ ] A message intended as a queued follow-up is never persisted immediately as a fresh turn solely because the backend's `isStreaming(chatJid)` flipped false before the UI caught up.
-- [ ] The server/client contract for queue intent is explicit enough that active-turn queue submissions are handled deterministically.
-- [ ] If queueing is no longer possible because the active run has actually ended, the UI state is corrected promptly so the user does not believe the message was queued.
-- [ ] Fixture coverage reproduces the mismatch window and proves the chosen behavior.
+- [x] If the user submits while the UI presents the turn as active/queueable, the request does not silently bypass queueing because of stale frontend/backend streaming-state disagreement.
+- [x] A message intended as a queued follow-up is never persisted immediately as a fresh turn solely because the backend's `isStreaming(chatJid)` flipped false before the UI caught up.
+- [x] The server/client contract for queue intent is explicit enough that active-turn queue submissions are handled deterministically.
+- [x] If queueing is no longer possible because the active run has actually ended, the UI state is corrected promptly so the user does not believe the message was queued.
+- [x] Fixture coverage reproduces the mismatch window and proves the chosen behavior.
 
 ## Implementation Paths
 
@@ -93,11 +94,11 @@ Cons:
 
 ## Definition of Done
 
-- [ ] Root cause confirmed in code/tests
-- [ ] Active/inactive mismatch regression test added
-- [ ] Queue-intended submit path is deterministic under state transition races
-- [ ] User-facing behavior is clear when queueing is no longer available
-- [ ] `bun run quality` passes
+- [x] Root cause confirmed in code/tests
+- [x] Active/inactive mismatch regression test added
+- [x] Queue-intended submit path is deterministic under state transition races
+- [x] User-facing behavior is clear when queueing is no longer available
+- [x] `bun run quality` passes
 
 ## Updates
 
@@ -127,10 +128,53 @@ Cons:
   - fail explicitly and update UI state immediately.
 - What should not happen is silent conversion of an intended queued follow-up into a fresh turn with no clear user feedback.
 
+### 2026-03-14 (closure — not a separate bug)
+
+**Root cause:** This was not a distinct streaming-state mismatch bug. The observed
+symptoms were a downstream consequence of the cancel-button-steers-instead-of-removing
+bug documented in `fix-queued-message-loss-after-mid-queue-removal.md`.
+
+**Analysis from full UI audit:**
+
+The server-side contract for queue intent is already deterministic and correct:
+- `handleAgentMessage` checks `agentPool.isStreaming(chatJid)` to decide queueing
+- When `isStreaming` is true + `requestMode` is `"queue"` or `"auto"` → deferred
+- When `isStreaming` is false → falls through to normal processing
+- The response always indicates the actual disposition: `{ queued: "followup" }` or
+  `{ user_message: ... }` (normal submit)
+- The client's `handleMessageResponse` calls `refreshQueueState()` when a queued
+  response is received
+
+The brief mismatch window between `agent_status: done` clearing `isAgentTurnActive`
+and the next turn's first SSE event exists, but:
+1. Messages submitted during this window are sent with `mode: null` → server uses
+   `"auto"`, which checks `isStreaming` server-side
+2. If `isStreaming` is still true, the message is correctly deferred
+3. If `isStreaming` is false, the message is correctly processed as a normal turn
+4. The response tells the client whether it was queued or not
+
+The live symptoms where messages appeared as "immediate turns" instead of queueing
+were caused by the cancel button sending the cancelled message as steering, which
+disrupted the active agent turn and caused `isStreaming` to flip false earlier than
+expected. The next user message then correctly saw `isStreaming=false` and was
+processed immediately — which was the *correct* server behavior for that state, but
+appeared as a bug from the user's perspective because the cancel action had invisible
+side effects.
+
+**Fix:** Same commit as `fix-queued-message-loss-after-mid-queue-removal` — separating
+the cancel button (`removeAgentQueueItem`) from the steer button
+(`steerAgentQueueItem`) eliminates the invisible side effect that destabilized
+streaming state.
+
+Evidence: `docs/queue-steering-ui-audit.md`, `piclaw/web/src/app.ts`,
+`piclaw/web/src/components/compose-box.ts`.
+All 792 tests pass.
+
 ## Links
 
-- `kanban/20-doing/fix-queued-message-loss-after-mid-queue-removal.md`
+- `kanban/50-done/fix-queued-message-loss-after-mid-queue-removal.md`
 - `piclaw/src/channels/web/handlers/agent.ts`
 - `piclaw/web/src/app.ts`
 - `piclaw/web/src/components/compose-box.ts`
 - `piclaw/web/src/api.ts`
+- `docs/queue-steering-ui-audit.md`

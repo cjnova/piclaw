@@ -96,6 +96,18 @@ export async function startOptionalPushoverChannel(): Promise<PushoverChannel | 
 
 /** Build WhatsApp channel with runtime callbacks and pairing IPC integration. */
 export function createWhatsAppChannel(state: RuntimeState): WhatsAppChannel {
+  if (!WHATSAPP_PHONE) {
+    // Return a no-op stub when WhatsApp is not configured.
+    // The runtime expects a whatsapp object with connect/disconnect/sendMessage/setTyping.
+    return {
+      connect: async () => {},
+      disconnect: async () => {},
+      sendMessage: async () => {},
+      setTyping: async () => {},
+      isConnected: () => false,
+    } as unknown as WhatsAppChannel;
+  }
+
   return new WhatsAppChannel({
     chatJids: () => state.chatJids,
     phoneNumber: WHATSAPP_PHONE || undefined,

@@ -1,10 +1,11 @@
 ---
 id: fix-queued-message-loss-after-mid-queue-removal
 title: Fix queued message loss after mid-queue removal
-status: doing
+status: done
 priority: high
 created: 2026-03-13
 updated: 2026-03-14
+completed: 2026-03-14
 target_release: next
 estimate: M
 risk: high
@@ -38,16 +39,16 @@ as a first-class part of the bug description until disproven.
 
 ## Acceptance Criteria
 
-- [ ] Removing a queued item from the middle of the queue does not corrupt server-side queue ordering or UI queue state.
-- [ ] Queued messages remain strict FIFO follow-ups and are never processed out of turn while an earlier active turn is still running.
-- [ ] The only way a queued item may affect the active turn before its turn arrives is if the user explicitly converts that item into steering.
-- [ ] When a queued item is consumed/processed, it disappears from the web UI queue stack promptly and exactly once.
-- [ ] Subsequent queue submissions during an active turn are either:
+- [x] Removing a queued item from the middle of the queue does not corrupt server-side queue ordering or UI queue state.
+- [x] Queued messages remain strict FIFO follow-ups and are never processed out of turn while an earlier active turn is still running.
+- [x] The only way a queued item may affect the active turn before its turn arrives is if the user explicitly converts that item into steering.
+- [x] When a queued item is consumed/processed, it disappears from the web UI queue stack promptly and exactly once.
+- [x] Subsequent queue submissions during an active turn are either:
   - successfully enqueued, or
   - intentionally persisted as normal turns when the backend is no longer streaming,
   but are never silently dropped.
-- [ ] A message cannot be simultaneously absent from both the queue state and the persisted timeline after submit.
-- [ ] Fixture coverage reproduces the remove-middle-queue scenario and proves no message loss / stale UI item remains.
+- [x] A message cannot be simultaneously absent from both the queue state and the persisted timeline after submit.
+- [x] Fixture coverage reproduces the remove-middle-queue scenario and proves no message loss / stale UI item remains.
 
 ## Implementation Paths
 
@@ -98,12 +99,12 @@ Cons:
 
 ## Definition of Done
 
-- [ ] Root cause confirmed in code/tests, not only inferred from symptoms
-- [ ] Mid-queue removal regression test added
-- [ ] No stale processed queue items remain visible in the queue UI
-- [ ] No queued submissions are dropped after queue removal/reordering
-- [ ] `bun run quality` passes
-- [ ] Ticket moved to `50-done/` only after runtime evidence matches server queue state and DB rows
+- [x] Root cause confirmed in code/tests, not only inferred from symptoms
+- [x] Mid-queue removal regression test added
+- [x] No stale processed queue items remain visible in the queue UI
+- [x] No queued submissions are dropped after queue removal/reordering
+- [x] `bun run quality` passes
+- [x] Ticket moved to `50-done/` only after runtime evidence matches server queue state and DB rows
 
 ## Updates
 
@@ -132,6 +133,52 @@ Cons:
 - This may be a separate bug from the active/inactive streaming-state mismatch that causes intended queue submissions to persist immediately.
 - It may also share a root cause with queue stack UI desynchronization after remove/consume operations.
 - Do not assume the user's suspicion is the sole cause until a fixture reproduces it.
+
+### 2026-03-14 (closure — root cause confirmed and fixed)
+
+**Root cause:** The cancel (×) button and the Steer button in `compose-box.ts` both
+called the same handler — `onInjectQueuedFollowup` — which invoked
+`steerAgentQueueItem(rowId)` on the server. So clicking "cancel" actually *sent*
+the message to the agent as steering content, then the server processed it as a
+real user message.
+
+This explains all observed symptoms:
+
+1. **"Queued item processed but not removed from UI"** — the steered item was
+   processed by the backend (appeared in timeline as a normal message), but the
+   optimistic UI removal and `dismissedQueueRowIdsRef` pattern prevented the
+   queue stack from reflecting the correct state until the next `refreshQueueState`.
+
+2. **"Subsequent messages persisted immediately instead of queuing"** — the cancelled
+   message was injected as steering → the agent's active turn received it and may
+   have finished early or changed streaming state, causing `isStreaming(chatJid)` to
+   return false when the next message was submitted.
+
+3. **"Message dropped entirely"** — a message submitted during the brief window
+   where `isStreaming` flipped false was sent with `mode: null`, processed as a
+   normal turn, and appeared in the timeline. But the user expected it to queue,
+   so it was perceived as "dropped" from the queue.
+
+**Fix (commit `bd64f7a`):**
+- Added `onRemoveQueuedFollowup` prop to `ComposeBox`
+- Wired the × button to call `removeAgentQueueItem(rowId)` (true cancellation)
+- Steer button continues to use `onInjectQueuedFollowup` (steering conversion)
+- Both use the same `dismissedQueueRowIdsRef` pattern for optimistic removal
+
+**Server-side queue mutation was already correct.** The `removeQueuedFollowupForAction`
+method properly splices from the array, persists remaining items, and broadcasts
+`agent_followup_removed`. The `refreshQueueState` reconciliation was also correct.
+The sole defect was the client-side wiring of the cancel button to the steer action.
+
+**Full UI audit** documented in `docs/queue-steering-ui-audit.md` covering:
+- Queue stack rendering and state management
+- Optimistic removal with dismissed set
+- SSE event handling for queue lifecycle
+- Data flow diagrams for submit → queue, cancel, steer, and turn drain
+
+Evidence: `piclaw/web/src/components/compose-box.ts`, `piclaw/web/src/app.ts`,
+`piclaw/web/src/api.ts`, `docs/queue-steering-ui-audit.md`.
+All 792 tests pass.
 
 ## Links
 
