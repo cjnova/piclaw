@@ -265,6 +265,20 @@ export async function getMediaInfo(mediaId) {
     return response.json();
 }
 
+/** Load media as text for text-like attachment previews. */
+export async function getMediaText(mediaId) {
+    const response = await fetch(`${API_BASE}/media/${mediaId}`);
+    if (!response.ok) throw new Error('Failed to load media text');
+    return response.text();
+}
+
+/** Load media as a Blob for preview flows that need object URLs (e.g. PDFs). */
+export async function getMediaBlob(mediaId) {
+    const response = await fetch(`${API_BASE}/media/${mediaId}`);
+    if (!response.ok) throw new Error('Failed to load media blob');
+    return response.blob();
+}
+
 /**
  * Get workspace tree
  */

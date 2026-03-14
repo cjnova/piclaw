@@ -4,13 +4,16 @@ import { getMediaInfo, getMediaUrl, getThumbnailUrl } from '../api.js';
 import { renderMarkdown, renderMermaidDiagrams, sanitizeUrl } from '../markdown.js';
 import { formatCount, formatFileSize, formatTime, formatTimestamp } from '../utils/format.js';
 import { DEFAULT_AGENT_NAME, getAvatarInfo } from '../ui/agent-utils.js';
+import { getAttachmentPreviewKind } from '../ui/attachment-preview.js';
+import { AttachmentPreviewModal } from './attachment-preview-modal.js';
 import { ImageModal } from './image-modal.js';
 import { FilePill } from './file-pill.js';
 
 /**
- * File attachment component - displays downloadable file with icon
+ * File attachment component - keeps single-click download on the main card while
+ * exposing an explicit preview affordance for the v1 preview flow.
  */
-function FileAttachment({ mediaId }) {
+function FileAttachment({ mediaId, onPreview }) {
     const [info, setInfo] = useState(null);
 
     useEffect(() => {
@@ -22,26 +25,99 @@ function FileAttachment({ mediaId }) {
     const filename = info.filename || 'file';
     const size = info.metadata?.size;
     const sizeStr = size ? formatFileSize(size) : '';
+    const previewKind = getAttachmentPreviewKind(info.content_type);
+    const previewLabel = previewKind === 'unsupported' ? 'Details' : 'Preview';
 
     return html`
-        <a href=${getMediaUrl(mediaId)} download=${filename} class="file-attachment" onClick=${(e) => e.stopPropagation()}>
-            <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-                <polyline points="10 9 9 9 8 9"/>
-            </svg>
-            <div class="file-info">
-                <span class="file-name">${filename}</span>
-                ${sizeStr && html`<span class="file-size">${sizeStr}</span>`}
-            </div>
-            <svg class="download-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                <polyline points="7 10 12 15 17 10"/>
-                <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-        </a>
+        <div class="file-attachment" onClick=${(e) => e.stopPropagation()}>
+            <a href=${getMediaUrl(mediaId)} download=${filename} class="file-attachment-main">
+                <svg class="file-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+                <div class="file-info">
+                    <span class="file-name">${filename}</span>
+                    <span class="file-meta-row">
+                        ${sizeStr && html`<span class="file-size">${sizeStr}</span>`}
+                        ${info.content_type && html`<span class="file-size">${info.content_type}</span>`}
+                    </span>
+                </div>
+                <svg class="download-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+            </a>
+            <button
+                class="file-attachment-preview"
+                type="button"
+                onClick=${(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onPreview?.({ mediaId, info });
+                }}
+            >
+                ${previewLabel}
+            </button>
+        </div>
+    `;
+}
+
+function AttachmentPill({ attachment, onPreview }) {
+    const mediaId = Number(attachment?.id);
+    const [info, setInfo] = useState(null);
+
+    useEffect(() => {
+        if (!Number.isFinite(mediaId)) return undefined;
+        getMediaInfo(mediaId).then(setInfo).catch(() => {});
+        return undefined;
+    }, [mediaId]);
+
+    const filename = info?.filename || attachment.label || `attachment-${attachment.id}`;
+    const downloadHref = Number.isFinite(mediaId) ? getMediaUrl(mediaId) : null;
+    const previewKind = getAttachmentPreviewKind(info?.content_type);
+    const previewLabel = previewKind === 'unsupported' ? 'Details' : 'Preview';
+
+    return html`
+        <span class="attachment-pill" title=${filename}>
+            ${downloadHref
+                ? html`
+                    <a href=${downloadHref} download=${filename} class="attachment-pill-main" onClick=${(e) => e.stopPropagation()}>
+                        <${FilePill}
+                            prefix="post"
+                            label=${attachment.label}
+                            title=${filename}
+                        />
+                    </a>
+                `
+                : html`
+                    <${FilePill}
+                        prefix="post"
+                        label=${attachment.label}
+                        title=${filename}
+                    />
+                `}
+            ${Number.isFinite(mediaId) && info && html`
+                <button
+                    class="attachment-pill-preview"
+                    type="button"
+                    title=${previewLabel}
+                    onClick=${(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onPreview?.({ mediaId, info });
+                    }}
+                >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                </button>
+            `}
+        </span>
     `;
 }
 
@@ -538,6 +614,12 @@ export function Post({ post, onClick, onHashtagClick, onMessageRef, onScrollToMe
         setZoomedImage(getMediaUrl(mediaId));
     };
 
+    const [attachmentPreview, setAttachmentPreview] = useState(null);
+
+    const handleAttachmentPreview = (attachment) => {
+        setAttachmentPreview(attachment);
+    };
+
     const handleDeleteClick = (e) => {
         e.stopPropagation();
         onDelete?.(post);
@@ -725,10 +807,10 @@ export function Post({ post, onClick, onHashtagClick, onMessageRef, onScrollToMe
                             `;
                         })}
                         ${attachmentPills.map((attachment) => html`
-                            <${FilePill}
-                                prefix="post"
-                                label=${attachment.label}
-                                title=${attachment.label}
+                            <${AttachmentPill}
+                                key=${attachment.id}
+                                attachment=${attachment}
+                                onPreview=${handleAttachmentPreview}
                             />
                         `)}
                     </div>
@@ -782,7 +864,7 @@ export function Post({ post, onClick, onHashtagClick, onMessageRef, onScrollToMe
                 ${filteredFileIds.length > 0 && html`
                     <div class="file-attachments">
                         ${filteredFileIds.map(id => html`
-                            <${FileAttachment} key=${id} mediaId=${id} />
+                            <${FileAttachment} key=${id} mediaId=${id} onPreview=${handleAttachmentPreview} />
                         `)}
                     </div>
                 `}
@@ -816,5 +898,12 @@ export function Post({ post, onClick, onHashtagClick, onMessageRef, onScrollToMe
             </div>
         </div>
         ${zoomedImage && html`<${ImageModal} src=${zoomedImage} onClose=${() => setZoomedImage(null)} />`}
+        ${attachmentPreview && html`
+            <${AttachmentPreviewModal}
+                mediaId=${attachmentPreview.mediaId}
+                info=${attachmentPreview.info}
+                onClose=${() => setAttachmentPreview(null)}
+            />
+        `}
     `;
 }
