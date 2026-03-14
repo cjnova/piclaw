@@ -514,7 +514,7 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
             const isFirstTurn = turnCount === 0;
             turnCount++;
             if (turn.text || turn.attachments.length > 0) {
-                storeAgentTurn(channel, emitter, {
+                const stored = storeAgentTurn(channel, emitter, {
                     chatJid,
                     text: turn.text,
                     attachments: turn.attachments,
@@ -522,6 +522,10 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
                     threadId: resolvedThreadRootId,
                     skipPlaceholder: isFirstTurn,
                 });
+                if (!stored) {
+                    console.warn(`[web] Failed to persist intermediate turn ${turnCount} for ${chatJid} ` +
+                        `(${turn.text.length} chars, ${turn.attachments.length} attachments)`);
+                }
             }
         },
     });

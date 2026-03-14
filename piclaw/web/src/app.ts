@@ -68,6 +68,9 @@ const getAgentQueueState = typeof api.getAgentQueueState === 'function'
 const steerAgentQueueItem = typeof api.steerAgentQueueItem === 'function'
     ? api.steerAgentQueueItem
     : missingApi('steerAgentQueueItem', { removed: false, queued: 'steer' });
+const removeAgentQueueItem = typeof api.removeAgentQueueItem === 'function'
+    ? api.removeAgentQueueItem
+    : missingApi('removeAgentQueueItem', { removed: false });
 
 // Configure marked for safe rendering
 if (window.marked) {
@@ -1146,6 +1149,26 @@ function App() {
             });
     }, [refreshQueueState, setFollowupQueueItems]);
 
+    const handleRemoveQueuedFollowup = useCallback((queuedItem) => {
+        const rowId = queuedItem?.row_id;
+        if (rowId == null) return;
+        // Optimistic removal
+        dismissedQueueRowIdsRef.current.add(rowId);
+        setFollowupQueueItems((current) => current.filter((item) => item?.row_id !== rowId));
+
+        // Remove the queued item server-side without sending it as steering
+        // or converting it into a message.
+        removeAgentQueueItem(rowId)
+            .then(() => {
+                void refreshQueueState();
+            })
+            .catch((error) => {
+                console.warn('[queue] Failed to remove queued item:', error);
+                dismissedQueueRowIdsRef.current.delete(rowId);
+                void refreshQueueState();
+            });
+    }, [refreshQueueState, setFollowupQueueItems]);
+
     const handleMessageResponse = useCallback((response) => {
         if (!response || typeof response !== "object") return;
 
@@ -1783,6 +1806,7 @@ function App() {
                     followupQueueCount=${followupQueueCount}
                     followupQueueItems=${followupQueueItems}
                     onInjectQueuedFollowup=${handleInjectQueuedFollowup}
+                    onRemoveQueuedFollowup=${handleRemoveQueuedFollowup}
                     onMessageResponse=${handleMessageResponse}
                     isAgentActive=${isComposeBoxAgentActive}
                     activeModel=${activeModel}
