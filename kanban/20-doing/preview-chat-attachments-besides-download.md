@@ -1,7 +1,7 @@
 ---
 id: preview-chat-attachments-besides-download
 title: Preview chat attachments besides downloading them
-status: next
+status: doing
 priority: medium
 created: 2026-03-14
 updated: 2026-03-14
@@ -68,6 +68,22 @@ classes must be previewable in v1 and what the viewer interaction should be.
 - [ ] Tests and manual validation are recorded.
 
 ## Updates
+
+### 2026-03-14
+- Lane change: `10-next` → `20-doing` for implementation pickup.
+- Implementation intent for v1: reuse the existing image lightbox shell as a generic attachment preview modal, add explicit preview controls on attachment chip/card surfaces, and support images, PDFs, and text-like files first.
+- First-pass implementation now in place:
+  - added `piclaw/web/src/components/attachment-preview-modal.ts`
+  - added preview-kind helper `piclaw/web/src/ui/attachment-preview.ts`
+  - extended attachment surfaces in `piclaw/web/src/components/post.ts` so attachment cards/chips keep direct download while exposing explicit preview/details actions
+  - added API helpers in `piclaw/web/src/api.ts` for text/blob preview loading
+  - styled the modal/actions in `piclaw/web/static/css/styles.css`
+  - added helper coverage in `piclaw/test/web/attachment-preview.test.ts`
+- Validation/build evidence so far:
+  - `bun test test/web/attachment-preview.test.ts test/web/file-pill-open.test.ts`
+  - `bun run build:web`
+  - `bun run quality` → `804 pass, 0 fail`
+- Still pending before closure: manual web validation against real posted attachments (supported + unsupported) and a final call on whether to mark the ticket done immediately or after live verification.
 
 ### 2026-03-14
 - Lane change: `00-inbox` → `10-next` after refinement locked scope, interaction model, fallback, download behaviour, and first-pass implementation/test expectations.
