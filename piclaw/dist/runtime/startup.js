@@ -1,7 +1,7 @@
 /**
  * runtime/startup.ts – Runtime startup wiring helpers.
  */
-import { mkdirSync, writeFileSync } from "fs";
+import { mkdirSync, readdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { WebChannel } from "../channels/web.js";
 import { PushoverChannel } from "../channels/pushover.js";
@@ -22,13 +22,38 @@ export function initializeRuntimeEnvironment(state) {
     state.loadTimestamps();
     state.loadChats();
 }
-/** Start web channel and run crash-recovery/pending work bootstrap. */
+/** Start web channel and run immediate crash-recovery bootstrap. */
 export async function startWebChannel(queue, agentPool) {
     const web = new WebChannel({ queue, agentPool });
     await web.start();
     web.recoverInflightRuns();
-    web.resumePendingChats();
     return web;
+}
+/**
+ * Queue a self-addressed IPC task to resume pending chats once background
+ * workers and external channels are fully online.
+ */
+export function queueStartupResumePendingIpc() {
+    try {
+        const tasksDir = join(DATA_DIR, "ipc", "tasks");
+        mkdirSync(tasksDir, { recursive: true });
+        const alreadyQueued = readdirSync(tasksDir).some((file) => file.startsWith("resume_pending_"));
+        if (alreadyQueued) {
+            console.log("[startup] resume_pending IPC already queued; skipping duplicate startup resume.");
+            return;
+        }
+        const payload = {
+            type: "resume_pending",
+            chatJid: "all",
+            reason: "startup",
+        };
+        const filePath = join(tasksDir, `resume_pending_${createUuid("startup")}.json`);
+        writeFileSync(filePath, JSON.stringify(payload));
+        console.log(`[startup] Queued startup resume_pending IPC: ${filePath}`);
+    }
+    catch (err) {
+        console.error("[startup] Failed to queue resume_pending IPC:", err);
+    }
 }
 /** Start optional Pushover channel if configured. */
 export async function startOptionalPushoverChannel() {

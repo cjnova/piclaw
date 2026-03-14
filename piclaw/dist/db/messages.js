@@ -89,8 +89,11 @@ export function storeMessage(msg) {
     const db = getDb();
     const contentBlocks = msg.content_blocks ? JSON.stringify(msg.content_blocks) : null;
     const linkPreviews = msg.link_previews ? JSON.stringify(msg.link_previews) : null;
-    db.prepare(`INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, content_blocks, link_previews, thread_id, timestamp, is_from_me, is_bot_message)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(msg.id, msg.chat_jid, msg.sender, msg.sender_name, msg.content, contentBlocks, linkPreviews, msg.thread_id ?? null, msg.timestamp, msg.is_from_me ? 1 : 0, msg.is_bot_message ? 1 : 0);
+    db.prepare(`INSERT OR REPLACE INTO messages (
+      id, chat_jid, sender, sender_name, content, content_blocks, link_previews,
+      thread_id, timestamp, is_from_me, is_bot_message, is_terminal_agent_reply, is_steering_message
+    )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(msg.id, msg.chat_jid, msg.sender, msg.sender_name, msg.content, contentBlocks, linkPreviews, msg.thread_id ?? null, msg.timestamp, msg.is_from_me ? 1 : 0, msg.is_bot_message ? 1 : 0, msg.is_terminal_agent_reply ? 1 : 0, msg.is_steering_message ? 1 : 0);
     const row = db
         .prepare("SELECT rowid as rowid FROM messages WHERE id = ? AND chat_jid = ?")
         .get(msg.id, msg.chat_jid);
@@ -106,6 +109,19 @@ export function getMessageRowIdById(chatJid, messageId) {
         .prepare("SELECT rowid as rowid FROM messages WHERE chat_jid = ? AND id = ?")
         .get(chatJid, messageId);
     return row?.rowid ?? null;
+}
+/**
+ * Look up the persisted thread root rowid for a message id.
+ * Returns the message's own rowid when it is a root/self-threaded message.
+ */
+export function getMessageThreadRootIdById(chatJid, messageId) {
+    const db = getDb();
+    const row = db
+        .prepare("SELECT rowid as rowid, thread_id FROM messages WHERE chat_jid = ? AND id = ?")
+        .get(chatJid, messageId);
+    if (!row)
+        return null;
+    return row.thread_id ?? row.rowid ?? null;
 }
 /**
  * Fetch a single message by its rowid, returning it as an InteractionRow.
@@ -143,8 +159,8 @@ export function replaceMessageContent(chatJid, rowId, content, options = {}) {
     const contentBlocks = options.contentBlocks ? JSON.stringify(options.contentBlocks) : null;
     const linkPreviews = options.linkPreviews ? JSON.stringify(options.linkPreviews) : null;
     const res = db
-        .prepare("UPDATE messages SET content = ?, content_blocks = ?, link_previews = ? WHERE chat_jid = ? AND rowid = ?")
-        .run(content, contentBlocks, linkPreviews, chatJid, rowId);
+        .prepare("UPDATE messages SET content = ?, content_blocks = ?, link_previews = ?, is_terminal_agent_reply = COALESCE(?, is_terminal_agent_reply) WHERE chat_jid = ? AND rowid = ?")
+        .run(content, contentBlocks, linkPreviews, typeof options.isTerminalAgentReply === "boolean" ? (options.isTerminalAgentReply ? 1 : 0) : null, chatJid, rowId);
     if (res.changes <= 0)
         return undefined;
     // Re-link media: remove old associations and attach the new set.
@@ -292,6 +308,7 @@ export function getNewMessages(jids, lastTimestamp, botPrefix) {
     FROM messages
     WHERE timestamp > ? AND chat_jid IN (${placeholders})
       AND is_bot_message = 0 AND content NOT LIKE ?
+      AND COALESCE(is_steering_message, 0) = 0
     ORDER BY timestamp
   `;
     const rows = db.prepare(sql).all(lastTimestamp, ...jids, `${botPrefix}:%`);
@@ -313,6 +330,7 @@ export function getMessagesSince(chatJid, sinceTimestamp, botPrefix) {
     FROM messages
     WHERE chat_jid = ? AND timestamp > ?
       AND is_bot_message = 0 AND content NOT LIKE ?
+      AND COALESCE(is_steering_message, 0) = 0
     ORDER BY timestamp
   `;
     return db.prepare(sql).all(chatJid, sinceTimestamp, `${botPrefix}:%`);

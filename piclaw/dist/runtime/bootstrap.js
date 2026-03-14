@@ -8,7 +8,7 @@ import { registerRuntimeShutdownSignals } from "./composition.js";
 import { startRuntimeLoop } from "./coordinator.js";
 import { registerOptionalProviders } from "./provider-bootstrap.js";
 import { createShutdownHandler } from "./shutdown.js";
-import { createWhatsAppChannel, initializeRuntimeEnvironment, startOptionalPushoverChannel, startWebChannel, } from "./startup.js";
+import { createWhatsAppChannel, initializeRuntimeEnvironment, queueStartupResumePendingIpc, startOptionalPushoverChannel, startWebChannel, } from "./startup.js";
 import { createRuntimeSenders, startRuntimeWorkers, } from "./wiring.js";
 /**
  * Build default runtime bootstrap dependencies from production modules.
@@ -29,6 +29,7 @@ export function createDefaultRuntimeBootstrapDeps(core) {
         registerRuntimeShutdownSignals,
         createRuntimeSenders,
         startRuntimeWorkers,
+        queueStartupResumePendingIpc,
         startRuntimeLoop,
         log: (message) => console.log(message),
         stopIpcWatcher,
@@ -58,6 +59,10 @@ export async function bootstrapRuntime(deps) {
     deps.registerRuntimeShutdownSignals(deps.signalRegistrar, shutdown);
     const senders = deps.createRuntimeSenders(web, whatsapp, pushover);
     deps.startRuntimeWorkers(queue, agentPool, web, senders);
+    // Queue restart recovery as soon as workers are online. Do not wait for
+    // WhatsApp to finish its initial connect/reconnect path, which may be slow
+    // or flaky on some installs and would otherwise delay web recovery.
+    deps.queueStartupResumePendingIpc();
     await whatsapp.connect();
     await deps.startRuntimeLoop({
         queue,

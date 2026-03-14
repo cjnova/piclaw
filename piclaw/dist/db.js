@@ -9,12 +9,12 @@
  */
 export { initDatabase, getDb } from "./db/connection.js";
 export { clampWebContent } from "./db/web-content.js";
-export { storeChatMetadata, storeMessage, getMessageByRowId, getMessageRowIdById, deleteMessageByRowId, deleteThreadByRowId, getTimeline, hasOlderMessages, getMessagesByHashtag, searchMessages, getNewMessages, getMessagesSince, updateMessageLinkPreviews, replaceMessageContent, } from "./db/messages.js";
+export { storeChatMetadata, storeMessage, getMessageByRowId, getMessageRowIdById, getMessageThreadRootIdById, deleteMessageByRowId, deleteThreadByRowId, getTimeline, hasOlderMessages, getMessagesByHashtag, searchMessages, getNewMessages, getMessagesSince, updateMessageLinkPreviews, replaceMessageContent, } from "./db/messages.js";
 export { attachMediaToMessage, getMediaIdsForMessage, createMedia, getMediaById, getMediaInfoById, } from "./db/media.js";
 export { createTask, getTaskById, updateTask, deleteTask, getDueTasks, updateTaskAfterRun, logTaskRun, getTaskRunLogs, } from "./db/tasks.js";
 export { storeToolOutput, insertToolOutputChunk, getToolOutputById, deleteToolOutputById, deleteToolOutputsBefore, searchToolOutputSnippets, } from "./db/tool-outputs.js";
 export { getRouterState, setRouterState } from "./db/router-state.js";
-export { getChatCursor, getAllChatCursors, getInflightMessageId, setChatCursor, beginChatRun, endChatRun, endChatRunWithError, getFailedRun, clearFailedRun, getInflightRuns, rollbackInflightRun, clearInflightMarker, hasAgentRepliesAfter, } from "./db/chat-cursors.js";
+export { getChatCursor, getAllChatCursors, getInflightMessageId, setChatCursor, beginChatRun, endChatRun, endChatRunWithError, getFailedRun, clearFailedRun, getInflightRuns, rollbackInflightRun, clearInflightMarker, hasAgentRepliesAfter, getDeferredQueuedFollowups, setDeferredQueuedFollowups, } from "./db/chat-cursors.js";
 export { storeTokenUsage, getTokenUsageTotals, getTokenUsageByProvider, getTokenUsageByModel, } from "./db/token-usage.js";
 export { upsertRemotePeer, getRemotePeer, updateRemotePeer, createPairRequest, getPairRequestById, getPendingPairRequest, updatePairRequestStatus, storeRemoteRequest, updateRemoteRequest, getRemoteRequestById, logRemoteAudit, } from "./db/remote-interop.js";
 export { DEFAULT_PASSKEY_USER_ID, createWebauthnEnrollment, getWebauthnEnrollment, consumeWebauthnEnrollment, listWebauthnCredentials, getWebauthnCredentialsForRpId, getWebauthnCredentialById, findWebauthnCredentialsByPrefix, storeWebauthnCredential, updateWebauthnCredentialCounter, deleteWebauthnCredential, } from "./db/webauthn.js";

@@ -63,6 +63,8 @@ function createSchema(database) {
       timestamp TEXT,
       is_from_me INTEGER,
       is_bot_message INTEGER DEFAULT 0,
+      is_terminal_agent_reply INTEGER DEFAULT 0,
+      is_steering_message INTEGER DEFAULT 0,
       PRIMARY KEY (id, chat_jid),
       FOREIGN KEY (chat_jid) REFERENCES chats(jid)
     );
@@ -255,16 +257,17 @@ function createSchema(database) {
     --                    share a row with inflight_*, every completion path is
     --                    a single UPDATE with no intermediate inconsistent state.
     CREATE TABLE IF NOT EXISTS chat_cursors (
-      chat_jid            TEXT PRIMARY KEY,
-      cursor_ts           TEXT NOT NULL DEFAULT '',
-      inflight_prev_ts    TEXT,
-      inflight_message_id TEXT,
-      inflight_started_at TEXT,
-      failed_prev_ts      TEXT,
-      failed_ts           TEXT,
-      failed_message_id   TEXT,
-      failed_thread_root  INTEGER,
-      failed_created_at   TEXT
+      chat_jid             TEXT PRIMARY KEY,
+      cursor_ts            TEXT NOT NULL DEFAULT '',
+      inflight_prev_ts     TEXT,
+      inflight_message_id  TEXT,
+      inflight_started_at  TEXT,
+      failed_prev_ts       TEXT,
+      failed_ts            TEXT,
+      failed_message_id    TEXT,
+      failed_thread_root   INTEGER,
+      failed_created_at    TEXT,
+      queued_followups_json TEXT
     );
 
     CREATE TABLE IF NOT EXISTS token_usage (
@@ -378,6 +381,8 @@ function ensureMessageColumns(database) {
     ensureColumn("content_blocks");
     ensureColumn("link_previews");
     ensureColumn("thread_id", "INTEGER");
+    ensureColumn("is_terminal_agent_reply", "INTEGER DEFAULT 0");
+    ensureColumn("is_steering_message", "INTEGER DEFAULT 0");
 }
 /**
  * One-time FTS rebuild for databases created before the FTS triggers existed.
@@ -427,9 +432,10 @@ function ensureWebSessionColumns(database) {
     }
 }
 /**
- * Add the failed_* columns to chat_cursors for databases created before they
- * were introduced. ALTER TABLE ADD COLUMN is safe to run repeatedly – SQLite
- * ignores the statement if the column already exists (we catch the error).
+ * Add newer per-chat state columns to chat_cursors for databases created
+ * before they were introduced. ALTER TABLE ADD COLUMN is safe to run
+ * repeatedly – SQLite ignores the statement if the column already exists
+ * (we catch the error).
  */
 function ensureChatCursorFailedColumns(database) {
     const cols = new Set(database.prepare("PRAGMA table_info(chat_cursors)").all()
@@ -440,6 +446,7 @@ function ensureChatCursorFailedColumns(database) {
         ["failed_message_id", "TEXT"],
         ["failed_thread_root", "INTEGER"],
         ["failed_created_at", "TEXT"],
+        ["queued_followups_json", "TEXT"],
     ];
     for (const [col, type] of toAdd) {
         if (!cols.has(col)) {

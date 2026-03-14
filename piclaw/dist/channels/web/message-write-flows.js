@@ -64,8 +64,8 @@ export function queueFollowupPlaceholderMessage(chatJid, text, threadIdOrCtxOrQu
     return interaction;
 }
 /** Replace a queued follow-up placeholder and broadcast the update. */
-export function replaceQueuedFollowupPlaceholderMessage(chatJid, rowId, text, mediaIds, contentBlocks, threadId, ctx) {
-    const updated = ctx.store.replaceMessageContent(chatJid, rowId, text, mediaIds, contentBlocks);
+export function replaceQueuedFollowupPlaceholderMessage(chatJid, rowId, text, mediaIds, contentBlocks, threadId, ctx, isTerminalAgentReply) {
+    const updated = ctx.store.replaceMessageContent(chatJid, rowId, text, mediaIds, contentBlocks, isTerminalAgentReply);
     if (!updated)
         return null;
     updated.data.agent_id = ctx.defaultAgentId;

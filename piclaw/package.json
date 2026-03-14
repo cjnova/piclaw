@@ -36,7 +36,7 @@
     "quality": "bun run lint && bun run typecheck && bun run test && bun run check:pack-hygiene && bun run check:stale-dist && bun run check:import-boundaries && bun run check:unused-exports && bun run check:hook-tdz"
   },
   "dependencies": {
-    "@mariozechner/pi-coding-agent": "0.57.1",
+    "@mariozechner/pi-coding-agent": "0.58.0",
     "@simplewebauthn/server": "13.2.3",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
     "beautiful-mermaid": "1.1.3",
