@@ -3931,6 +3931,10 @@ body {
     line-height: 1.5;
 }
 
+.attachment-preview-markdown {
+    padding: var(--spacing-md);
+}
+
 .attachment-preview-meta {
     display: flex;
     flex-wrap: wrap;
