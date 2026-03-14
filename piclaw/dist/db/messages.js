@@ -326,7 +326,7 @@ export function getNewMessages(jids, lastTimestamp, botPrefix) {
 export function getMessagesSince(chatJid, sinceTimestamp, botPrefix) {
     const db = getDb();
     const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp
+    SELECT id, chat_jid, sender, sender_name, content, timestamp, thread_id
     FROM messages
     WHERE chat_jid = ? AND timestamp > ?
       AND is_bot_message = 0 AND content NOT LIKE ?

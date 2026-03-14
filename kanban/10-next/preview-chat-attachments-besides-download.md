@@ -1,7 +1,7 @@
 ---
 id: preview-chat-attachments-besides-download
 title: Preview chat attachments besides downloading them
-status: inbox
+status: next
 priority: medium
 created: 2026-03-14
 updated: 2026-03-14
@@ -53,14 +53,15 @@ classes must be previewable in v1 and what the viewer interaction should be.
 
 ## Test Plan
 
-- [ ] Define v1 previewable file types and fallback rules.
+- [ ] Implement web UI, API/backend contract, and tests as part of the first pass.
 - [ ] Add regression coverage for attachment preview resolution / fallback logic.
-- [ ] Validate download behaviour still works for supported and unsupported file types.
+- [ ] Validate download behaviour still works for supported and unsupported attachment types.
 - [ ] Manual web validation recorded for at least one supported and one unsupported attachment type.
 
 ## Definition of Done
 
 - [ ] Preview scope for v1 is explicit.
+- [ ] Web UI, API/backend contract, and tests are implemented for the first pass.
 - [ ] UI affordance for preview is implemented.
 - [ ] Supported types preview correctly.
 - [ ] Unsupported types degrade cleanly to download.
@@ -69,14 +70,17 @@ classes must be previewable in v1 and what the viewer interaction should be.
 ## Updates
 
 ### 2026-03-14
+- Lane change: `00-inbox` → `10-next` after refinement locked scope, interaction model, fallback, download behaviour, and first-pass implementation/test expectations.
 - Refined the first-pass scope: v1 should reuse the existing lightbox and support images, PDFs, and text-like files.
 - Locked the fallback/download rule: unsupported types should show a simple metadata/download state, and every attachment type must remain directly downloadable with one click.
 - Locked the primary timeline affordance: single-click should keep downloading the attachment, with preview exposed as a separate explicit action.
+- Locked the preview affordance placement: put an explicit preview button/icon directly on each attachment chip/card, not in an overflow menu.
+- Locked implementation scope for pickup: first pass includes web UI, API/backend contract work, and tests rather than UI-only changes.
 - Audio/video and broader browser-previewable attachment types remain out of scope for the first pass.
 - Created in inbox from a new user-reported work item: chat attachments should be previewable instead of being download-only.
 - Kept separate from workspace-file preview tickets because this concerns timeline/chat attachments rather than the workspace explorer preview pane.
-- Quality: ★★★☆☆ 7/10 (problem: 2, scope: 2, test: 1, deps: 0, risk: 2)
-- Gap: backend/frontend integration points are the main remaining refinement item.
+- Quality: ★★★★★ 9/10 (problem: 2, scope: 2, test: 2, deps: 1, risk: 2)
+- Ready to move to `10-next` for implementation pickup.
 
 ## Notes
 

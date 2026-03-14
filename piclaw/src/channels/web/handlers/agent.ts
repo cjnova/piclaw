@@ -531,13 +531,10 @@ export async function processChat(
   const prevCursor = getChatCursor(chatJid);
   const messages = getMessagesSince(chatJid, prevCursor, ASSISTANT_NAME);
 
-  console.log(
-    `[web] processChat ${chatJid}: cursor=${prevCursor}, ` +
-      `pendingMessages=${messages.length}${messages.length > 0 ? ` [${messages.map(m => `${m.id}@${m.timestamp}`).join(", ")}]` : ""}, ` +
-      `threadRootId=${threadRootId ?? "none"}`
-  );
-
   if (messages.length === 0) {
+    console.log(
+      `[web] processChat ${chatJid}: cursor=${prevCursor}, pendingMessages=0, threadRootId=${threadRootId ?? "none"}`
+    );
     materializeNextDeferredFollowup();
     return;
   }
@@ -547,6 +544,23 @@ export async function processChat(
   // queue/turn finalization ordering nondeterministic.
   const currentMessage = messages[0];
   if (!currentMessage) return;
+
+  // Derive thread root from the actual message being processed, NOT from
+  // the threadRootId parameter. The parameter comes from whichever
+  // handleAgentMessage enqueued this processChat, but cursor-ordered
+  // message selection may pick a DIFFERENT message. Using the parameter
+  // would cross-parent the response under the wrong thread.
+  const messageThreadId = currentMessage.thread_id ?? undefined;
+  const effectiveThreadRootId = messageThreadId ?? threadRootId;
+
+  console.log(
+    `[web] processChat ${chatJid}: cursor=${prevCursor}, ` +
+      `pendingMessages=${messages.length} [${messages.map(m => `${m.id}@${m.timestamp}`).join(", ")}], ` +
+      `threadRootId=${threadRootId ?? "none"}, ` +
+      `msgThread=${messageThreadId ?? "none"}, ` +
+      `effectiveThread=${effectiveThreadRootId ?? "none"}, ` +
+      `processing=${currentMessage.id}`
+  );
 
   const channelName = detectChannel(chatJid);
   const prompt = formatMessages([currentMessage], channelName);
@@ -597,7 +611,7 @@ export async function processChat(
     channel,
     chatJid,
     currentMessage.id ?? "",
-    threadRootId
+    effectiveThreadRootId
   );
 
 

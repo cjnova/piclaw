@@ -1,7 +1,7 @@
 ---
 id: fix-stale-thread-root-on-queued-web-chat-retry
 title: Fix stale thread root on queued web chat retry
-status: next
+status: done
 priority: high
 created: 2026-03-13
 updated: 2026-03-13
@@ -96,6 +96,19 @@ Cons:
 - [ ] Ticket moved to `50-done/` only after DB evidence confirms correct thread ids in a real run
 
 ## Updates
+
+### 2026-03-14
+- **Fixed** via Path A: `processChat` now reads `thread_id` from the actual
+  `currentMessage` (via updated `getMessagesSince` SQL) and derives
+  `effectiveThreadRootId = messageThreadId ?? threadRootId`. The explicit
+  `threadRootId` parameter is only a fallback.
+- Root cause confirmed: message #7809 submitted 93ms after terminal reply #7808.
+  `handleAgentMessage` for #7810 enqueued `processChat(threadRootId=7810)`,
+  but cursor-ordered selection picked #7809 first. Without the fix, the response
+  to #7809 was cross-parented under #7810's thread.
+- `getMessagesSince` now includes `thread_id` in its SELECT clause.
+- All 792 tests pass.
+- Same root cause as the original 7664/7665/7666 incident described below.
 
 ### 2026-03-13
 - Lane: `next` (new follow-up bug discovered after steering/recovery merge).
