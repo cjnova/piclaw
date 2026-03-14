@@ -159,6 +159,17 @@ export async function handleAgentMessage(
     }
   }
 
+  if (themeCommand) {
+    if (themeCommand.payload) {
+      channel.broadcastEvent("ui_theme", { chat_jid: chatJid, ...themeCommand.payload });
+    }
+
+    return channel.json(
+      { thread_id: null, command: themeCommand, ui_only: true },
+      200
+    );
+  }
+
   const interaction = storeAgentUserMessage(channel, chatJid, {
     content,
     mediaIds: normalized.mediaIds,
@@ -356,24 +367,6 @@ export async function handleAgentMessage(
     markCommandHandled();
     return channel.json(
       { user_message: interaction, thread_id: threadId, command: result },
-      201
-    );
-  }
-
-  if (themeCommand) {
-    broadcastNewPost();
-    if (themeCommand.payload) {
-      channel.broadcastEvent("ui_theme", { chat_jid: chatJid, ...themeCommand.payload });
-    }
-
-    const formatted = formatOutbound(themeCommand.message, "web");
-    if (formatted) {
-      await channel.sendMessage(chatJid, formatted, interaction.id);
-    }
-
-    markCommandHandled();
-    return channel.json(
-      { user_message: interaction, thread_id: threadId, command: themeCommand },
       201
     );
   }
