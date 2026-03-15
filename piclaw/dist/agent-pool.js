@@ -62,6 +62,23 @@ function toSideReasoning(level) {
         ? level
         : undefined;
 }
+function normalizeAgentHandlePart(value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .replace(/-{2,}/g, "-");
+}
+function deriveAgentHandle(chatJid, sessionName) {
+    const sessionHandle = sessionName ? normalizeAgentHandlePart(sessionName) : "";
+    if (sessionHandle)
+        return sessionHandle;
+    const jidHandle = normalizeAgentHandlePart(chatJid.split(/[:/]/).filter(Boolean).pop() || chatJid);
+    if (jidHandle)
+        return jidHandle;
+    return "agent";
+}
 /** How long (ms) an idle session stays cached before being disposed. */
 const IDLE_TTL = 10 * 60 * 1000; // 10 minutes
 const CLEANUP_INTERVAL = 60 * 1000; // check every minute
@@ -512,6 +529,43 @@ export class AgentPool {
         if (!session)
             return false;
         return Boolean(session.isStreaming || session.isCompacting || session.isRetrying || session.isBashRunning);
+    }
+    listActiveChats() {
+        const baseChats = [...this.pool.entries()]
+            .map(([chatJid, entry]) => ({
+            chat_jid: chatJid,
+            display_name: entry.session.sessionName?.trim() || null,
+            session_id: entry.session.sessionId,
+            session_name: entry.session.sessionName?.trim() || null,
+            model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
+            is_active: Boolean(entry.session.isStreaming || entry.session.isCompacting || entry.session.isRetrying || entry.session.isBashRunning),
+            has_side_session: this.sidePool.has(chatJid),
+        }))
+            .sort((a, b) => a.chat_jid.localeCompare(b.chat_jid));
+        const usedHandles = new Map();
+        const withHandles = baseChats.map((chat) => {
+            const baseHandle = deriveAgentHandle(chat.chat_jid, chat.session_name);
+            const seen = usedHandles.get(baseHandle) ?? 0;
+            usedHandles.set(baseHandle, seen + 1);
+            return {
+                ...chat,
+                agent_name: seen === 0 ? baseHandle : `${baseHandle}-${seen + 1}`,
+            };
+        });
+        return withHandles.sort((a, b) => {
+            if (a.is_active !== b.is_active)
+                return a.is_active ? -1 : 1;
+            return a.chat_jid.localeCompare(b.chat_jid);
+        });
+    }
+    findActiveChatByAgentName(agentName) {
+        const normalized = normalizeAgentHandlePart(agentName);
+        if (!normalized)
+            return null;
+        return this.listActiveChats().find((chat) => chat.agent_name === normalized) ?? null;
+    }
+    getAgentHandleForChat(chatJid) {
+        return this.listActiveChats().find((chat) => chat.chat_jid === chatJid)?.agent_name ?? deriveAgentHandle(chatJid);
     }
     async queueStreamingMessage(chatJid, text, behavior) {
         const session = await this.getOrCreate(chatJid);

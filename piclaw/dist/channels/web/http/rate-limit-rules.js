@@ -19,6 +19,7 @@ const DATA_WORKSPACE_UPLOAD_LIMIT = 20;
 const DATA_DELETE_LIMIT = 60;
 const DATA_WRITE_LIMIT = 30;
 const DATA_AGENT_QUEUE_LIMIT = 30;
+const DATA_AGENT_PEER_LIMIT = 30;
 /**
  * Return data rate-limit rule for the current request, if any.
  */
@@ -40,6 +41,13 @@ export function getDataRateLimitRule(method, pathname) {
             bucket: "data/agent_queue",
             limit: DATA_AGENT_QUEUE_LIMIT,
             message: "Too many queued-message actions. Slow down.",
+        };
+    }
+    if (method === "POST" && pathname === "/agent/peer-message") {
+        return {
+            bucket: "data/agent_peer",
+            limit: DATA_AGENT_PEER_LIMIT,
+            message: "Too many peer-agent messages. Slow down.",
         };
     }
     if (method === "POST" && pathname === "/workspace/upload") {

@@ -24,7 +24,7 @@ import { handleAgentMessage as handleAgentMessageRequest, processChat as process
 import { SseHub } from "./web/sse-hub.js";
 import { UiBridge } from "./web/ui-bridge.js";
 import { ResponseService } from "./web/http/response-service.js";
-import { deleteMessageByRowId, replaceMessageContent, getDb, getInflightMessageId, getMessageByRowId, getMessageThreadRootIdById, getDeferredQueuedFollowups, setDeferredQueuedFollowups, } from "../db.js";
+import { deleteMessageByRowId, replaceMessageContent, getChatCursor, getDb, getInflightMessageId, getMessageByRowId, getMessageThreadRootIdById, getDeferredQueuedFollowups, setDeferredQueuedFollowups, } from "../db.js";
 import { WebChannelState } from "./web/channel-state.js";
 import { AgentStatusStore } from "./web/agent-status-store.js";
 import { FollowupPlaceholderStore } from "./web/followup-placeholders.js";
@@ -315,6 +315,7 @@ export class WebChannel {
             defaultAgentId: DEFAULT_AGENT_ID,
             enqueue: (task, key) => this.queue.enqueue(task, key),
             processChat: (chatJid, agentId, threadRootId) => this.processChat(chatJid, agentId, threadRootId),
+            getChatCursor: (chatJid) => getChatCursor(chatJid),
         };
     }
     resumeChat(chatJid, threadRootId) {
@@ -669,6 +670,70 @@ export class WebChannel {
     async handleAgentModels(req) {
         return await handleAgentModelsRequest(req, this.endpointContexts.agentStatus());
     }
+    /** GET /agent/active-chats — enumerate live chat agents/branches currently in the pool. */
+    async handleAgentActiveChats(_req) {
+        return this.json({ chats: this.agentPool.listActiveChats() }, 200);
+    }
+    /**
+     * POST /agent/peer-message — send a message from one active chat agent/window to another.
+     * Reuses the normal agent message path in the target chat so queue/defer semantics stay consistent.
+     */
+    async handleAgentPeerMessage(req) {
+        let payload;
+        try {
+            payload = await req.json();
+        }
+        catch {
+            return this.json({ error: "Invalid JSON" }, 400);
+        }
+        const sourceChatJid = typeof payload?.source_chat_jid === "string" ? payload.source_chat_jid.trim() : "";
+        const sourceAgentName = typeof payload?.source_agent_name === "string" ? payload.source_agent_name.trim() : "";
+        const requestedTargetChatJid = typeof payload?.target_chat_jid === "string" ? payload.target_chat_jid.trim() : "";
+        const requestedTargetAgentName = typeof payload?.target_agent_name === "string" ? payload.target_agent_name.trim() : "";
+        const content = typeof payload?.content === "string" ? payload.content.trim() : "";
+        const mode = payload?.mode === "queue" || payload?.mode === "steer" || payload?.mode === "auto"
+            ? payload.mode
+            : "auto";
+        if (!sourceChatJid)
+            return this.json({ error: "Missing source_chat_jid" }, 400);
+        if (!requestedTargetChatJid && !requestedTargetAgentName) {
+            return this.json({ error: "Missing target_chat_jid or target_agent_name" }, 400);
+        }
+        if (!content)
+            return this.json({ error: "Missing content" }, 400);
+        const targetChat = requestedTargetChatJid
+            ? this.agentPool.listActiveChats().find((chat) => chat.chat_jid === requestedTargetChatJid) ?? null
+            : this.agentPool.findActiveChatByAgentName(requestedTargetAgentName);
+        if (!targetChat) {
+            return this.json({ error: requestedTargetAgentName ? `Target agent is not active: ${requestedTargetAgentName}` : `Target chat is not active: ${requestedTargetChatJid}` }, 404);
+        }
+        if (sourceChatJid === targetChat.chat_jid) {
+            return this.json({ error: "source_chat_jid and target chat must differ" }, 400);
+        }
+        const effectiveSourceAgentName = sourceAgentName || this.agentPool.getAgentHandleForChat(sourceChatJid);
+        const forwardedContent = `Peer message from @${effectiveSourceAgentName}:\n\n${content}`;
+        const forwardReq = new Request(`http://internal/agent/${DEFAULT_AGENT_ID}/message?chat_jid=${encodeURIComponent(targetChat.chat_jid)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                content: forwardedContent,
+                mode,
+            }),
+        });
+        const forwardRes = await handleAgentMessageRequest(this, forwardReq, `/agent/${DEFAULT_AGENT_ID}/message`, targetChat.chat_jid, DEFAULT_AGENT_ID);
+        if (!forwardRes.ok) {
+            return forwardRes;
+        }
+        const responseBody = await forwardRes.json().catch(() => ({}));
+        return this.json({
+            ...responseBody,
+            source_chat_jid: sourceChatJid,
+            source_agent_name: effectiveSourceAgentName,
+            target_chat_jid: targetChat.chat_jid,
+            target_agent_name: targetChat.agent_name,
+            relayed: true,
+        }, forwardRes.status);
+    }
     /**
      * POST /agent/respond – Handle a UI response to an agent request (e.g., confirmation dialog).
      * Validates request_id is a non-empty string of ≤ 256 chars.
@@ -861,7 +926,9 @@ export class WebChannel {
         });
     }
     async handleAgentMessage(req, pathname) {
-        return handleAgentMessageRequest(this, req, pathname, DEFAULT_CHAT_JID, DEFAULT_AGENT_ID);
+        const url = new URL(req.url);
+        const chatJid = url.searchParams.get("chat_jid")?.trim() || DEFAULT_CHAT_JID;
+        return handleAgentMessageRequest(this, req, pathname, chatJid, DEFAULT_AGENT_ID);
     }
     async processChat(chatJid, agentId, threadRootId) {
         return processAgentChat(this, chatJid, agentId, threadRootId ?? undefined);

@@ -1,10 +1,10 @@
 ---
 id: parallel-web-chat-windows-with-session-forks
 title: Support multiple parallel web chat windows backed by resumable forked sessions
-status: inbox
+status: doing
 priority: high
 created: 2026-03-14
-updated: 2026-03-14
+updated: 2026-03-15
 target_release: next
 estimate: L
 risk: high
@@ -27,6 +27,11 @@ owner: pi
 Add support for opening and managing **multiple parallel web chat windows** that
 share a common conversation ancestry but run as distinct, resumable session
 forks.
+
+A new pop-out chat window should explicitly **fork from the current branch's
+session state at creation time** — much like BTW reseeds from the current chat
+context — but then continue as a **persistent first-class branch** with its own
+runtime identity, queue/recovery state, and resumable history.
 
 The user should be able to duplicate or fork the current chat into a new window
 or pane, continue independently there, and later resume that branch without
@@ -51,6 +56,11 @@ This needs a design that fits both:
 
 - Do **not** collapse parallel web branches into one shared monolithic active
   session.
+- A new pop-out branch should **fork from the current branch/session context at
+  creation time**, rather than starting cold.
+- That forking model should be understood as similar in spirit to BTW's
+  reseeded side-session behavior, but the resulting pop-out must become a
+  **persistent first-class branch**, not an ephemeral side panel.
 - Reuse the **same SQLite database** for all parallel sessions/branches rather
   than inventing a separate side store.
 - Isolation must come from **branch/session identity inside the existing DB
@@ -75,9 +85,14 @@ to:
 
 The upstream Pi session model already supports tree navigation and forked
 sessions. PiClaw should take advantage of that for ancestry, resume, and branch
-semantics — but the web runtime should still persist and isolate **multiple
-parallel sessions inside the same SQLite database**, not force them through one
-shared live session.
+semantics — and the first pop-out-window mental model should be explicit: fork
+from the current session state first, then continue independently. In other
+words, treat BTW's reseeded side-session approach as a conceptual stepping stone
+for how a branch is born, but not as the final persistence model.
+
+The web runtime should still persist and isolate **multiple parallel sessions
+inside the same SQLite database**, not force them through one shared live
+session.
 
 ## Problem Statement
 
@@ -342,6 +357,14 @@ Pick and justify one recommended approach that:
 - [ ] Follow-up execution ticket(s) created if implementation is split
 
 ## Updates
+
+### 2026-03-15
+- Refined to make the session-forking model explicit: a new pop-out chat window should fork from the current branch/session context at creation time, in the same broad spirit as BTW reseeding, but then persist as a first-class branch with its own queue/recovery/runtime state.
+- Began implementation-adjacent groundwork by adding backend peer-agent messaging substrate:
+  - `GET /agent/active-chats`
+  - `POST /agent/peer-message`
+  - `POST /agent/:id/message?chat_jid=...` now reuses the normal send path for non-default branch chats
+- This does not complete pop-out chats by itself, but it establishes a concrete path for active chat windows/agents to communicate with each other using normal target-chat queue/defer semantics.
 
 ### 2026-03-14
 - Ticket created from a user request for multiple parallel chat windows with

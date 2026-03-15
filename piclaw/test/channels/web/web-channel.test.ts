@@ -6,7 +6,7 @@
  */
 
 import { expect, test, afterEach } from "bun:test";
-import { createTempWorkspace, setEnv } from "../../helpers.js";
+import { createTempWorkspace, setEnv, waitFor } from "../../helpers.js";
 
 let restoreEnv: (() => void) | null = null;
 let cleanupWorkspace: (() => void) | null = null;
@@ -130,6 +130,225 @@ test("web channel handles /model command without queueing agent", async () => {
   const timeline = db.getTimeline("web:default", 10);
   expect(timeline.length).toBeGreaterThanOrEqual(2);
   expect(timeline[timeline.length - 1].data.content).toContain("Model set to openai/gpt-test.");
+});
+
+test("web channel relays peer messages into another active chat", async () => {
+  const ws = createTempWorkspace("piclaw-web-channel-");
+  cleanupWorkspace = ws.cleanup;
+  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+
+  const db = await import("../../../src/db.js");
+  db.initDatabase();
+  db.getDb().exec("DELETE FROM message_media; DELETE FROM messages; DELETE FROM chats; DELETE FROM chat_cursors;");
+  db.storeChatMetadata("web:source", new Date().toISOString(), "Source");
+  db.storeChatMetadata("web:target", new Date().toISOString(), "Target");
+
+  const enqueuedKeys: string[] = [];
+  const activeChats = [
+    {
+      chat_jid: "web:source",
+      agent_name: "source",
+      display_name: "Source",
+      session_id: "s-source",
+      session_name: null,
+      model: null,
+      is_active: false,
+      has_side_session: false,
+    },
+    {
+      chat_jid: "web:target",
+      agent_name: "target",
+      display_name: "Target",
+      session_id: "s-target",
+      session_name: null,
+      model: null,
+      is_active: false,
+      has_side_session: false,
+    },
+  ];
+
+  const webMod = await import("../../../src/channels/web.js");
+  const web = new (webMod.WebChannel as any)({
+    queue: { enqueue: (_task: unknown, key: string) => { enqueuedKeys.push(key); } },
+    agentPool: {
+      listActiveChats: () => activeChats,
+      findActiveChatByAgentName: (name: string) => activeChats.find((chat) => chat.agent_name === name) ?? null,
+      getAgentHandleForChat: (chatJid: string) => activeChats.find((chat) => chat.chat_jid === chatJid)?.agent_name ?? null,
+      isStreaming: () => false,
+      isActive: () => false,
+      getContextUsageForChat: async () => null,
+    },
+  });
+
+  const req = new Request("http://test/agent/peer-message", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source_chat_jid: "web:source",
+      target_chat_jid: "web:target",
+      content: "Please analyse this path.",
+    }),
+  });
+
+  const res = await (web as any).handleRequest(req);
+  expect(res.status).toBe(201);
+  const json = await res.json();
+  expect(json.relayed).toBe(true);
+  expect(json.source_chat_jid).toBe("web:source");
+  expect(json.source_agent_name).toBe("source");
+  expect(json.target_chat_jid).toBe("web:target");
+  expect(json.target_agent_name).toBe("target");
+
+  const timeline = db.getTimeline("web:target", 10);
+  expect(timeline).toHaveLength(1);
+  expect(timeline[0].data.content).toContain("Peer message from @source");
+  expect(timeline[0].data.content).toContain("Please analyse this path.");
+  expect(enqueuedKeys.some((key) => key.startsWith("chat:web:target:"))).toBe(true);
+});
+
+test("web channel resolves peer relay by target agent name", async () => {
+  const ws = createTempWorkspace("piclaw-web-channel-");
+  cleanupWorkspace = ws.cleanup;
+  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+
+  const db = await import("../../../src/db.js");
+  db.initDatabase();
+  db.getDb().exec("DELETE FROM message_media; DELETE FROM messages; DELETE FROM chats; DELETE FROM chat_cursors;");
+  db.storeChatMetadata("web:source", new Date().toISOString(), "Source");
+  db.storeChatMetadata("web:target", new Date().toISOString(), "Target");
+
+  const enqueuedKeys: string[] = [];
+  const activeChats = [
+    {
+      chat_jid: "web:source",
+      agent_name: "source",
+      display_name: "Source",
+      session_id: "s-source",
+      session_name: null,
+      model: null,
+      is_active: false,
+      has_side_session: false,
+    },
+    {
+      chat_jid: "web:target",
+      agent_name: "research",
+      display_name: "Research",
+      session_id: "s-target",
+      session_name: "Research",
+      model: null,
+      is_active: false,
+      has_side_session: false,
+    },
+  ];
+
+  const webMod = await import("../../../src/channels/web.js");
+  const web = new (webMod.WebChannel as any)({
+    queue: { enqueue: (_task: unknown, key: string) => { enqueuedKeys.push(key); } },
+    agentPool: {
+      listActiveChats: () => activeChats,
+      findActiveChatByAgentName: (name: string) => activeChats.find((chat) => chat.agent_name === name) ?? null,
+      getAgentHandleForChat: (chatJid: string) => activeChats.find((chat) => chat.chat_jid === chatJid)?.agent_name ?? null,
+      isStreaming: () => false,
+      isActive: () => false,
+      getContextUsageForChat: async () => null,
+    },
+  });
+
+  const req = new Request("http://test/agent/peer-message", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source_chat_jid: "web:source",
+      target_agent_name: "research",
+      content: "Please inspect the current plan.",
+    }),
+  });
+
+  const res = await (web as any).handleRequest(req);
+  expect(res.status).toBe(201);
+  const json = await res.json();
+  expect(json.relayed).toBe(true);
+  expect(json.target_chat_jid).toBe("web:target");
+  expect(json.target_agent_name).toBe("research");
+
+  const timeline = db.getTimeline("web:target", 10);
+  expect(timeline).toHaveLength(1);
+  expect(timeline[0].data.content).toContain("Please inspect the current plan.");
+  expect(enqueuedKeys.some((key) => key.startsWith("chat:web:target:"))).toBe(true);
+});
+
+test("web channel routes leading @agent mentions into the target chat", async () => {
+  const ws = createTempWorkspace("piclaw-web-channel-");
+  cleanupWorkspace = ws.cleanup;
+  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+
+  const db = await import("../../../src/db.js");
+  db.initDatabase();
+  db.getDb().exec("DELETE FROM message_media; DELETE FROM messages; DELETE FROM chats; DELETE FROM chat_cursors;");
+  db.storeChatMetadata("web:source", new Date().toISOString(), "Source");
+  db.storeChatMetadata("web:target", new Date().toISOString(), "Target");
+
+  const enqueuedKeys: string[] = [];
+  const activeChats = [
+    {
+      chat_jid: "web:source",
+      agent_name: "source",
+      display_name: "Source",
+      session_id: "s-source",
+      session_name: null,
+      model: null,
+      is_active: false,
+      has_side_session: false,
+    },
+    {
+      chat_jid: "web:target",
+      agent_name: "research",
+      display_name: "Research",
+      session_id: "s-target",
+      session_name: "Research",
+      model: null,
+      is_active: false,
+      has_side_session: false,
+    },
+  ];
+
+  const webMod = await import("../../../src/channels/web.js");
+  const web = new (webMod.WebChannel as any)({
+    queue: { enqueue: (_task: unknown, key: string) => { enqueuedKeys.push(key); } },
+    agentPool: {
+      listActiveChats: () => activeChats,
+      findActiveChatByAgentName: (name: string) => activeChats.find((chat) => chat.agent_name === name) ?? null,
+      getAgentHandleForChat: (chatJid: string) => activeChats.find((chat) => chat.chat_jid === chatJid)?.agent_name ?? null,
+      isStreaming: () => false,
+      isActive: () => false,
+      getContextUsageForChat: async () => null,
+    },
+  });
+
+  const req = new Request("http://test/agent/default/message?chat_jid=web:source", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: "@research please inspect this branch" }),
+  });
+
+  const res = await (web as any).handleRequest(req);
+  expect(res.status).toBe(201);
+  const json = await res.json();
+  expect(json.relayed).toBe(true);
+  expect(json.mention_routed).toBe(true);
+  expect(json.source_chat_jid).toBe("web:source");
+  expect(json.target_chat_jid).toBe("web:target");
+  expect(json.target_agent_name).toBe("research");
+
+  const sourceTimeline = db.getTimeline("web:source", 10);
+  expect(sourceTimeline).toHaveLength(1);
+  expect(sourceTimeline[0].data.content).toBe("@research please inspect this branch");
+
+  const targetTimeline = db.getTimeline("web:target", 10);
+  expect(targetTimeline).toHaveLength(1);
+  expect(targetTimeline[0].data.content).toBe("please inspect this branch");
+  expect(enqueuedKeys).toHaveLength(1);
+  expect(enqueuedKeys[0]).toMatch(/^chat:web:target:/);
 });
 
 test("web channel defers /queue command into queue-state without placeholder row", async () => {
@@ -1490,6 +1709,69 @@ test("processChat can materialize a deferred queued follow-up when resumed idle"
   const contents = timeline.map((item: any) => item.data.content);
   expect(contents).toContain("queued idle item");
   expect(contents).toContain("reply after materialize");
+});
+
+test("processChat drains multiple deferred queued follow-ups across resume tasks", async () => {
+  const ws = createTempWorkspace("piclaw-web-channel-");
+  cleanupWorkspace = ws.cleanup;
+  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+
+  const db = await import("../../../src/db.js");
+  db.initDatabase();
+  db.getDb().exec("DELETE FROM message_media; DELETE FROM messages; DELETE FROM chats; DELETE FROM chat_cursors; DELETE FROM chat_cursors;");
+  db.storeChatMetadata("web:default", new Date().toISOString(), "Web");
+
+  const executedKeys: string[] = [];
+  let runningId: string | null = null;
+  const pending: Array<{ id?: string; fn: () => Promise<void> }> = [];
+  const enqueue = async (fn: () => Promise<void>, id?: string) => {
+    if (id && (runningId === id || pending.some((item) => item.id === id))) return;
+    pending.push({ fn, id });
+    if (runningId) return;
+    while (pending.length > 0) {
+      const next = pending.shift()!;
+      runningId = next.id ?? null;
+      executedKeys.push(next.id ?? "");
+      try {
+        await next.fn();
+      } finally {
+        runningId = null;
+      }
+    }
+  };
+
+  let runCount = 0;
+  const webMod = await import("../../../src/channels/web.js");
+  const web = new (webMod.WebChannel as any)({
+    queue: { enqueue },
+    agentPool: {
+      setSessionBinder: () => {},
+      runAgent: async (_prompt: string, _chatJid: string) => {
+        runCount += 1;
+        return { status: "success", result: `reply ${runCount}`, attachments: [] };
+      },
+      getContextUsageForChat: async () => null,
+    },
+  });
+
+  web.enqueueQueuedFollowupItem("web:default", 0, "queued one");
+  web.enqueueQueuedFollowupItem("web:default", 0, "queued two");
+  await web.processChat("web:default", "default");
+  await waitFor(() => runCount === 2 && web.getQueuedFollowupCount("web:default") === 0, 250, 10);
+
+  expect(runCount).toBe(2);
+  expect(web.getQueuedFollowupCount("web:default")).toBe(0);
+  expect(executedKeys).toHaveLength(2);
+  expect(executedKeys[0]).toMatch(/^resume:web:default:/);
+  expect(executedKeys[1]).toMatch(/^resume:web:default:/);
+  expect(executedKeys[0]).not.toBe(executedKeys[1]);
+
+  const timeline = db.getTimeline("web:default", 10);
+  const contents = timeline.map((item: any) => item.data.content);
+  expect(contents).toContain("queued one");
+  expect(contents).toContain("reply 1");
+  expect(contents).toContain("queued two");
+  expect(contents).toContain("reply 2");
 });
 
 test("processChat preserves a deferred queued follow-up if materialization fails", async () => {

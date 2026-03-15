@@ -152,6 +152,8 @@ export interface WebChannelLike
   handleAgentQueueRemove(req: Request): Promise<Response>;
   handleAgentQueueSteer(req: Request): Promise<Response>;
   handleAgentModels(req: Request): Promise<Response>;
+  handleAgentActiveChats(req: Request): Promise<Response>;
+  handleAgentPeerMessage(req: Request): Promise<Response>;
   handleAgentRespond(req: Request): Promise<Response>;
   handleAdaptiveCardAction(req: Request): Promise<Response>;
   handleAgentSidePrompt(req: Request): Promise<Response>;

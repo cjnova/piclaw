@@ -29,6 +29,8 @@ describe("web http agent dispatch", () => {
       handleAgentQueueRemove: async () => new Response("queue-remove", { status: 203 }),
       handleAgentQueueSteer: async () => new Response("queue-steer", { status: 204 }),
       handleAgentModels: async () => new Response("models"),
+      handleAgentActiveChats: async () => new Response("active-chats"),
+      handleAgentPeerMessage: async () => new Response("peer-message", { status: 208 }),
       handleAgentRespond: async () => new Response("respond"),
       handleAdaptiveCardAction: async () => new Response("card-action", { status: 205 }),
       handleAgentSidePrompt: async () => new Response("side-prompt", { status: 206 }),
@@ -59,6 +61,12 @@ describe("web http agent dispatch", () => {
 
     const modelsReq = new Request("https://example.com/agent/models", { method: "GET" });
     expect(await (await handleAgentRoutes(channel, modelsReq, "/agent/models", new URL(modelsReq.url)))?.text()).toBe("models");
+
+    const activeChatsReq = new Request("https://example.com/agent/active-chats", { method: "GET" });
+    expect(await (await handleAgentRoutes(channel, activeChatsReq, "/agent/active-chats", new URL(activeChatsReq.url)))?.text()).toBe("active-chats");
+
+    const peerMessageReq = new Request("https://example.com/agent/peer-message", { method: "POST" });
+    expect((await handleAgentRoutes(channel, peerMessageReq, "/agent/peer-message", new URL(peerMessageReq.url)))?.status).toBe(208);
 
     const respondReq = new Request("https://example.com/agent/respond", { method: "POST" });
     expect(await (await handleAgentRoutes(channel, respondReq, "/agent/respond", new URL(respondReq.url)))?.text()).toBe("respond");

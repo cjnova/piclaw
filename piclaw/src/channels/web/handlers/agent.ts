@@ -49,6 +49,23 @@ import { resolveThreadId, resolveThreadRootId } from "../threading.js";
 import { createUuid } from "../../../utils/ids.js";
 import type { AttachmentInfo } from "../../../agent-pool/attachments.js";
 
+function parseLeadingAgentMention(content: string): { agentName: string; remainder: string } | null {
+  const match = content.match(/^\s*@([a-zA-Z0-9][a-zA-Z0-9_-]{0,31})(?:\s+([\s\S]*))?$/);
+  if (!match) return null;
+  return {
+    agentName: match[1].toLowerCase(),
+    remainder: (match[2] ?? "").trim(),
+  };
+}
+
+function fallbackAgentHandle(chatJid: string): string {
+  return (chatJid.split(/[:/]/).filter(Boolean).pop() || chatJid)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "agent";
+}
+
 /** Handle POST to create an agent message and start an agent run. */
 export async function handleAgentMessage(
   channel: WebChannelLike,
@@ -62,7 +79,7 @@ export async function handleAgentMessage(
   if (parsed.error || !parsed.payload) return channel.json({ error: parsed.error }, 400);
 
   const normalized = normalizeAgentMessagePayload(parsed.payload);
-  const content = typeof normalized.content === "string" ? normalized.content : "";
+  let content = typeof normalized.content === "string" ? normalized.content : "";
   const hasAttachments =
     normalized.mediaIds.length > 0 ||
     (Array.isArray(normalized.contentBlocks) && normalized.contentBlocks.length > 0) ||
@@ -70,8 +87,27 @@ export async function handleAgentMessage(
   const hasPayload = content.trim().length > 0 || hasAttachments;
   if (!hasPayload) return channel.json({ error: "Missing 'content' field" }, 400);
 
-  const command = parseControlCommand(content, TRIGGER_PATTERN);
   const requestMode = normalized.mode ?? "auto";
+  const mention = content.trim().length > 0 ? parseLeadingAgentMention(content) : null;
+  const mentionTarget = mention
+    ? (typeof (channel.agentPool as { findActiveChatByAgentName?: (name: string) => { chat_jid: string; agent_name: string } | null }).findActiveChatByAgentName === "function"
+      ? (channel.agentPool as { findActiveChatByAgentName: (name: string) => { chat_jid: string; agent_name: string } | null }).findActiveChatByAgentName(mention.agentName)
+      : null)
+    : null;
+  if (mention && !mentionTarget) {
+    return channel.json({ error: `Unknown agent @${mention.agentName}` }, 404);
+  }
+  if (mention && mentionTarget && mentionTarget.chat_jid === chatJid) {
+    content = mention.remainder;
+  }
+  if (mention && mentionTarget && mentionTarget.chat_jid !== chatJid && !mention.remainder && !hasAttachments) {
+    return channel.json({ error: `Missing message body for @${mention.agentName}` }, 400);
+  }
+  if (content.trim().length === 0 && !hasAttachments) {
+    return channel.json({ error: "Missing 'content' field" }, 400);
+  }
+
+  const command = parseControlCommand(content, TRIGGER_PATTERN);
   const trimmed = content.trim();
   const themeCommand = handleUiThemeCommand(trimmed);
   const testCardCommand = handleAdaptiveCardTestCommand(trimmed);
@@ -89,6 +125,51 @@ export async function handleAgentMessage(
   // restart and reflects whether the agent pool still has an active run,
   // including streaming/compaction/retry phases of the same turn.
 
+  if (mention && mentionTarget && mentionTarget.chat_jid !== chatJid) {
+    const sourceInteraction = storeAgentUserMessage(channel, chatJid, {
+      content: typeof normalized.content === "string" ? normalized.content : content,
+      mediaIds: normalized.mediaIds,
+      contentBlocks: normalized.contentBlocks,
+      linkPreviews: normalized.linkPreviews,
+    });
+    if (!sourceInteraction) return channel.json({ error: "Failed to store message" }, 500);
+
+    channel.broadcastEvent("new_post", sourceInteraction);
+    setChatCursor(chatJid, sourceInteraction.timestamp);
+
+    const sourceAgentName = typeof (channel.agentPool as { getAgentHandleForChat?: (chatJid: string) => string }).getAgentHandleForChat === "function"
+      ? (channel.agentPool as { getAgentHandleForChat: (chatJid: string) => string }).getAgentHandleForChat(chatJid)
+      : fallbackAgentHandle(chatJid);
+    const forwardedContent = mention.remainder;
+    const forwardReq = new Request(`http://internal/agent/${agentId}/message?chat_jid=${encodeURIComponent(mentionTarget.chat_jid)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: forwardedContent,
+        media_ids: normalized.mediaIds,
+        content_blocks: normalized.contentBlocks,
+        link_previews: normalized.linkPreviews,
+        mode: requestMode,
+      }),
+    });
+
+    const forwardRes = await handleAgentMessage(channel, forwardReq, pathname, mentionTarget.chat_jid, defaultAgentId);
+    if (!forwardRes.ok) {
+      return forwardRes;
+    }
+
+    const responseBody = await forwardRes.json().catch(() => ({} as Record<string, unknown>));
+    return channel.json({
+      ...responseBody,
+      user_message: sourceInteraction,
+      source_chat_jid: chatJid,
+      source_agent_name: sourceAgentName,
+      target_chat_jid: mentionTarget.chat_jid,
+      target_agent_name: mentionTarget.agent_name,
+      relayed: true,
+      mention_routed: true,
+    }, forwardRes.status);
+  }
 
   const queueDeferredFollowup = (
     queuedContent: string,
