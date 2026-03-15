@@ -111,6 +111,28 @@ test("same-timestamp ordering is stable for timeline and cursor queries", () => 
   expect(rowB).toBeGreaterThan(rowA);
 });
 
+test("storeMessage makes per-chat timestamps monotonic so cursor-based drains cannot miss same-ms turns", () => {
+  const chatJid = `test:${Date.now()}-monotonic-cursor`;
+  db.storeChatMetadata(chatJid, new Date().toISOString(), "Test");
+
+  const requestedTs = "2024-04-02T00:00:00.000Z";
+  const firstRowId = db.storeMessage(makeMessage(chatJid, "first", requestedTs));
+  const first = db.getMessageByRowId(chatJid, firstRowId);
+  expect(first?.timestamp).toBe(requestedTs);
+
+  // Simulate the cursor having already advanced to the first persisted turn.
+  const cursorTs = first?.timestamp || requestedTs;
+
+  const secondRowId = db.storeMessage(makeMessage(chatJid, "second", requestedTs));
+  const second = db.getMessageByRowId(chatJid, secondRowId);
+  const secondTimestamp = second?.timestamp ?? "";
+  expect(secondTimestamp).not.toBe(cursorTs);
+  expect(secondTimestamp > cursorTs).toBe(true);
+
+  const pending = db.getMessagesSince(chatJid, cursorTs, "Pi");
+  expect(pending.map((m) => m.content)).toEqual(["second"]);
+});
+
 // --- Bot message filtering ---
 
 test("getMessagesSince and getNewMessages filter bot messages, bot-prefixed content, and steering-only rows", () => {

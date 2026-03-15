@@ -13,7 +13,6 @@ import { scheduleLinkPreviews } from "./link-previews.js";
 import { createUuid } from "../../utils/ids.js";
 /** Store a web channel message in the database and attach media. */
 export function storeWebMessage(channel, params, options = {}) {
-    const timestamp = new Date().toISOString();
     const messageId = createUuid("web");
     let contentBlocks = Array.isArray(options.contentBlocks)
         ? [...options.contentBlocks]
@@ -54,7 +53,7 @@ export function storeWebMessage(channel, params, options = {}) {
         sender: params.isBot ? "web-agent" : "web-user",
         sender_name: params.isBot ? params.agentName : "You",
         content: params.content,
-        timestamp,
+        timestamp: new Date().toISOString(),
         is_from_me: false,
         is_bot_message: params.isBot,
         content_blocks: contentBlocks,
@@ -74,7 +73,7 @@ export function storeWebMessage(channel, params, options = {}) {
     if (!params.isBot && (options.threadId === null || options.threadId === undefined)) {
         getDb().prepare("UPDATE messages SET thread_id = ? WHERE rowid = ?").run(rowId, rowId);
     }
-    storeChatMetadata(params.chatJid, timestamp, "Web");
+    storeChatMetadata(params.chatJid, msg.timestamp, "Web");
     const interaction = getMessageByRowId(params.chatJid, rowId);
     if (interaction) {
         interaction.data.agent_id = params.agentId;
@@ -104,7 +103,7 @@ export function storeWebMessage(channel, params, options = {}) {
     scheduleLinkPreviews(channel, params.chatJid, rowId, params.content, options.linkPreviews);
     return {
         id: rowId,
-        timestamp,
+        timestamp: msg.timestamp,
         data,
     };
 }
