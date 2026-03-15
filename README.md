@@ -9,7 +9,7 @@ PiClaw is a Docker-based sandbox for running the [Pi Coding Agent](https://githu
 ![Demo Animation](docs/demo.gif)
 
 - **Streaming web UI** — real-time token-by-token updates over SSE, with Markdown, KaTeX, Mermaid, and Adaptive Cards
-- **Adaptive Cards + structured actions** — inline cards, persisted submissions, read-only finished cards, and built-in `/test-card` validation flows
+- **Adaptive Cards + structured actions** — inline cards, persisted submissions, read-only finished cards, and built-in `/test-card` validation flows so structured UI behaves like a proper feature rather than a hopeful sketch
 - **Workspace explorer** — file tree sidebar with previews, file reference pills, and downloads
 - **Disk usage starburst** — folder-size visualization with hover details and drill-down
 - **Code editor** — built-in CodeMirror 6 with syntax highlighting for 12 languages, search/replace, and save
@@ -60,7 +60,7 @@ The UI is single-user, mobile-friendly, and streams updates over SSE:
 - **Multi-turn threading** — subsequent turns are visually threaded under the first
 - **Themes + tinting** — presets plus `/theme` and `/tint` commands (Solarized auto light/dark)
 - **Terminal pane** — open a shell inside the container for setup tasks like running `pi /login` to add provider credentials
-- **Context usage indicator** — compose-footer pie indicator refreshes on reconnect and when returning to the tab
+- **Context usage indicator** — compose-footer pie indicator refreshes on reconnect and when returning to the tab, instead of lingering until the next poll cycle takes notice
 - **Mobile-first layout** with webapp manifest
 
 ### Workspace explorer
