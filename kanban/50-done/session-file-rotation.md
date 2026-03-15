@@ -1,13 +1,14 @@
 ---
 id: session-file-rotation
 title: Add session file size monitoring and rotation
-status: review
+status: done
 priority: medium
 created: 2026-03-13
-updated: 2026-03-14
+updated: 2026-03-15
 target_release: next
 estimate: L
 risk: high
+completed: 2026-03-15
 tags:
   - work-item
   - kanban
@@ -130,20 +131,20 @@ operational untidiness.
 
 ## Acceptance Criteria
 
-- [ ] Active session file path and size are available through PiClaw session state or a status surface.
-- [ ] A warning is logged and/or surfaced when the active session file exceeds a configurable threshold.
-- [ ] A manual rotation command exists (`/session rotate`, `/session archive`, or equivalent).
-- [ ] Manual rotation creates a fresh session file using the existing session-file naming style.
-- [ ] Rotation preserves conversation continuity in a way that is explicit and testable:
+- [x] Active session file path and size are available through PiClaw session state or a status surface.
+- [x] A warning is logged and/or surfaced when the active session file exceeds a configurable threshold.
+- [x] A manual rotation command exists (`/session rotate`, `/session archive`, or equivalent).
+- [x] Manual rotation creates a fresh session file using the existing session-file naming style.
+- [x] Rotation preserves conversation continuity in a way that is explicit and testable:
   - either by carrying forward the effective compacted context, or
   - by starting from a semantically equivalent new-session boundary documented in the ticket.
-- [ ] Old session files are archived/preserved rather than deleted.
-- [ ] Rotation cannot silently lose deferred queued follow-ups, placeholder-backed follow-ups, or pending session state.
-- [ ] Rotation cannot run unsafely during an inflight turn; it must either:
+- [x] Old session files are archived/preserved rather than deleted.
+- [x] Rotation cannot silently lose deferred queued follow-ups, placeholder-backed follow-ups, or pending session state.
+- [x] Rotation cannot run unsafely during an inflight turn; it must either:
   - block with a clear reason, or
   - defer until the turn has terminally completed.
-- [ ] Focused regression coverage exists for rotation with queued state present.
-- [ ] Optional automatic rotation is either implemented behind config or explicitly split into a follow-up ticket.
+- [x] Focused regression coverage exists for rotation with queued state present.
+- [x] Optional automatic rotation is either implemented behind config or explicitly split into a follow-up ticket.
 
 ## Implementation Paths
 
@@ -199,14 +200,14 @@ interactions are proven in tests.
 
 ## Definition of Done
 
-- [ ] Problem statement and scope are explicit
-- [ ] Chosen implementation path recorded
-- [ ] Acceptance criteria are measurable
-- [ ] Test plan covers queue + inflight safety
-- [ ] Manual rotation path implemented and validated
-- [ ] Session size/warning signal implemented
-- [ ] Follow-up ticket created if auto-rotation is deferred
-- [ ] Ticket update history includes evidence and quality score
+- [x] Problem statement and scope are explicit
+- [x] Chosen implementation path recorded
+- [x] Acceptance criteria are measurable
+- [x] Test plan covers queue + inflight safety
+- [x] Manual rotation path implemented and validated
+- [x] Session size/warning signal implemented
+- [x] Follow-up ticket created if auto-rotation is deferred
+- [x] Ticket update history includes evidence and quality score
 
 ## Relevant Areas
 
@@ -236,6 +237,27 @@ interactions are proven in tests.
 - `piclaw/piclaw/node_modules/@mariozechner/pi-coding-agent/dist/core/session-manager.js`
 
 ## Updates
+
+### 2026-03-15 (closure)
+- Closed after the manual + automatic rotation path had already shipped, passed
+  coverage, and survived subsequent reload/restart/runtime use without opening
+  new follow-up defects in this area.
+- Shipped behavior includes:
+  - session file size surfaced in `/state`
+  - configurable oversized-session warning threshold via `PICLAW_SESSION_MAX_SIZE_MB`
+  - manual `/session-rotate [instructions]`
+  - shared safe rotation engine in `piclaw/piclaw/src/session-rotation.ts`
+  - automatic pre-prompt rotation behind `PICLAW_SESSION_AUTO_ROTATE=1`
+- Queue/inflight safety constraints are enforced by the shared rotation path:
+  - blocks during streaming/compacting/retrying
+  - blocks while queued steering/follow-up messages remain pending
+  - archives old files instead of truncating in place
+  - seeds the successor session from the effective carried-forward context
+- Key implementation commits:
+  - `07d03ac` — `Implement safe session rotation and plan draw.io embedding`
+  - `fdac04e` — `Finish session auto-rotation and terminal dock cleanup`
+- Validation evidence already recorded below remained sufficient for closure.
+- Quality: ★★★★★ 9/10 (problem: 2, scope: 2, test: 2, deps: 1, risk: 2)
 
 ### 2026-03-14
 - Lane change: `20-doing` → `40-review` after completing the auto-rotation scope.
