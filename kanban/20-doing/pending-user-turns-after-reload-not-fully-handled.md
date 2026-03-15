@@ -1,10 +1,10 @@
 ---
 id: pending-user-turns-after-reload-not-fully-handled
 title: Pending user turns after reload are still not fully handled
-status: inbox
+status: doing
 priority: high
 created: 2026-03-14
-updated: 2026-03-14
+updated: 2026-03-15
 target_release: next
 estimate: M
 risk: medium
@@ -102,6 +102,18 @@ Potential remaining failure modes include:
 - [ ] `bun run quality` passes
 
 ## Updates
+
+### 2026-03-15
+- Lane change: `00-inbox` → `20-doing` after the user confirmed the out-of-turn/off-by-one behaviour is still happening in practice.
+- Active investigation identified a concrete likely gap in the persistence layer: pending-turn drain is cursor-based on `timestamp > cursor_ts`, while web/user messages could still land with equal millisecond timestamps.
+- Implemented a monotonic per-chat message timestamp fix in `piclaw/src/db/messages.ts` so later turns cannot be skipped or appear off-by-one simply because they were persisted in the same nominal millisecond.
+- Updated the web message write path in `piclaw/src/channels/web/message-store.ts` so returned interaction timestamps and chat metadata use the final persisted timestamp.
+- Added regression coverage in `piclaw/test/db/db.test.ts` for the exact cursor case: first turn advances the cursor, second turn arrives with the same requested timestamp, and `getMessagesSince(...)` must still surface the later turn.
+- Validation evidence:
+  - `bun test test/db/db.test.ts`
+  - `bun run build:web`
+  - `bun run quality` → `911 pass, 0 fail`
+- Quality: ★★★★☆ 8/10 (problem: 2, scope: 1, test: 2, deps: 1, risk: 2)
 
 ### 2026-03-14
 - Created from explicit user request after reviewing closed reload/recovery/turn tickets and concluding the topic still needs a fresh follow-up investigation.

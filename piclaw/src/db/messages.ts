@@ -48,6 +48,22 @@ interface StoredMessageRow {
 /** Column list used in SELECT queries to ensure a consistent shape. */
 const MESSAGE_COLUMNS = "rowid, chat_jid, sender, sender_name, content, content_blocks, link_previews, thread_id, timestamp, is_bot_message";
 
+function ensureMonotonicMessageTimestamp(chatJid: string, requestedTimestamp: string): string {
+  const requestedMs = Date.parse(requestedTimestamp);
+  if (!Number.isFinite(requestedMs)) return requestedTimestamp;
+
+  const db = getDb();
+  const row = db
+    .prepare("SELECT timestamp FROM messages WHERE chat_jid = ? ORDER BY timestamp DESC, rowid DESC LIMIT 1")
+    .get(chatJid) as { timestamp: string } | undefined;
+  if (!row?.timestamp) return requestedTimestamp;
+
+  const lastMs = Date.parse(row.timestamp);
+  if (!Number.isFinite(lastMs) || requestedMs > lastMs) return requestedTimestamp;
+
+  return new Date(lastMs + 1).toISOString();
+}
+
 /** Safely parse a JSON string into an array, returning undefined on failure. */
 function parseJsonArray(value: string | null | undefined): unknown[] | undefined {
   if (!value) return undefined;
@@ -115,6 +131,7 @@ export function storeChatMetadata(chatJid: string, timestamp: string, name?: str
  */
 export function storeMessage(msg: NewMessage): number {
   const db = getDb();
+  msg.timestamp = ensureMonotonicMessageTimestamp(msg.chat_jid, msg.timestamp);
   const contentBlocks = msg.content_blocks ? JSON.stringify(msg.content_blocks) : null;
   const linkPreviews = msg.link_previews ? JSON.stringify(msg.link_previews) : null;
 
