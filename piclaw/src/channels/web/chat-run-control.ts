@@ -28,6 +28,7 @@ export interface ResumeChatContext {
   defaultAgentId: string;
   enqueue(task: () => Promise<void>, key: string): void;
   processChat(chatJid: string, agentId: string, threadRootId?: number | null): Promise<void>;
+  getChatCursor(chatJid: string): string;
 }
 
 const defaultStore: ChatRunControlStore = {
@@ -53,12 +54,16 @@ export function resumeChat(
   threadRootId: number | null | undefined,
   ctx: ResumeChatContext
 ): void {
-  // Use a stable per-chat key so repeated resume triggers collapse to a single
-  // queued replay while one is already pending/running. This matches startup
-  // recovery semantics and avoids duplicate post-restart or post-drain replays.
+  // The resume key must advance with the work being resumed. If a running task
+  // already owns `resume:${chatJid}` and it tries to hand off the next queued
+  // turn using the same id, the serial queue will deduplicate it as a no-op.
+  // Use the explicit thread root when known, otherwise use the current cursor
+  // snapshot so repeated resume triggers for the same frontier still collapse,
+  // while genuine next-turn hand-offs get a distinct key.
+  const frontier = threadRootId ?? ctx.getChatCursor(chatJid) ?? "next";
   ctx.enqueue(async () => {
     await ctx.processChat(chatJid, ctx.defaultAgentId, threadRootId ?? undefined);
-  }, `resume:${chatJid}`);
+  }, `resume:${chatJid}:${String(frontier)}`);
 }
 
 /** Skip the failed cursor marker after a model switch to avoid replay loops. */

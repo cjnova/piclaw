@@ -132,6 +132,17 @@ interface AgentContentBlock {
   text?: unknown;
 }
 
+export interface ActiveChatAgent {
+  chat_jid: string;
+  agent_name: string;
+  display_name: string | null;
+  session_id: string;
+  session_name: string | null;
+  model: string | null;
+  is_active: boolean;
+  has_side_session: boolean;
+}
+
 function extractAssistantText(message: { content?: unknown[] } | null | undefined): string {
   if (!Array.isArray(message?.content)) return "";
   return message.content
@@ -156,6 +167,25 @@ function toSideReasoning(level: unknown): "minimal" | "low" | "medium" | "high" 
   return level === "minimal" || level === "low" || level === "medium" || level === "high" || level === "xhigh"
     ? level
     : undefined;
+}
+
+function normalizeAgentHandlePart(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+}
+
+function deriveAgentHandle(chatJid: string, sessionName?: string | null): string {
+  const sessionHandle = sessionName ? normalizeAgentHandlePart(sessionName) : "";
+  if (sessionHandle) return sessionHandle;
+
+  const jidHandle = normalizeAgentHandlePart(chatJid.split(/[:/]/).filter(Boolean).pop() || chatJid);
+  if (jidHandle) return jidHandle;
+
+  return "agent";
 }
 
 /** How long (ms) an idle session stays cached before being disposed. */
@@ -654,6 +684,46 @@ export class AgentPool {
     const session = this.pool.get(chatJid)?.session;
     if (!session) return false;
     return Boolean(session.isStreaming || session.isCompacting || session.isRetrying || session.isBashRunning);
+  }
+
+  listActiveChats(): ActiveChatAgent[] {
+    const baseChats = [...this.pool.entries()]
+      .map(([chatJid, entry]) => ({
+        chat_jid: chatJid,
+        display_name: entry.session.sessionName?.trim() || null,
+        session_id: entry.session.sessionId,
+        session_name: entry.session.sessionName?.trim() || null,
+        model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
+        is_active: Boolean(entry.session.isStreaming || entry.session.isCompacting || entry.session.isRetrying || entry.session.isBashRunning),
+        has_side_session: this.sidePool.has(chatJid),
+      }))
+      .sort((a, b) => a.chat_jid.localeCompare(b.chat_jid));
+
+    const usedHandles = new Map<string, number>();
+    const withHandles = baseChats.map((chat) => {
+      const baseHandle = deriveAgentHandle(chat.chat_jid, chat.session_name);
+      const seen = usedHandles.get(baseHandle) ?? 0;
+      usedHandles.set(baseHandle, seen + 1);
+      return {
+        ...chat,
+        agent_name: seen === 0 ? baseHandle : `${baseHandle}-${seen + 1}`,
+      };
+    });
+
+    return withHandles.sort((a, b) => {
+      if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
+      return a.chat_jid.localeCompare(b.chat_jid);
+    });
+  }
+
+  findActiveChatByAgentName(agentName: string): ActiveChatAgent | null {
+    const normalized = normalizeAgentHandlePart(agentName);
+    if (!normalized) return null;
+    return this.listActiveChats().find((chat) => chat.agent_name === normalized) ?? null;
+  }
+
+  getAgentHandleForChat(chatJid: string): string {
+    return this.listActiveChats().find((chat) => chat.chat_jid === chatJid)?.agent_name ?? deriveAgentHandle(chatJid);
   }
 
   async queueStreamingMessage(

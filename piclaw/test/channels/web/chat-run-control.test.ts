@@ -33,14 +33,32 @@ describe("web chat run control helpers", () => {
       processChat: async (chatJid, agentId, threadRootId) => {
         processed.push({ chatJid, agentId, threadRootId });
       },
+      getChatCursor: () => "2024-01-01T00:00:00.000Z",
     };
 
     resumeChat("web:1", 77, ctx);
     expect(enqueued).toHaveLength(1);
-    expect(enqueued[0].key).toBe("resume:web:1");
+    expect(enqueued[0].key).toBe("resume:web:1:77");
 
     await enqueued[0].task();
     expect(processed).toEqual([{ chatJid: "web:1", agentId: "default", threadRootId: 77 }]);
+  });
+
+  test("resumeChat falls back to the current cursor when no thread root is provided", async () => {
+    const enqueued: Array<{ key: string; task: () => Promise<void> }> = [];
+
+    const ctx: ResumeChatContext = {
+      defaultAgentId: "default",
+      enqueue: (task, key) => {
+        enqueued.push({ task, key });
+      },
+      processChat: async () => {},
+      getChatCursor: () => "2024-01-01T00:00:05.000Z",
+    };
+
+    resumeChat("web:1", undefined, ctx);
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0].key).toBe("resume:web:1:2024-01-01T00:00:05.000Z");
   });
 
   test("skipFailedOnModelSwitch advances cursor only when needed and clears failure", () => {

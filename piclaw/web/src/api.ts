@@ -131,10 +131,37 @@ export async function deletePost(postId, cascade = false) {
 /**
  * Send message to agent
  */
-export async function sendAgentMessage(agentId, content, threadId = null, mediaIds = [], mode = null) {
-    return request(`/agent/${agentId}/message`, {
+export async function sendAgentMessage(agentId, content, threadId = null, mediaIds = [], mode = null, chatJid = null) {
+    const query = chatJid ? `?chat_jid=${encodeURIComponent(chatJid)}` : '';
+    return request(`/agent/${agentId}/message${query}`, {
         method: 'POST',
         body: JSON.stringify({ content, thread_id: threadId, media_ids: mediaIds, mode }),
+    });
+}
+
+/**
+ * List currently active chat agents/branches known to the backend session pool.
+ */
+export async function getActiveChatAgents() {
+    return request('/agent/active-chats');
+}
+
+/**
+ * Relay a peer message from one chat agent/window to another.
+ */
+export async function sendPeerAgentMessage(sourceChatJid, targetChatOrName, content, mode = 'auto', options = {}) {
+    const payload = {
+        source_chat_jid: sourceChatJid,
+        content,
+        mode,
+        ...(options?.sourceAgentName ? { source_agent_name: options.sourceAgentName } : {}),
+        ...(options?.targetBy === 'agent_name'
+            ? { target_agent_name: targetChatOrName }
+            : { target_chat_jid: targetChatOrName }),
+    };
+    return request('/agent/peer-message', {
+        method: 'POST',
+        body: JSON.stringify(payload),
     });
 }
 

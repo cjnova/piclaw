@@ -392,6 +392,66 @@ describe("CSRF origin checks", () => {
     expect(reached).toBe(false);
   });
 
+  test("auth-gates /agent/active-chats before route dispatch", async () => {
+    let reached = false;
+    class AuthChannel extends StubChannel {
+      authGateway = {
+        isAuthEnabled: () => true,
+        isInternalSecretEnabled: () => false,
+        verifyInternalSecret: () => false,
+        isAuthenticated: () => false,
+      };
+      async handleAgentActiveChats() {
+        reached = true;
+        return this.json({ ok: true }, 200);
+      }
+    }
+
+    const router = new RequestRouterService(new AuthChannel() as any);
+    const req = new Request("http://localhost/agent/active-chats", {
+      method: "GET",
+      headers: {
+        Host: "localhost",
+      },
+    });
+
+    const res = await router.handle(req);
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe("/login");
+    expect(reached).toBe(false);
+  });
+
+  test("auth-gates /agent/peer-message before route dispatch", async () => {
+    let reached = false;
+    class AuthChannel extends StubChannel {
+      authGateway = {
+        isAuthEnabled: () => true,
+        isInternalSecretEnabled: () => false,
+        verifyInternalSecret: () => false,
+        isAuthenticated: () => false,
+      };
+      async handleAgentPeerMessage() {
+        reached = true;
+        return this.json({ ok: true }, 200);
+      }
+    }
+
+    const router = new RequestRouterService(new AuthChannel() as any);
+    const req = new Request("http://localhost/agent/peer-message", {
+      method: "POST",
+      headers: {
+        Origin: "http://localhost",
+        Host: "localhost",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ source_chat_jid: "web:a", target_chat_jid: "web:b", content: "hello" }),
+    });
+
+    const res = await router.handle(req);
+    expect(res.status).toBe(401);
+    expect(reached).toBe(false);
+  });
+
   test("allows matching Origin/Host/Protocol", async () => {
     const router = new RequestRouterService(new StubChannel() as any);
     const req = new Request("http://example.com/post", {
