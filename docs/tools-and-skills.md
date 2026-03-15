@@ -122,6 +122,7 @@ Direct commands (no LLM round-trip):
 | `/restart` | Restart the agent and stop subprocesses |
 | `/commands` | List available commands |
 | `/test-card [variant]` | Emit a built-in Adaptive Card validation message in the web UI (`/test-card list` shows variants) |
+| `/btw <question>` | Open a side-conversation panel in the web UI and stream an answer without interrupting the main chat |
 | `/tasks [filter]` | List scheduled tasks (via extension) |
 | `/scheduled [filter]` | Alias for `/tasks` |
 

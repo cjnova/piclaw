@@ -32,6 +32,7 @@ describe("web http agent dispatch", () => {
       handleAgentRespond: async () => new Response("respond"),
       handleAdaptiveCardAction: async () => new Response("card-action", { status: 205 }),
       handleAgentSidePrompt: async () => new Response("side-prompt", { status: 206 }),
+      handleAgentSidePromptStream: async () => new Response("side-prompt-stream", { status: 207 }),
       json: (_payload: unknown, status: number) => new Response("err", { status }),
     } as any;
 
@@ -67,6 +68,9 @@ describe("web http agent dispatch", () => {
 
     const sidePromptReq = new Request("https://example.com/agent/side-prompt", { method: "POST" });
     expect((await handleAgentRoutes(channel, sidePromptReq, "/agent/side-prompt", new URL(sidePromptReq.url)))?.status).toBe(206);
+
+    const sidePromptStreamReq = new Request("https://example.com/agent/side-prompt/stream", { method: "POST" });
+    expect((await handleAgentRoutes(channel, sidePromptStreamReq, "/agent/side-prompt/stream", new URL(sidePromptStreamReq.url)))?.status).toBe(207);
 
     const whitelistReq = new Request("https://example.com/agent/whitelist", { method: "POST" });
     expect((await handleAgentRoutes(channel, whitelistReq, "/agent/whitelist", new URL(whitelistReq.url)))?.status).toBe(404);

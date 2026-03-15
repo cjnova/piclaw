@@ -8,7 +8,7 @@
 import { expect, test } from "bun:test";
 import "../../helpers.js";
 
-import { SSEClient } from "../../../web/src/api.ts";
+import { SSEClient, streamSidePrompt } from "../../../web/src/api.ts";
 
 test("SSEClient scheduleReconnect triggers cooldown", () => {
   const client = new SSEClient(() => {}, () => {});
@@ -45,4 +45,40 @@ test("SSEClient reconnectIfNeeded respects cooldown", () => {
   client.reconnectIfNeeded();
 
   expect(connected).toBe(false);
+});
+
+test("streamSidePrompt parses SSE event frames and returns the final payload", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: side_prompt_start\ndata: {"chat_jid":"web:default"}\n\n'));
+        controller.enqueue(encoder.encode('event: side_prompt_thinking_delta\ndata: {"delta":"plan"}\n\n'));
+        controller.enqueue(encoder.encode('event: side_prompt_text_delta\ndata: {"delta":"answer"}\n\n'));
+        controller.enqueue(encoder.encode('event: side_prompt_done\ndata: {"status":"success","result":"answer","thinking":"plan","model":"openai/gpt-test"}\n\n'));
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  }) as typeof fetch;
+
+  const seen: Array<string> = [];
+  const result = await streamSidePrompt("What changed?", {
+    onThinkingDelta: (delta) => seen.push(`thinking:${delta}`),
+    onTextDelta: (delta) => seen.push(`text:${delta}`),
+  });
+
+  expect(seen).toEqual(["thinking:plan", "text:answer"]);
+  expect(result).toEqual({
+    status: "success",
+    result: "answer",
+    thinking: "plan",
+    model: "openai/gpt-test",
+  });
+
+  globalThis.fetch = originalFetch;
 });

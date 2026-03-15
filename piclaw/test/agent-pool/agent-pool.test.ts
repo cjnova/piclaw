@@ -276,3 +276,114 @@ test("agent pool reports side prompt errors when no model is active", async () =
   expect(result.status).toBe("error");
   expect(result.error).toContain("No active model selected");
 });
+
+test("agent pool can run a tool-capable side prompt through a separate side session", async () => {
+  const ws = getTestWorkspace();
+  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+
+  const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");
+
+  const mainModel = {
+    provider: "openai",
+    id: "gpt-test",
+    api: "openai-responses",
+    reasoning: true,
+    input: ["text"],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128000,
+    maxTokens: 8192,
+  };
+
+  class MainSession {
+    model = mainModel;
+    thinkingLevel = "high";
+    sessionManager = {
+      buildSessionContext: () => ({
+        messages: [{ role: "user", content: [{ type: "text", text: "main context" }], timestamp: Date.now() }],
+        thinkingLevel: "high",
+        model: { provider: "openai", modelId: "gpt-test" },
+      }),
+    };
+    getActiveToolNames() { return ["read", "bash"]; }
+    subscribe(_listener: (event: any) => void) { return () => {}; }
+    async prompt(_prompt: string) {}
+    async abort() {}
+    dispose() {}
+  }
+
+  const seen: any = { model: null, thinking: null, tools: null, prompt: null, seeded: false };
+  class SideSession {
+    model = undefined;
+    isStreaming = false;
+    isCompacting = false;
+    isRetrying = false;
+    isBashRunning = false;
+    listeners: Array<(event: any) => void> = [];
+    subscribe(listener: (event: any) => void) {
+      this.listeners.push(listener);
+      return () => {
+        this.listeners = this.listeners.filter((l) => l !== listener);
+      };
+    }
+    async newSession(options: any) {
+      seen.seeded = typeof options?.setup === "function";
+      if (typeof options?.setup === "function") {
+        await options.setup({
+          appendSessionInfo: () => {},
+          appendModelChange: () => {},
+          appendCompaction: () => {},
+          appendCustomMessageEntry: () => {},
+          appendMessage: () => {},
+        });
+      }
+      return true;
+    }
+    async setModel(model: any) { this.model = model; seen.model = `${model.provider}/${model.id}`; }
+    setThinkingLevel(level: any) { seen.thinking = level; }
+    setActiveToolsByName(toolNames: string[]) { seen.tools = [...toolNames]; }
+    async prompt(prompt: string) {
+      seen.prompt = prompt;
+      for (const listener of this.listeners) {
+        listener({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "tool plan" } });
+        listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "tool answer" } });
+        listener({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "tool answer" }],
+            usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 15, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+            stopReason: "stop",
+            timestamp: Date.now(),
+          },
+        });
+      }
+    }
+    async abort() {}
+    getLastAssistantText() { return "tool answer"; }
+    dispose() {}
+  }
+
+  const pool = new AgentPool({
+    createSession: async () => new MainSession() as any,
+    createSideSession: async () => new SideSession() as any,
+    modelRegistry: {
+      getApiKey: async () => "test-key",
+      find: () => undefined,
+      getAll: () => [],
+      getAvailable: () => [],
+    } as any,
+  });
+
+  const result = await pool.runSidePrompt("web:default", "Inspect workspace", { systemPrompt: "Use tools if needed." });
+  expect(result.status).toBe("success");
+  expect(result.result).toBe("tool answer");
+  expect(result.thinking).toBe("tool plan");
+  expect(result.model).toBe("openai/gpt-test");
+  expect(seen).toEqual({
+    model: "openai/gpt-test",
+    thinking: "high",
+    tools: ["read", "bash"],
+    prompt: "Use tools if needed.\n\nInspect workspace",
+    seeded: true,
+  });
+});

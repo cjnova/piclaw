@@ -23,7 +23,6 @@
 import { mkdirSync } from "fs";
 import { join } from "path";
 import { AuthStorage, createBashTool, createEditTool, createReadTool, createWriteTool, ModelRegistry, SettingsManager, getAgentDir, } from "@mariozechner/pi-coding-agent";
-import { streamSimple } from "@mariozechner/pi-ai";
 import { applyControlCommand } from "./agent-control/index.js";
 import { AGENT_TIMEOUT, SESSION_AUTO_ROTATE, SESSION_MAX_SIZE_BYTES, SESSIONS_DIR, WORKSPACE_DIR } from "./core/config.js";
 import { detectChannel } from "./router.js";
@@ -31,13 +30,13 @@ import { createTrackedBashOperations } from "./tools/tracked-bash.js";
 import { getAttachmentRegistry } from "./agent-pool/attachments.js";
 import { writeAgentLog } from "./agent-pool/logging.js";
 import { pruneOrphanToolResults } from "./agent-pool/orphan-tool-results.js";
-import { createDefaultSession, ensureSessionDir } from "./agent-pool/session.js";
+import { createDefaultSession, createSessionInDir, ensureNamedSessionDir, ensureSessionDir } from "./agent-pool/session.js";
 import { executeSlashCommand } from "./agent-pool/slash-command.js";
 import { getProviderUsage } from "./agent-pool/provider-usage.js";
 import { recordMessageUsage } from "./agent-pool/usage.js";
 import { resolveModelLabel } from "./utils/model-utils.js";
 import { withChatContext } from "./core/chat-context.js";
-import { getSessionFileSize, rotateSession } from "./session-rotation.js";
+import { getSessionFileSize, rotateSession, seedRotatedSession } from "./session-rotation.js";
 function extractAssistantText(message) {
     if (!Array.isArray(message?.content))
         return "";
@@ -75,6 +74,7 @@ const CLEANUP_INTERVAL = 60 * 1000; // check every minute
  */
 export class AgentPool {
     pool = new Map();
+    sidePool = new Map();
     cleanupTimer = null;
     // Shared across all sessions (expensive to create, safe to reuse)
     authStorage;
@@ -82,15 +82,17 @@ export class AgentPool {
     settingsManager = SettingsManager.create(WORKSPACE_DIR, getAgentDir());
     logsDir = join(WORKSPACE_DIR, "logs");
     createSession;
+    createSideSession;
     sessionBinder;
     bashOperations = createTrackedBashOperations();
     attachments = getAttachmentRegistry();
     sideStreamSimple;
     constructor(options = {}) {
         this.createSession = options.createSession;
+        this.createSideSession = options.createSideSession;
         this.authStorage = AuthStorage.create();
         this.modelRegistry = options.modelRegistry ?? new ModelRegistry(this.authStorage);
-        this.sideStreamSimple = options.sideStreamSimple ?? streamSimple;
+        this.sideStreamSimple = options.sideStreamSimple;
         mkdirSync(SESSIONS_DIR, { recursive: true });
         mkdirSync(this.logsDir, { recursive: true });
         this.cleanupTimer = setInterval(() => this.evictIdle(), CLEANUP_INTERVAL);
@@ -222,83 +224,220 @@ export class AgentPool {
         if (!model) {
             return { status: "error", result: null, thinking: null, error: "No active model selected.", model: null };
         }
-        const apiKey = await this.modelRegistry.getApiKey(model);
-        if (!apiKey) {
+        if (this.sideStreamSimple) {
+            const apiKey = await this.modelRegistry.getApiKey(model);
+            if (!apiKey) {
+                return {
+                    status: "error",
+                    result: null,
+                    thinking: null,
+                    error: `No credentials available for ${model.provider}/${model.id}.`,
+                    model: `${model.provider}/${model.id}`,
+                };
+            }
+            const stream = this.sideStreamSimple(model, {
+                ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
+                messages: [
+                    {
+                        role: "user",
+                        content: [{ type: "text", text: prompt }],
+                        timestamp: Date.now(),
+                    },
+                ],
+            }, {
+                apiKey,
+                reasoning: toSideReasoning(session.thinkingLevel),
+                signal: options.signal,
+            });
+            let text = "";
+            let thinking = "";
+            let finalMessage = null;
+            for await (const event of stream) {
+                options.onEvent?.(event);
+                if (event.type === "text_delta") {
+                    text += event.delta;
+                    options.onTextDelta?.(event.delta);
+                }
+                else if (event.type === "thinking_delta") {
+                    thinking += event.delta;
+                    options.onThinkingDelta?.(event.delta);
+                }
+                else if (event.type === "done") {
+                    finalMessage = event.message;
+                }
+                else if (event.type === "error") {
+                    finalMessage = event.error;
+                }
+            }
+            if (!finalMessage) {
+                return {
+                    status: "error",
+                    result: null,
+                    thinking: null,
+                    error: "Side prompt finished without a response.",
+                    model: `${model.provider}/${model.id}`,
+                };
+            }
+            try {
+                recordMessageUsage(chatJid, finalMessage);
+            }
+            catch (err) {
+                console.warn(`[agent-pool] Failed to persist side-prompt usage for ${chatJid}:`, err);
+            }
+            if (finalMessage.stopReason === "error" || finalMessage.stopReason === "aborted") {
+                return {
+                    status: "error",
+                    result: null,
+                    thinking: thinking || extractAssistantThinking(finalMessage),
+                    error: finalMessage.errorMessage || "Side prompt failed.",
+                    model: `${model.provider}/${model.id}`,
+                    usage: finalMessage.usage,
+                    stopReason: finalMessage.stopReason,
+                };
+            }
             return {
-                status: "error",
-                result: null,
-                thinking: null,
-                error: `No credentials available for ${model.provider}/${model.id}.`,
-                model: `${model.provider}/${model.id}`,
-            };
-        }
-        const stream = this.sideStreamSimple(model, {
-            ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
-            messages: [
-                {
-                    role: "user",
-                    content: [{ type: "text", text: prompt }],
-                    timestamp: Date.now(),
-                },
-            ],
-        }, {
-            apiKey,
-            reasoning: toSideReasoning(session.thinkingLevel),
-            signal: options.signal,
-        });
-        let text = "";
-        let thinking = "";
-        let finalMessage = null;
-        for await (const event of stream) {
-            options.onEvent?.(event);
-            if (event.type === "text_delta") {
-                text += event.delta;
-                options.onTextDelta?.(event.delta);
-            }
-            else if (event.type === "thinking_delta") {
-                thinking += event.delta;
-                options.onThinkingDelta?.(event.delta);
-            }
-            else if (event.type === "done") {
-                finalMessage = event.message;
-            }
-            else if (event.type === "error") {
-                finalMessage = event.error;
-            }
-        }
-        if (!finalMessage) {
-            return {
-                status: "error",
-                result: null,
-                thinking: null,
-                error: "Side prompt finished without a response.",
-                model: `${model.provider}/${model.id}`,
-            };
-        }
-        try {
-            recordMessageUsage(chatJid, finalMessage);
-        }
-        catch (err) {
-            console.warn(`[agent-pool] Failed to persist side-prompt usage for ${chatJid}:`, err);
-        }
-        if (finalMessage.stopReason === "error" || finalMessage.stopReason === "aborted") {
-            return {
-                status: "error",
-                result: null,
-                thinking: thinking || extractAssistantThinking(finalMessage),
-                error: finalMessage.errorMessage || "Side prompt failed.",
+                status: "success",
+                result: text || extractAssistantText(finalMessage) || null,
+                thinking: thinking || extractAssistantThinking(finalMessage) || null,
                 model: `${model.provider}/${model.id}`,
                 usage: finalMessage.usage,
                 stopReason: finalMessage.stopReason,
             };
         }
+        const sideSession = await this.getOrCreateSide(chatJid);
+        await this.syncSideSessionFromMain(session, sideSession);
+        let text = "";
+        let thinking = "";
+        let sawText = false;
+        let sawThinking = false;
+        let finalMessage = null;
+        let timedOut = false;
+        const channel = detectChannel(chatJid);
+        const timeoutMs = AGENT_TIMEOUT;
+        let timeoutId = null;
+        const unsubscribe = sideSession.subscribe((event) => {
+            options.onEvent?.(event);
+            if (event.type === "message_update") {
+                const messageEvent = event.assistantMessageEvent;
+                if (messageEvent.type === "text_start") {
+                    if (sawText && !text.endsWith("\n\n"))
+                        text += "\n\n";
+                }
+                else if (messageEvent.type === "text_delta") {
+                    sawText = true;
+                    text += messageEvent.delta;
+                    options.onTextDelta?.(messageEvent.delta);
+                }
+                else if (messageEvent.type === "thinking_start") {
+                    if (sawThinking && !thinking.endsWith("\n\n"))
+                        thinking += "\n\n";
+                }
+                else if (messageEvent.type === "thinking_delta") {
+                    sawThinking = true;
+                    thinking += messageEvent.delta;
+                    options.onThinkingDelta?.(messageEvent.delta);
+                }
+                return;
+            }
+            if (event.type === "message_end") {
+                const message = event.message;
+                if (message?.role === "assistant") {
+                    finalMessage = message;
+                    try {
+                        recordMessageUsage(chatJid, message);
+                    }
+                    catch (err) {
+                        console.warn(`[agent-pool] Failed to persist side-prompt usage for ${chatJid}:`, err);
+                    }
+                }
+            }
+        });
+        const abortHandler = () => {
+            void sideSession.abort().catch(() => { });
+        };
+        options.signal?.addEventListener("abort", abortHandler, { once: true });
+        if (timeoutMs > 0) {
+            timeoutId = setTimeout(() => {
+                timedOut = true;
+                void sideSession.abort().catch(() => { });
+            }, timeoutMs);
+        }
+        try {
+            await withChatContext(chatJid, channel, async () => {
+                const composedPrompt = options.systemPrompt
+                    ? `${options.systemPrompt}\n\n${prompt}`
+                    : prompt;
+                await sideSession.prompt(composedPrompt);
+                const idleSettleTicks = 10;
+                let idleTicks = 0;
+                while (idleTicks < idleSettleTicks) {
+                    if (!sideSession.isStreaming && !sideSession.isCompacting && !sideSession.isRetrying) {
+                        idleTicks += 1;
+                    }
+                    else {
+                        idleTicks = 0;
+                    }
+                    await Bun.sleep(50);
+                }
+            });
+        }
+        catch (err) {
+            if (timeoutId)
+                clearTimeout(timeoutId);
+            unsubscribe();
+            options.signal?.removeEventListener("abort", abortHandler);
+            return {
+                status: "error",
+                result: null,
+                thinking: thinking || null,
+                error: timedOut ? `Timed out after ${timeoutMs}ms` : (err instanceof Error ? err.message : String(err)),
+                model: `${model.provider}/${model.id}`,
+                stopReason: timedOut ? "aborted" : "error",
+            };
+        }
+        if (timeoutId)
+            clearTimeout(timeoutId);
+        unsubscribe();
+        options.signal?.removeEventListener("abort", abortHandler);
+        if (!finalMessage) {
+            const fallbackText = text || sideSession.getLastAssistantText() || null;
+            if (!fallbackText) {
+                return {
+                    status: "error",
+                    result: null,
+                    thinking: thinking || null,
+                    error: timedOut ? `Timed out after ${timeoutMs}ms` : "Side prompt finished without a response.",
+                    model: `${model.provider}/${model.id}`,
+                    stopReason: timedOut ? "aborted" : "error",
+                };
+            }
+            return {
+                status: "success",
+                result: fallbackText,
+                thinking: thinking || null,
+                model: `${model.provider}/${model.id}`,
+                stopReason: "stop",
+            };
+        }
+        const completedMessage = finalMessage;
+        if (timedOut || completedMessage.stopReason === "error" || completedMessage.stopReason === "aborted") {
+            return {
+                status: "error",
+                result: null,
+                thinking: thinking || extractAssistantThinking(completedMessage) || null,
+                error: timedOut ? `Timed out after ${timeoutMs}ms` : (completedMessage.errorMessage || "Side prompt failed."),
+                model: `${model.provider}/${model.id}`,
+                usage: completedMessage.usage,
+                stopReason: timedOut ? "aborted" : completedMessage.stopReason,
+            };
+        }
         return {
             status: "success",
-            result: text || extractAssistantText(finalMessage) || null,
-            thinking: thinking || extractAssistantThinking(finalMessage) || null,
+            result: text || extractAssistantText(completedMessage) || sideSession.getLastAssistantText() || null,
+            thinking: thinking || extractAssistantThinking(completedMessage) || null,
             model: `${model.provider}/${model.id}`,
-            usage: finalMessage.usage,
-            stopReason: finalMessage.stopReason,
+            usage: completedMessage.usage,
+            stopReason: completedMessage.stopReason,
         };
     }
     /** Return available model labels and current model for a chat session. */
@@ -442,9 +581,27 @@ export class AgentPool {
                 console.error(`[agent-pool] Error disposing ${jid}:`, err);
             }
         }
+        for (const [jid, entry] of this.sidePool) {
+            try {
+                entry.session.dispose();
+                console.log(`[agent-pool] Disposed side session ${jid}`);
+            }
+            catch (err) {
+                console.error(`[agent-pool] Error disposing side session ${jid}:`, err);
+            }
+        }
         this.pool.clear();
+        this.sidePool.clear();
     }
     // ── internal ────────────────────────────────────────────
+    createDefaultTools() {
+        return [
+            createReadTool(WORKSPACE_DIR),
+            createBashTool(WORKSPACE_DIR, { operations: this.bashOperations }),
+            createEditTool(WORKSPACE_DIR),
+            createWriteTool(WORKSPACE_DIR),
+        ];
+    }
     async getOrCreate(chatJid) {
         const existing = this.pool.get(chatJid);
         if (existing) {
@@ -461,23 +618,70 @@ export class AgentPool {
             console.log(`[agent-pool] Session ready for ${chatJid} (pool size: ${this.pool.size})`);
             return session;
         }
-        const tools = [
-            createReadTool(WORKSPACE_DIR),
-            createBashTool(WORKSPACE_DIR, { operations: this.bashOperations }),
-            createEditTool(WORKSPACE_DIR),
-            createWriteTool(WORKSPACE_DIR),
-        ];
         const session = await createDefaultSession(chatJid, {
             authStorage: this.authStorage,
             modelRegistry: this.modelRegistry,
             settingsManager: this.settingsManager,
-            tools,
+            tools: this.createDefaultTools(),
         });
         this.pool.set(chatJid, { session, lastUsed: Date.now() });
         await this.applyDefaultModel(session);
         await this.bindSession(session, chatJid);
         console.log(`[agent-pool] Session ready for ${chatJid} (pool size: ${this.pool.size})`);
         return session;
+    }
+    async getOrCreateSide(chatJid) {
+        const existing = this.sidePool.get(chatJid);
+        if (existing) {
+            existing.lastUsed = Date.now();
+            return existing.session;
+        }
+        console.log(`[agent-pool] Creating new side session for ${chatJid}`);
+        const sideSessionDir = ensureNamedSessionDir(chatJid, "btw-side");
+        const session = this.createSideSession
+            ? await this.createSideSession(chatJid, sideSessionDir)
+            : await createSessionInDir(sideSessionDir, {
+                authStorage: this.authStorage,
+                modelRegistry: this.modelRegistry,
+                settingsManager: this.settingsManager,
+                tools: this.createDefaultTools(),
+            });
+        this.sidePool.set(chatJid, { session, lastUsed: Date.now() });
+        return session;
+    }
+    async syncSideSessionFromMain(mainSession, sideSession) {
+        try {
+            const mainContext = mainSession.sessionManager.buildSessionContext();
+            await sideSession.newSession({
+                setup: async (sessionManager) => {
+                    seedRotatedSession(sessionManager, mainContext, {
+                        sessionName: "BTW",
+                        model: mainContext.model,
+                    });
+                },
+            });
+        }
+        catch (err) {
+            console.warn(`[agent-pool] Failed to reseed side session from main context:`, err);
+        }
+        const mainModel = mainSession.model;
+        const sideModel = sideSession.model;
+        if (mainModel && (!sideModel || sideModel.provider !== mainModel.provider || sideModel.id !== mainModel.id)) {
+            try {
+                await sideSession.setModel(mainModel);
+            }
+            catch (err) {
+                console.warn(`[agent-pool] Failed to sync side-session model ${mainModel.provider}/${mainModel.id}:`, err);
+            }
+        }
+        try {
+            sideSession.setThinkingLevel(mainSession.thinkingLevel);
+        }
+        catch { }
+        try {
+            sideSession.setActiveToolsByName(mainSession.getActiveToolNames());
+        }
+        catch { }
     }
     async applyDefaultModel(session) {
         const provider = this.settingsManager.getDefaultProvider();
@@ -633,6 +837,21 @@ export class AgentPool {
                 }
                 catch { }
                 this.pool.delete(jid);
+            }
+        }
+        for (const [jid, entry] of this.sidePool) {
+            const session = entry.session;
+            if (session.isStreaming || session.isBashRunning || session.isCompacting) {
+                entry.lastUsed = now;
+                continue;
+            }
+            if (now - entry.lastUsed > IDLE_TTL) {
+                console.log(`[agent-pool] Evicting idle side session ${jid}`);
+                try {
+                    session.dispose();
+                }
+                catch { }
+                this.sidePool.delete(jid);
             }
         }
     }

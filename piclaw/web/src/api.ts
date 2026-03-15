@@ -25,6 +25,49 @@ async function request(url, options = {}) {
     return response.json();
 }
 
+function parseEventStreamBlock(block) {
+    const lines = String(block || '').split('\n');
+    let event = 'message';
+    const dataLines = [];
+    for (const line of lines) {
+        if (line.startsWith('event:')) {
+            event = line.slice(6).trim() || 'message';
+        } else if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trim());
+        }
+    }
+    const rawData = dataLines.join('\n');
+    if (!rawData) return null;
+    try {
+        return { event, data: JSON.parse(rawData) };
+    } catch {
+        return { event, data: rawData };
+    }
+}
+
+async function consumeEventStream(response, onEvent) {
+    if (!response.body) throw new Error('Missing event stream body');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+            const parsed = parseEventStreamBlock(part);
+            if (parsed) onEvent(parsed.event, parsed.data);
+        }
+    }
+
+    buffer += decoder.decode();
+    const tail = parseEventStreamBlock(buffer);
+    if (tail) onEvent(tail.event, tail.data);
+}
+
 /**
  * Get timeline posts (chat style - returns oldest first)
  */
@@ -226,6 +269,47 @@ export async function submitAdaptiveCardAction(payload) {
     }
 
     return response.json();
+}
+
+export async function streamSidePrompt(prompt, options = {}) {
+    const response = await fetch(API_BASE + '/agent/side-prompt/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            prompt,
+            system_prompt: options.systemPrompt || undefined,
+            chat_jid: options.chatJid || undefined,
+        }),
+        signal: options.signal,
+    });
+
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Side prompt failed' }));
+        throw new Error(error.error || `HTTP ${response.status}`);
+    }
+
+    let finalPayload = null;
+    let errorPayload = null;
+    await consumeEventStream(response, (eventType, data) => {
+        options.onEvent?.(eventType, data);
+        if (eventType === 'side_prompt_thinking_delta') {
+            options.onThinkingDelta?.(data?.delta || '');
+        } else if (eventType === 'side_prompt_text_delta') {
+            options.onTextDelta?.(data?.delta || '');
+        } else if (eventType === 'side_prompt_done') {
+            finalPayload = data;
+        } else if (eventType === 'side_prompt_error') {
+            errorPayload = data;
+        }
+    });
+
+    if (errorPayload) {
+        const error = new Error(errorPayload?.error || 'Side prompt failed');
+        error.payload = errorPayload;
+        throw error;
+    }
+
+    return finalPayload;
 }
 
 /**

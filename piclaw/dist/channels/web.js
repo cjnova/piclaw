@@ -52,6 +52,16 @@ import { RemoteInteropService } from "../remote/service.js";
 const DEFAULT_CHAT_JID = "web:default";
 const DEFAULT_AGENT_ID = "default";
 const STATE_KEY = "last_agent_timestamp_web";
+function formatSseEvent(eventType, data) {
+    return `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+}
+function parseSidePromptPayload(payload) {
+    return {
+        prompt: typeof payload.prompt === "string" ? payload.prompt.trim() : "",
+        systemPrompt: typeof payload.system_prompt === "string" ? payload.system_prompt.trim() : "",
+        chatJid: typeof payload.chat_jid === "string" && payload.chat_jid.trim() ? payload.chat_jid.trim() : DEFAULT_CHAT_JID,
+    };
+}
 /** Web channel: HTTP/SSE server, API endpoints, and agent event bridge. */
 export class WebChannel {
     queue;
@@ -765,9 +775,7 @@ export class WebChannel {
         catch {
             return this.json({ error: "Invalid JSON" }, 400);
         }
-        const prompt = typeof payload.prompt === "string" ? payload.prompt.trim() : "";
-        const systemPrompt = typeof payload.system_prompt === "string" ? payload.system_prompt.trim() : "";
-        const chatJid = typeof payload.chat_jid === "string" && payload.chat_jid.trim() ? payload.chat_jid.trim() : DEFAULT_CHAT_JID;
+        const { prompt, systemPrompt, chatJid } = parseSidePromptPayload(payload);
         if (!prompt) {
             return this.json({ error: "Missing or invalid prompt" }, 400);
         }
@@ -778,6 +786,79 @@ export class WebChannel {
             return this.json(result, 502);
         }
         return this.json(result, 200);
+    }
+    async handleAgentSidePromptStream(req) {
+        let payload;
+        try {
+            payload = await req.json();
+        }
+        catch {
+            return this.json({ error: "Invalid JSON" }, 400);
+        }
+        const { prompt, systemPrompt, chatJid } = parseSidePromptPayload(payload);
+        if (!prompt) {
+            return this.json({ error: "Missing or invalid prompt" }, 400);
+        }
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+            start: (controller) => {
+                let closed = false;
+                const close = () => {
+                    if (closed)
+                        return;
+                    closed = true;
+                    try {
+                        controller.close();
+                    }
+                    catch { }
+                };
+                const send = (eventType, data) => {
+                    if (closed)
+                        return;
+                    try {
+                        controller.enqueue(encoder.encode(formatSseEvent(eventType, data)));
+                    }
+                    catch {
+                        close();
+                    }
+                };
+                req.signal.addEventListener("abort", close, { once: true });
+                send("side_prompt_start", { chat_jid: chatJid });
+                void this.agentPool.runSidePrompt(chatJid, prompt, {
+                    ...(systemPrompt ? { systemPrompt } : {}),
+                    signal: req.signal,
+                    onThinkingDelta: (delta) => send("side_prompt_thinking_delta", { delta }),
+                    onTextDelta: (delta) => send("side_prompt_text_delta", { delta }),
+                }).then((result) => {
+                    send(result.status === "success" ? "side_prompt_done" : "side_prompt_error", result);
+                    close();
+                }).catch((error) => {
+                    send("side_prompt_error", {
+                        status: "error",
+                        result: null,
+                        thinking: null,
+                        error: error instanceof Error ? error.message : String(error),
+                        model: null,
+                    });
+                    close();
+                });
+            },
+            cancel: () => {
+                try {
+                    req.signal.throwIfAborted();
+                }
+                catch { }
+            },
+        });
+        return new Response(stream, {
+            status: 200,
+            headers: {
+                "Content-Type": "text/event-stream; charset=utf-8",
+                "Cache-Control": "no-cache, no-transform",
+                Connection: "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        });
     }
     async handleAgentMessage(req, pathname) {
         return handleAgentMessageRequest(this, req, pathname, DEFAULT_CHAT_JID, DEFAULT_AGENT_ID);

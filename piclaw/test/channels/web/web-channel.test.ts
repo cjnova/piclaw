@@ -2262,3 +2262,48 @@ test("web channel exposes side prompts through /agent/side-prompt", async () => 
     stopReason: "stop",
   });
 });
+
+test("web channel streams side prompts through /agent/side-prompt/stream", async () => {
+  const webMod = await import("../../../src/channels/web.js");
+  const web = new (webMod.WebChannel as any)({
+    queue: { enqueue: () => {} },
+    agentPool: {
+      runSidePrompt: async (chatJid: string, prompt: string, options: any) => {
+        options?.onThinkingDelta?.("plan");
+        options?.onTextDelta?.("answer");
+        return {
+          status: "success",
+          result: `answer:${prompt}`,
+          thinking: "plan",
+          model: `model-for:${chatJid}`,
+          stopReason: "stop",
+        };
+      },
+      isStreaming: () => false,
+      runAgent: async () => ({ status: "success", result: "ok" }),
+      getContextUsageForChat: async () => null,
+    },
+  });
+
+  const req = new Request("http://test/agent/side-prompt/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt: "What changed?",
+      system_prompt: "Summarize briefly.",
+      chat_jid: "web:side-test",
+    }),
+  });
+
+  const res = await (web as any).handleRequest(req);
+  expect(res.status).toBe(200);
+  expect(res.headers.get("Content-Type")).toContain("text/event-stream");
+  const body = await res.text();
+  expect(body).toContain("event: side_prompt_start");
+  expect(body).toContain('event: side_prompt_thinking_delta');
+  expect(body).toContain('"delta":"plan"');
+  expect(body).toContain('event: side_prompt_text_delta');
+  expect(body).toContain('"delta":"answer"');
+  expect(body).toContain('event: side_prompt_done');
+  expect(body).toContain('"result":"answer:What changed?"');
+});

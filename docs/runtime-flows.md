@@ -131,12 +131,23 @@ The web UI can render `adaptive_card` content blocks inline in timeline posts an
 Piclaw now has a side-prompt primitive for work that should reuse the chat's current model and thinking level without touching the main session tree.
 
 - Backend primitive: `AgentPool.runSidePrompt(chatJid, prompt, options)`
-- Web endpoint: `POST /agent/side-prompt`
+- Web endpoints:
+  - `POST /agent/side-prompt` for a one-shot JSON result
+  - `POST /agent/side-prompt/stream` for SSE-style `side_prompt_*` events with live thinking/text deltas
 - Uses the current chat model + thinking level
 - Does not append to the main agent session tree
 - Intended as the substrate for future `/btw` / side-conversation UI work
 
-At the moment this is a backend building block rather than a full user-facing side conversation system. The next layer is live streaming and UI presentation for side prompts.
+The web UI now has a first thin consumer for this substrate:
+
+- `/btw <question>` is handled locally in the web compose box
+- it opens a lightweight side-conversation panel
+- the panel streams thinking/text deltas from `POST /agent/side-prompt/stream`
+- each BTW run is reseeded from the **current main session tree context** before prompting, so it starts from the active Pi conversation state rather than a cold empty context
+- the side run uses a separate side session so it can stay isolated from the main visible conversation while still inheriting current context and tool availability
+- `Inject into chat` sends the final BTW answer back through the normal message path, so it respects the same queue/follow-up rules as any other user submission
+
+This is still an early web-native BTW layer rather than the full final system, but the separation of concerns is now in place: core provides the side-prompt/side-session substrate, while BTW remains a thin UI consumer on top.
 
 ## Scheduled tasks / IPC
 

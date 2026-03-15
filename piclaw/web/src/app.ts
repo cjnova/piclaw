@@ -17,13 +17,14 @@
 import { html, render, useState, useEffect, useCallback, useRef, useMemo } from './vendor/preact-htm.js';
 import * as api from './api.js';
 import { ComposeBox } from './components/compose-box.js';
+import { BtwPanel } from './components/btw-panel.js';
 import { AgentRequestModal, AgentStatus, ConnectionStatus } from './components/status.js';
 import { Timeline } from './components/timeline.js';
 import { WorkspaceExplorer } from './components/workspace-explorer.js';
 import { TabStrip } from './components/tab-strip.js';
 import { MarkdownPreview } from './components/markdown-preview.js';
 import { paneRegistry, editorPaneExtension, preloadEditorBundle, terminalPaneExtension, workspacePreviewPaneExtension, workspaceMarkdownPreviewPaneExtension, tabStore } from './panes/index.js';
-import { getLocalStorageBoolean, getLocalStorageNumber, setLocalStorageItem } from './utils/storage.js';
+import { getLocalStorageBoolean, getLocalStorageItem, getLocalStorageNumber, setLocalStorageItem } from './utils/storage.js';
 import { useSseConnection } from './ui/use-sse-connection.js';
 import { useNotifications } from './ui/use-notifications.js';
 import { useTimeline } from './ui/use-timeline.js';
@@ -43,6 +44,7 @@ import {
     useTimestampRefresh,
 } from './ui/app-helpers.js';
 import { resolveFilePillOpenAction } from './ui/file-pill-open.js';
+import { parseBtwCommand, buildBtwInjectionText } from './ui/btw.js';
 import { isCompactionStatus } from './ui/status-duration.js';
 
 function missingApi(name, fallback) {
@@ -50,6 +52,34 @@ function missingApi(name, fallback) {
         console.warn(`[app] API export missing: ${name}. Using fallback behavior.`);
     }
     return async () => fallback;
+}
+
+const BTW_SESSION_KEY = 'piclaw_btw_session';
+
+function loadStoredBtwSession() {
+    const raw = getLocalStorageItem(BTW_SESSION_KEY);
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return null;
+        const question = typeof parsed.question === 'string' ? parsed.question : '';
+        const answer = typeof parsed.answer === 'string' ? parsed.answer : '';
+        const thinking = typeof parsed.thinking === 'string' ? parsed.thinking : '';
+        const error = typeof parsed.error === 'string' && parsed.error.trim() ? parsed.error : null;
+        const status = parsed.status === 'running'
+            ? 'error'
+            : (parsed.status === 'success' || parsed.status === 'error' ? parsed.status : 'success');
+        return {
+            question,
+            answer,
+            thinking,
+            error: status === 'error' ? (error || 'BTW stream interrupted. You can retry.') : error,
+            model: null,
+            status,
+        };
+    } catch {
+        return null;
+    }
 }
 
 const searchPosts = api.searchPosts;
@@ -73,6 +103,9 @@ const steerAgentQueueItem = typeof api.steerAgentQueueItem === 'function'
 const removeAgentQueueItem = typeof api.removeAgentQueueItem === 'function'
     ? api.removeAgentQueueItem
     : missingApi('removeAgentQueueItem', { removed: false });
+const streamSidePrompt = typeof api.streamSidePrompt === 'function'
+    ? api.streamSidePrompt
+    : missingApi('streamSidePrompt', null);
 
 // Configure marked for safe rendering
 if (window.marked) {
@@ -138,6 +171,7 @@ function App() {
     const [contextUsage, setContextUsage] = useState(null);
     const [followupQueueItems, setFollowupQueueItems] = useState([]);
     const [isAgentTurnActive, setIsAgentTurnActive] = useState(false);
+    const [btwSession, setBtwSession] = useState(() => loadStoredBtwSession());
     const followupQueueCount = followupQueueItems.length;
     const followupQueueRowIdsRef = useRef(new Set());
     const followupQueueItemsRef = useRef([]);
@@ -289,6 +323,7 @@ function App() {
     const dockHeightRef = useRef(0);
     const lastNotifiedIdRef = useRef(null);
     const lastAgentResponseRef = useRef(null);
+    const btwAbortRef = useRef(null);
     const lastActivityTimerRef = useRef(null);
     const lastActivityTokenRef = useRef(0);
     const brandingRef = useRef({ title: null, avatarBase: null });
@@ -318,6 +353,20 @@ function App() {
             clearIntentToast();
         };
     }, [clearIntentToast]);
+
+    useEffect(() => {
+        if (!btwSession) {
+            setLocalStorageItem(BTW_SESSION_KEY, '');
+            return;
+        }
+        setLocalStorageItem(BTW_SESSION_KEY, JSON.stringify({
+            question: btwSession.question || '',
+            answer: btwSession.answer || '',
+            thinking: btwSession.thinking || '',
+            error: btwSession.error || null,
+            status: btwSession.status || 'success',
+        }));
+    }, [btwSession]);
 
     useEffect(() => {
         agentsRef.current = agents || {};
@@ -1252,6 +1301,124 @@ function App() {
         }
     }, [refreshQueueState]);
 
+    const closeBtwPanel = useCallback(() => {
+        if (btwAbortRef.current) {
+            btwAbortRef.current.abort();
+            btwAbortRef.current = null;
+        }
+        setBtwSession(null);
+    }, []);
+
+    const runBtwPrompt = useCallback(async (question) => {
+        const trimmed = String(question || '').trim();
+        if (!trimmed) {
+            showIntentToast('BTW needs a question', 'Usage: /btw <question>', 'warning');
+            return true;
+        }
+
+        if (btwAbortRef.current) {
+            btwAbortRef.current.abort();
+        }
+        const controller = new AbortController();
+        btwAbortRef.current = controller;
+
+        setBtwSession({
+            question: trimmed,
+            answer: '',
+            thinking: '',
+            error: null,
+            model: null,
+            status: 'running',
+        });
+
+        try {
+            const finalResult = await streamSidePrompt(trimmed, {
+                signal: controller.signal,
+                systemPrompt: 'Answer the user briefly and directly. This is a side conversation that should not affect the main chat until explicitly injected.',
+                onEvent: (eventType, data) => {
+                    if (eventType === 'side_prompt_start') {
+                        setBtwSession((prev) => prev ? { ...prev, status: 'running' } : prev);
+                    }
+                },
+                onThinkingDelta: (delta) => {
+                    setBtwSession((prev) => prev ? { ...prev, thinking: `${prev.thinking || ''}${delta || ''}` } : prev);
+                },
+                onTextDelta: (delta) => {
+                    setBtwSession((prev) => prev ? { ...prev, answer: `${prev.answer || ''}${delta || ''}` } : prev);
+                },
+            });
+            if (btwAbortRef.current !== controller) return true;
+            setBtwSession((prev) => prev ? {
+                ...prev,
+                answer: finalResult?.result || prev.answer || '',
+                thinking: finalResult?.thinking || prev.thinking || '',
+                model: finalResult?.model || null,
+                status: 'success',
+                error: null,
+            } : prev);
+        } catch (error) {
+            if (controller.signal.aborted) return true;
+            setBtwSession((prev) => prev ? {
+                ...prev,
+                status: 'error',
+                error: error?.payload?.error || error?.message || 'BTW request failed.',
+            } : prev);
+        } finally {
+            if (btwAbortRef.current === controller) {
+                btwAbortRef.current = null;
+            }
+        }
+        return true;
+    }, [showIntentToast]);
+
+    const handleBtwIntercept = useCallback(async ({ content }) => {
+        const parsed = parseBtwCommand(content);
+        if (!parsed) return false;
+
+        if (parsed.type === 'help') {
+            showIntentToast('BTW usage', 'Use /btw <question> to open a side conversation.', 'info', 4000);
+            return true;
+        }
+
+        if (parsed.type === 'clear') {
+            closeBtwPanel();
+            showIntentToast('BTW cleared', 'Closed the side conversation panel.', 'info');
+            return true;
+        }
+
+        if (parsed.type === 'ask') {
+            await runBtwPrompt(parsed.question);
+            return true;
+        }
+
+        return false;
+    }, [closeBtwPanel, runBtwPrompt, showIntentToast]);
+
+    const handleBtwRetry = useCallback(() => {
+        if (btwSession?.question) {
+            void runBtwPrompt(btwSession.question);
+        }
+    }, [btwSession, runBtwPrompt]);
+
+    const handleBtwInject = useCallback(async () => {
+        const content = buildBtwInjectionText(btwSession);
+        if (!content) return;
+        try {
+            const response = await api.sendAgentMessage('default', content, null, [], isComposeBoxAgentActive ? 'queue' : null);
+            handleMessageResponse(response);
+            showIntentToast(
+                response?.queued === 'followup' ? 'BTW queued' : 'BTW injected',
+                response?.queued === 'followup'
+                    ? 'The BTW summary was queued as a follow-up because the agent is busy.'
+                    : 'The BTW summary was sent to the main chat.',
+                'info',
+                3500,
+            );
+        } catch (error) {
+            showIntentToast('BTW inject failed', error?.message || 'Could not inject BTW answer into chat.', 'warning');
+        }
+    }, [btwSession, handleMessageResponse, isComposeBoxAgentActive, showIntentToast]);
+
     const refreshModelAndQueueState = useCallback(() => {
         refreshModelState();
         refreshQueueState();
@@ -1849,6 +2016,12 @@ function App() {
                     steerQueued=${steerQueued}
                     onPanelToggle=${handlePanelToggle}
                 />
+                <${BtwPanel}
+                    session=${btwSession}
+                    onClose=${closeBtwPanel}
+                    onRetry=${handleBtwRetry}
+                    onInject=${handleBtwInject}
+                />
                 <${ComposeBox}
                     onPost=${() => { loadPosts(); scrollToBottom(); }}
                     onFocus=${scrollToBottom}
@@ -1869,6 +2042,7 @@ function App() {
                     followupQueueItems=${followupQueueItems}
                     onInjectQueuedFollowup=${handleInjectQueuedFollowup}
                     onRemoveQueuedFollowup=${handleRemoveQueuedFollowup}
+                    onSubmitIntercept=${handleBtwIntercept}
                     onMessageResponse=${handleMessageResponse}
                     isAgentActive=${isComposeBoxAgentActive}
                     activeModel=${activeModel}

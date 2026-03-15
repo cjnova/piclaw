@@ -155,6 +155,7 @@ export interface WebChannelLike
   handleAgentRespond(req: Request): Promise<Response>;
   handleAdaptiveCardAction(req: Request): Promise<Response>;
   handleAgentSidePrompt(req: Request): Promise<Response>;
+  handleAgentSidePromptStream(req: Request): Promise<Response>;
   handleAgentMessage(req: Request, pathname: string): Promise<Response>;
   resumeChat(chatJid: string, threadRootId?: number | null): void;
 

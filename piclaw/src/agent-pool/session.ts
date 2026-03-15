@@ -89,13 +89,20 @@ export function ensureSessionDir(chatJid: string): string {
   return chatSessionDir;
 }
 
+/** Ensure a named auxiliary session directory exists for a chat and return its path. */
+export function ensureNamedSessionDir(chatJid: string, name: string): string {
+  const dir = join(SESSIONS_DIR, `${sanitiseJid(chatJid)}__${sanitiseJid(name)}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 /**
  * Create a fully-configured pi-agent session for the given chat.
  * Loads workspace resources (AGENTS.md, skills, extensions, prompt templates)
  * and resumes the most recent session tree.
  */
-export async function createDefaultSession(
-  chatJid: string,
+export async function createSessionInDir(
+  sessionDir: string,
   options: {
     authStorage: AuthStorage;
     modelRegistry: ModelRegistry;
@@ -103,7 +110,6 @@ export async function createDefaultSession(
     tools: NonNullable<AgentSessionCreateOptions["tools"]>;
   }
 ): Promise<AgentSession> {
-  const chatSessionDir = ensureSessionDir(chatJid);
   const resourceLoader = new DefaultResourceLoader({
     cwd: WORKSPACE_DIR,
     agentDir: getAgentDir(),
@@ -120,11 +126,24 @@ export async function createDefaultSession(
     modelRegistry: options.modelRegistry,
     settingsManager: options.settingsManager,
     resourceLoader,
-    sessionManager: SessionManager.continueRecent(WORKSPACE_DIR, chatSessionDir),
+    sessionManager: SessionManager.continueRecent(WORKSPACE_DIR, sessionDir),
     tools: options.tools,
   });
 
   return session;
+}
+
+export async function createDefaultSession(
+  chatJid: string,
+  options: {
+    authStorage: AuthStorage;
+    modelRegistry: ModelRegistry;
+    settingsManager: SettingsManager;
+    tools: NonNullable<AgentSessionCreateOptions["tools"]>;
+  }
+): Promise<AgentSession> {
+  const chatSessionDir = ensureSessionDir(chatJid);
+  return createSessionInDir(chatSessionDir, options);
 }
 
 /** Replace characters that are unsafe for filesystem paths. */

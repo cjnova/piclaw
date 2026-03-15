@@ -63,6 +63,10 @@ export async function handleAgentRoutes(
     return await channel.handleAgentSidePrompt(req);
   }
 
+  if (req.method === "POST" && pathname === "/agent/side-prompt/stream") {
+    return await channel.handleAgentSidePromptStream(req);
+  }
+
   // /agent/whitelist — deprecated no-op stub, removed for security hygiene.
   if (req.method === "POST" && pathname === "/agent/whitelist") {
     return channel.json({ error: "Not found" }, 404);
