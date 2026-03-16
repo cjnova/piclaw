@@ -48,6 +48,13 @@ export async function handleExtensionRoutes(
   req: Request,
   pathname: string
 ): Promise<Response | null> {
+  // Route introspection endpoint
+  if (req.method === "GET" && pathname === "/api/extension-routes") {
+    return new Response(JSON.stringify(getRegisteredRoutes()), {
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  }
+
   for (const route of routes) {
     if (pathname === route.prefix || pathname.startsWith(route.prefix + "/") || pathname.startsWith(route.prefix + "?")) {
       try {

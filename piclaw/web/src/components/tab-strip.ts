@@ -30,6 +30,7 @@ import { html, useCallback, useEffect, useMemo, useRef, useState } from '../vend
  * @param {boolean} [props.dockVisible] - Whether the terminal dock is currently visible.
  */
 const OFFICE_EXTENSIONS = /\.(docx?|xlsx?|pptx?|odt|ods|odp|rtf|csv)$/i;
+const DRAWIO_EXTENSIONS = /\.drawio(\.xml|\.svg|\.png)?$/i;
 
 export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, onCloseAll, onTogglePin, onTogglePreview, previewTabs, onToggleDock, dockVisible }) {
     const [contextMenu, setContextMenu] = useState(null);
@@ -201,6 +202,14 @@ export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, o
                         const name = contextMenu.id.split('/').pop() || 'document';
                         const viewerUrl = '/office-viewer/?url=' + encodeURIComponent(rawUrl) + '&name=' + encodeURIComponent(name);
                         window.open(viewerUrl, '_blank', 'noopener');
+                        setContextMenu(null);
+                    }}>Open in New Tab</button>
+                `}
+                ${DRAWIO_EXTENSIONS.test(contextMenu.id) && html`
+                    <hr />
+                    <button onClick=${() => {
+                        const editorUrl = '/drawio/edit?path=' + encodeURIComponent(contextMenu.id);
+                        window.open(editorUrl, '_blank', 'noopener');
                         setContextMenu(null);
                     }}>Open in New Tab</button>
                 `}

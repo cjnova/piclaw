@@ -23,7 +23,7 @@ import { Timeline } from './components/timeline.js';
 import { WorkspaceExplorer } from './components/workspace-explorer.js';
 import { TabStrip } from './components/tab-strip.js';
 import { MarkdownPreview } from './components/markdown-preview.js';
-import { paneRegistry, editorPaneExtension, preloadEditorBundle, terminalPaneExtension, workspacePreviewPaneExtension, workspaceMarkdownPreviewPaneExtension, officeViewerPaneExtension, tabStore } from './panes/index.js';
+import { paneRegistry, editorPaneExtension, preloadEditorBundle, terminalPaneExtension, workspacePreviewPaneExtension, workspaceMarkdownPreviewPaneExtension, officeViewerPaneExtension, drawioPaneExtension, tabStore } from './panes/index.js';
 import { getLocalStorageBoolean, getLocalStorageItem, getLocalStorageNumber, setLocalStorageItem } from './utils/storage.js';
 import { useSseConnection } from './ui/use-sse-connection.js';
 import { useNotifications } from './ui/use-notifications.js';
@@ -130,6 +130,7 @@ paneRegistry.register(editorPaneExtension);
 paneRegistry.register(workspacePreviewPaneExtension);
 paneRegistry.register(workspaceMarkdownPreviewPaneExtension);
 paneRegistry.register(officeViewerPaneExtension);
+paneRegistry.register(drawioPaneExtension);
 // Preload the editor bundle in the background so first file open is instant
 preloadEditorBundle();
 

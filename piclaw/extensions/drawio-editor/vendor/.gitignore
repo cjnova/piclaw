@@ -1,0 +1,12 @@
+# Vendored draw.io webapp — extracted via `bun run build:vendor:drawio`
+# Too large to commit (~35MB). Cached in .cache/vendor/drawio/
+index.html
+favicon.ico
+js/
+styles/
+images/
+mxgraph/
+math4/
+
+# Metadata (generated)
+*.meta.json
