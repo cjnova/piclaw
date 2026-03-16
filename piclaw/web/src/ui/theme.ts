@@ -296,6 +296,7 @@ const THEME_VAR_KEYS = [
     '--border-color',
     '--accent-color',
     '--accent-hover',
+    '--accent-contrast-text',
     '--accent-soft',
     '--accent-soft-strong',
     '--danger-color',
@@ -384,6 +385,20 @@ function rgbaColor(color, alpha) {
     return `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha})`;
 }
 
+/** WCAG relative luminance (0 = black, 1 = white). */
+function relativeLuminance(c) {
+    const rs = c.r / 255, gs = c.g / 255, bs = c.b / 255;
+    const r = rs <= 0.03928 ? rs / 12.92 : Math.pow((rs + 0.055) / 1.055, 2.4);
+    const g = gs <= 0.03928 ? gs / 12.92 : Math.pow((gs + 0.055) / 1.055, 2.4);
+    const b = bs <= 0.03928 ? bs / 12.92 : Math.pow((bs + 0.055) / 1.055, 2.4);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** Return white or black text for maximum contrast against the given background. */
+function contrastTextColor(bg) {
+    return relativeLuminance(bg) > 0.4 ? '#000000' : '#ffffff';
+}
+
 function resolveSystemMode() {
     if (typeof window === 'undefined') return 'light';
     try {
@@ -447,6 +462,9 @@ function applyCssVariables(palette, mode) {
     const accentSoftStrong = accentHex
         ? rgbaColor(accentHex, mode === 'dark' ? 0.28 : 0.2)
         : 'rgba(29, 155, 240, 0.2)';
+    const accentContrastText = accentHex
+        ? contrastTextColor(accentHex)
+        : (mode === 'dark' ? '#000000' : '#ffffff');
 
     const vars = {
         '--bg-primary': palette.bgPrimary,
@@ -459,6 +477,7 @@ function applyCssVariables(palette, mode) {
         '--accent-hover': palette.accentHover || accentColor,
         '--accent-soft': accentSoft,
         '--accent-soft-strong': accentSoftStrong,
+        '--accent-contrast-text': accentContrastText,
         '--danger-color': palette.danger || DEFAULT_LIGHT.danger,
         '--success-color': palette.success || DEFAULT_LIGHT.success,
         '--search-highlight-color': searchHighlight || 'rgba(29, 155, 240, 0.2)',

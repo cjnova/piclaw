@@ -29,6 +29,8 @@ import { html, useCallback, useEffect, useMemo, useRef, useState } from '../vend
  * @param {() => void} [props.onToggleDock] - Toggle terminal dock visibility.
  * @param {boolean} [props.dockVisible] - Whether the terminal dock is currently visible.
  */
+const OFFICE_EXTENSIONS = /\.(docx?|xlsx?|pptx?|odt|ods|odp|rtf|csv)$/i;
+
 export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, onCloseAll, onTogglePin, onTogglePreview, previewTabs, onToggleDock, dockVisible }) {
     const [contextMenu, setContextMenu] = useState(null);
     const stripRef = useRef(null);
@@ -191,6 +193,16 @@ export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, o
                     <button onClick=${() => { onTogglePreview(contextMenu.id); setContextMenu(null); }}>
                         ${previewTabs?.has(contextMenu.id) ? 'Hide Preview' : 'Preview'}
                     </button>
+                `}
+                ${OFFICE_EXTENSIONS.test(contextMenu.id) && html`
+                    <hr />
+                    <button onClick=${() => {
+                        const rawUrl = '/workspace/raw?path=' + encodeURIComponent(contextMenu.id);
+                        const name = contextMenu.id.split('/').pop() || 'document';
+                        const viewerUrl = '/office-viewer/?url=' + encodeURIComponent(rawUrl) + '&name=' + encodeURIComponent(name);
+                        window.open(viewerUrl, '_blank', 'noopener');
+                        setContextMenu(null);
+                    }}>Open in New Tab</button>
                 `}
             </div>
         `}
