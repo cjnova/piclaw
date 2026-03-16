@@ -486,12 +486,17 @@ function handleRoute(req: Request, pathname: string): Response | Promise<Respons
     return new Response("Not Found", { status: 404 });
   }
 
+  const cacheControl = relative === "js/PreConfig.js" || relative === "js/PostConfig.js"
+    ? "no-cache"
+    : "public, max-age=86400";
+
   return new Response(Bun.file(realPath), {
     headers: {
       "Content-Type": getMimeType(realPath),
       "Content-Length": String(st.size),
-      // draw.io JS is versioned by release; cache for 1 day
-      "Cache-Control": "public, max-age=86400",
+      // draw.io JS is versioned by release; config files stay uncached so
+      // self-hosted overrides take effect immediately after reload.
+      "Cache-Control": cacheControl,
       // Override global X-Frame-Options: DENY so the draw.io editor
       // can be loaded inside same-origin iframes.
       "X-Frame-Options": "SAMEORIGIN",

@@ -284,29 +284,40 @@
     var showComments = false;
     var scale = 1;
     var firstRender = true;
+    var baseTableWidth = 1;
+    var baseTableHeight = 1;
 
     function setScale(next) {
       scale = Math.max(0.3, Math.min(4, Number(next) || 1));
-      tableWrap.style.zoom = String(scale);
+      var stage = tableWrap.querySelector('.xlsx-scale-stage');
+      var tbl = tableWrap.querySelector('table');
+      if (stage && tbl) {
+        tbl.style.transform = 'scale(' + scale + ')';
+        tbl.style.transformOrigin = 'top left';
+        stage.style.width = Math.max(1, Math.ceil(baseTableWidth * scale)) + 'px';
+        stage.style.height = Math.max(1, Math.ceil(baseTableHeight * scale)) + 'px';
+      }
     }
 
     function fitScale() {
-      var tbl = tableWrap.querySelector('table');
-      if (!tbl) return scale || 1;
-      var contentWidth = tbl.scrollWidth || tbl.getBoundingClientRect().width || 1;
-      var availableWidth = Math.max(320, tableWrap.clientWidth - 24);
-      return availableWidth / contentWidth;
+      var availableWidth = Math.max(320, tableWrap.getBoundingClientRect().width - 24);
+      return availableWidth / Math.max(1, baseTableWidth);
     }
 
     function showSheet(sheetName) {
       var ws = wb.Sheets[sheetName];
       if (!ws) return;
       var html = XLSX.utils.sheet_to_html(ws, { editable: false });
-      tableWrap.innerHTML = html;
+      tableWrap.innerHTML = '<div class="xlsx-scale-stage">' + html + '</div>';
 
       // Style the table inline (iframe has no external stylesheets)
       var tbl = tableWrap.querySelector('table');
-      if (tbl) { tbl.style.borderCollapse = 'collapse'; tbl.style.width = 'max-content'; tbl.style.minWidth = '100%'; }
+      if (tbl) {
+        tbl.style.borderCollapse = 'collapse';
+        tbl.style.width = 'max-content';
+        tbl.style.minWidth = '100%';
+        tbl.style.transformOrigin = 'top left';
+      }
       tableWrap.querySelectorAll('td,th').forEach(function(cell) {
         cell.style.border = '1px solid #ddd';
         cell.style.padding = '3px 8px';
@@ -347,6 +358,11 @@
       tabBar.querySelectorAll('button').forEach(function(b) {
         b.classList.toggle('active', b.textContent === sheetName);
       });
+
+      if (tbl) {
+        baseTableWidth = tbl.scrollWidth || tbl.offsetWidth || tbl.getBoundingClientRect().width || 1;
+        baseTableHeight = tbl.scrollHeight || tbl.offsetHeight || tbl.getBoundingClientRect().height || 1;
+      }
 
       setScale(firstRender ? fitScale() : scale);
       firstRender = false;
