@@ -47,7 +47,8 @@ or `/workspace/*` route family.
 | GET/HEAD | `/docs/...` | `dispatch-shell.ts` | authenticated | Authenticated docs/static docs assets. |
 | GET/HEAD | `/avatar/agent` | `dispatch-shell.ts` | public | Agent avatar endpoint. |
 | GET/HEAD | `/avatar/user` | `dispatch-shell.ts` | authenticated | Current user avatar endpoint. |
-| GET | `/agents` | `dispatch-shell.ts` | authenticated | Agent/branch listing endpoint. Naming is slightly inconsistent with `/agent/*`. |
+| GET | `/agents` | `dispatch-shell.ts` | authenticated | Legacy compatibility endpoint for the current agent roster payload. |
+| GET | `/agent/roster` | `dispatch-agent.ts` | authenticated | Preferred current-agent roster endpoint; compatibility-preserving naming cleanup for the old `/agents` path. |
 | GET | `/sse/stream` | `dispatch-shell.ts` | authenticated | SSE stream endpoint; accepts optional `chat_jid` subscription scope. |
 | GET | `/terminal/session` | `dispatch-shell.ts` | authenticated | Web terminal session metadata/bootstrap endpoint. |
 | WS upgrade | `/terminal/ws` | `web.ts` `handleFetch()` | authenticated + same-origin | WebSocket terminal transport; checked outside the normal request router. |
@@ -173,7 +174,7 @@ The API is already more consistent than expected:
 These are not urgent breakages, but they are visible:
 
 - `/reply` is a verb-style sibling beside noun-style `/post`
-- `/agents` sits outside the otherwise dominant `/agent/*` family
+- `/agents` is still present as a legacy compatibility route, but the preferred family path is now `/agent/roster`
 - `/workspace/file` multiplexes create/read/update/delete by method, while posts use separate resource/action paths
 - some mutations return `{ status: "ok" }`, while others return full resource payloads; both are reasonable, but the style is not formally documented elsewhere
 

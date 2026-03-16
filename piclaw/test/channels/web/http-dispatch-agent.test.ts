@@ -23,6 +23,7 @@ describe("web http agent dispatch", () => {
     const channel = {
       handleThoughtVisibility: async () => new Response("thought-vis", { status: 201 }),
       handleAgentMessage: async () => new Response("message", { status: 202 }),
+      handleAgents: async () => new Response("roster"),
       handleAgentStatus: () => new Response("status"),
       handleAgentContext: async () => new Response("context"),
       handleAgentQueueState: async () => new Response("queue-state"),
@@ -47,6 +48,9 @@ describe("web http agent dispatch", () => {
 
     const messageReq = new Request("https://example.com/agent/abc/message", { method: "POST" });
     expect((await handleAgentRoutes(channel, messageReq, "/agent/abc/message", new URL(messageReq.url)))?.status).toBe(202);
+
+    const rosterReq = new Request("https://example.com/agent/roster", { method: "GET" });
+    expect(await (await handleAgentRoutes(channel, rosterReq, "/agent/roster", new URL(rosterReq.url)))?.text()).toBe("roster");
 
     const statusReq = new Request("https://example.com/agent/status", { method: "GET" });
     expect(await (await handleAgentRoutes(channel, statusReq, "/agent/status", new URL(statusReq.url)))?.text()).toBe("status");

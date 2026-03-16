@@ -223,10 +223,12 @@ export async function sendPeerAgentMessage(sourceChatJid, targetChatOrName, cont
 }
 
 /**
- * Get available agents
+ * Get available agents / current agent roster.
+ * Uses the newer `/agent/roster` family path while the legacy `/agents`
+ * endpoint remains supported for compatibility.
  */
 export async function getAgents() {
-    return request('/agents');
+    return request('/agent/roster');
 }
 
 /**

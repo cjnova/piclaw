@@ -27,6 +27,10 @@ export async function handleAgentRoutes(
     return await channel.handleAgentMessage(req, pathname);
   }
 
+  if (req.method === "GET" && pathname === "/agent/roster") {
+    return await channel.handleAgents();
+  }
+
   if (req.method === "GET" && pathname === "/agent/status") {
     return channel.handleAgentStatus(req);
   }

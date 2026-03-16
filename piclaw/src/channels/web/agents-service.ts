@@ -1,8 +1,12 @@
 /**
  * web/agents-service.ts – Serves agent profile information to the web UI.
  *
- * Builds the response payload for GET /agents, including the agent's name,
- * avatar URL, current model, and thinking level.
+ * Builds the response payload for the current-agent roster endpoints,
+ * including the agent's name, avatar URL, current model, and thinking level.
+ *
+ * Current paths:
+ *   - GET /agent/roster   (preferred)
+ *   - GET /agents         (legacy compatibility)
  *
  * Consumers: web/handlers/agent.ts calls getAgentsResponse().
  */

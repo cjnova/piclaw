@@ -190,10 +190,14 @@ fixes or follow-up tickets.
   - remote-interop as a separate pre-router security domain
   - current response-style and naming observations
 - That endpoint inventory surfaced/documented the next likely structural follow-ups:
-  - `/agents` sits outside the otherwise dominant `/agent/*` family
   - `/reply` remains the main verb-style outlier beside noun-style content routes
   - response envelopes are lightweight but not formally standardised
   - `extension_ui_*` SSE is a likely end-to-end contract gap to audit next
+- Landed one compatibility-preserving naming cleanup from that inventory:
+  - added preferred `GET /agent/roster`
+  - kept legacy `GET /agents` working
+  - switched the web client to use `/agent/roster`
+  - added regression coverage in `test/channels/web/http-dispatch-agent.test.ts`
 - Added test-backed route-inventory coverage in `piclaw/test/channels/web/http-route-classification.test.ts` so every currently known mutating web route is explicitly classified as one of:
   - data-rate-limited
   - auth-rate-limited
