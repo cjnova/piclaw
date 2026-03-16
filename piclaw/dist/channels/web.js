@@ -564,7 +564,7 @@ export class WebChannel {
             }
             const { removed } = await this.removeQueuedFollowupForAction(chatJid, Number(rowId));
             if (!removed) {
-                return this.json({ removed: false, count: this.getQueuedFollowupCount(chatJid) }, 200);
+                return this.json({ status: "ok", removed: false, count: this.getQueuedFollowupCount(chatJid) }, 200);
             }
             this.broadcastEvent("agent_followup_removed", {
                 chat_jid: chatJid,
@@ -572,6 +572,7 @@ export class WebChannel {
                 thread_id: removed.threadId ?? null,
             });
             return this.json({
+                status: "ok",
                 removed: true,
                 row_id: removed.rowId,
                 count: this.getQueuedFollowupCount(chatJid),
@@ -594,7 +595,7 @@ export class WebChannel {
             }
             const { removed } = await this.removeQueuedFollowupForAction(chatJid, Number(rowId));
             if (!removed) {
-                return this.json({ removed: false, count: this.getQueuedFollowupCount(chatJid) }, 200);
+                return this.json({ status: "ok", removed: false, count: this.getQueuedFollowupCount(chatJid) }, 200);
             }
             this.broadcastEvent("agent_followup_removed", {
                 chat_jid: chatJid,
@@ -603,7 +604,7 @@ export class WebChannel {
             });
             const steerContent = typeof removed.queuedContent === "string" ? removed.queuedContent.trim() : "";
             if (!steerContent) {
-                return this.json({ removed: true, queued: false, count: this.getQueuedFollowupCount(chatJid) }, 200);
+                return this.json({ status: "ok", removed: true, queued: false, count: this.getQueuedFollowupCount(chatJid) }, 200);
             }
             const isStreaming = typeof this.agentPool.isStreaming === "function"
                 ? this.agentPool.isStreaming(chatJid)
@@ -645,6 +646,7 @@ export class WebChannel {
                         content: steerContent,
                     });
                     return this.json({
+                        status: "ok",
                         removed: true,
                         row_id: removed.rowId,
                         user_message: interaction,
@@ -658,6 +660,7 @@ export class WebChannel {
                 await this.processChat(chatJid, DEFAULT_AGENT_ID, interaction.data?.thread_id ?? interaction.id);
             }, `chat:${chatJid}:${interaction.id}`, `chat:${chatJid}`);
             return this.json({
+                status: "ok",
                 removed: true,
                 row_id: removed.rowId,
                 user_message: interaction,
@@ -711,7 +714,7 @@ export class WebChannel {
             if (!branch) {
                 return this.json({ error: "Branch forking is not available." }, 501);
             }
-            return this.json({ branch }, 201);
+            return this.json({ status: "ok", branch }, 201);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error || "Failed to fork branch.");
@@ -743,7 +746,7 @@ export class WebChannel {
             if (!branch) {
                 return this.json({ error: "Branch renaming is not available." }, 501);
             }
-            return this.json({ branch }, 200);
+            return this.json({ status: "ok", branch }, 200);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error || "Failed to rename branch.");
@@ -770,7 +773,7 @@ export class WebChannel {
             if (!branch) {
                 return this.json({ error: "Branch pruning is not available." }, 501);
             }
-            return this.json({ branch }, 200);
+            return this.json({ status: "ok", branch }, 200);
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error || "Failed to prune branch.");
@@ -832,6 +835,7 @@ export class WebChannel {
         }
         const responseBody = await forwardRes.json().catch(() => ({}));
         return this.json({
+            status: "ok",
             ...responseBody,
             source_chat_jid: sourceChatJid,
             source_agent_name: effectiveSourceAgentName,

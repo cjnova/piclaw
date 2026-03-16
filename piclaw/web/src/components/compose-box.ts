@@ -843,20 +843,34 @@ export function ComposeBox({
         updateFooterWidth();
 
         const footer = footerRef.current;
+        let observerFrame = 0;
+        const scheduleFooterResize = () => {
+            if (observerFrame) {
+                cancelAnimationFrame(observerFrame);
+            }
+            observerFrame = requestAnimationFrame(() => {
+                observerFrame = 0;
+                updateFooterWidth();
+            });
+        };
+
         let observer = null;
         if (footer && typeof ResizeObserver !== 'undefined') {
-            observer = new ResizeObserver(() => updateFooterWidth());
+            observer = new ResizeObserver(() => scheduleFooterResize());
             observer.observe(footer);
         }
 
         if (typeof window !== 'undefined') {
-            window.addEventListener('resize', updateFooterWidth);
+            window.addEventListener('resize', scheduleFooterResize);
         }
 
         return () => {
+            if (observerFrame) {
+                cancelAnimationFrame(observerFrame);
+            }
             observer?.disconnect?.();
             if (typeof window !== 'undefined') {
-                window.removeEventListener('resize', updateFooterWidth);
+                window.removeEventListener('resize', scheduleFooterResize);
             }
         };
     }, [searchMode, activeModel, visibleMentionAgents.length, contextUsage?.percent]);

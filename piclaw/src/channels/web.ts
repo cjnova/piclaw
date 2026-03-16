@@ -92,6 +92,7 @@ import {
   handleAgentsRequest,
   handleAvatarRequest,
 } from "./web/identity-endpoints.js";
+import { createAgentsEndpointContext } from "./web/endpoint-contexts.js";
 import { handleManifestRequest } from "./web/manifest.js";
 import {
   getThreadRootId as getThreadRootIdForChat,
@@ -191,13 +192,13 @@ export class WebChannel implements WebChannelLike {
     this.uiBridge = new UiBridge(this);
     this.remoteInterop = new RemoteInteropService(this.agentPool);
     this.agentStatusStore = new AgentStatusStore(this.state);
-    this.interactionBroadcaster = createInteractionBroadcaster(this, {
+    this.interactionBroadcaster = createInteractionBroadcaster(this, () => ({
       agentName: ASSISTANT_NAME,
       agentAvatar: resolveAvatarUrl("agent", ASSISTANT_AVATAR),
       userName: USER_NAME || null,
       userAvatar: resolveAvatarUrl("user", USER_AVATAR),
       userAvatarBackground: USER_AVATAR_BACKGROUND || null,
-    });
+    }));
     this.authGateway = new WebAuthGateway(
       {
         passkeyMode: WEB_PASSKEY_MODE || "",
@@ -587,7 +588,20 @@ export class WebChannel implements WebChannelLike {
   }
 
   async handleAgents(): Promise<Response> {
-    return await handleAgentsRequest(this.endpointContexts.agents());
+    // Read live identity values so /agent-name and /agent-avatar changes
+    // take effect immediately without a process restart.
+    const ctx = createAgentsEndpointContext({
+      agentPool: this.agentPool,
+      defaultChatJid: DEFAULT_CHAT_JID,
+      defaultAgentId: DEFAULT_AGENT_ID,
+      agentName: ASSISTANT_NAME,
+      agentAvatar: resolveAvatarUrl("agent", ASSISTANT_AVATAR),
+      userName: USER_NAME || null,
+      userAvatar: resolveAvatarUrl("user", USER_AVATAR),
+      userAvatarBackground: USER_AVATAR_BACKGROUND || null,
+      json: (payload: unknown, status = 200) => this.json(payload, status),
+    });
+    return await handleAgentsRequest(ctx);
   }
 
   async handleManifest(req: Request): Promise<Response> {
@@ -599,7 +613,12 @@ export class WebChannel implements WebChannelLike {
   }
 
   async handleAvatar(kind: "agent" | "user", req: Request): Promise<Response> {
-    return await handleAvatarRequest(kind, req, this.endpointContexts.avatar());
+    // Read live avatar values so /agent-avatar changes take effect immediately.
+    return await handleAvatarRequest(kind, req, {
+      assistantAvatar: ASSISTANT_AVATAR || null,
+      userAvatar: USER_AVATAR || null,
+      json: (payload: unknown, status = 200) => this.json(payload, status),
+    });
   }
 
   async handleWorkspaceVisibility(req: Request): Promise<Response> {

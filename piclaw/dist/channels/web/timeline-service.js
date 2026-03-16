@@ -55,7 +55,7 @@ export function getSearchResponse(chatJid, query, limit, offset, scope = "curren
         const branchChatJids = Array.from(new Set(listChatBranches(effectiveRootChatJid).map((branch) => branch.chat_jid)));
         const scopedChatJids = branchChatJids.length > 0
             ? branchChatJids
-            : Array.from(new Set([effectiveRootChatJid, chatJid].filter(Boolean)));
+            : Array.from(new Set([effectiveRootChatJid, chatJid].filter((value) => Boolean(value))));
         results = searchMessagesAcrossChats(scopedChatJids, query, limit, offset);
     }
     else {

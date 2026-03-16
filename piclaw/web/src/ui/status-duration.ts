@@ -12,6 +12,17 @@ export function isCompactionStatus(status: Record<string, unknown> | null | unde
   return status.type === "intent" && intentKey === "compaction";
 }
 
+export function resolveStatusPanelTitle(status: Record<string, unknown> | null | undefined): string {
+  if (!status || typeof status !== "object") return "";
+  const rawTitle = status.title;
+  if (typeof rawTitle === "string" && rawTitle.trim()) return rawTitle.trim();
+
+  const statusText = status.status;
+  if (typeof statusText === "string" && statusText.trim()) return statusText.trim();
+
+  return isCompactionStatus(status) ? "Compacting context" : "Working...";
+}
+
 export function formatElapsedDuration(elapsedMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
   const seconds = totalSeconds % 60;

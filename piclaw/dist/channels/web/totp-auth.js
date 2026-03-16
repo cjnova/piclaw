@@ -3,6 +3,7 @@
  */
 import { WEB_SESSION_TTL, WEB_TOTP_SECRET, WEB_TOTP_WINDOW } from "../../core/config.js";
 import { createWebSession, DEFAULT_WEB_USER_ID } from "../../db.js";
+import { okJson } from "./http/http-utils.js";
 import { randomSessionToken, verifyTotp } from "./auth.js";
 function getTotpWindowSteps() {
     return Number.isFinite(WEB_TOTP_WINDOW) ? Math.max(0, WEB_TOTP_WINDOW) : 1;
@@ -43,12 +44,7 @@ export async function handleAuthVerifyRequest(req, ctx) {
     ctx.failureTracker.clear(clientKey);
     const token = randomSessionToken();
     createWebSession(token, DEFAULT_WEB_USER_ID, getSessionTtlSeconds(), "totp");
-    const payload = JSON.stringify({ ok: true });
-    return new Response(payload, {
-        status: 200,
-        headers: {
-            "Content-Type": "application/json",
-            "Set-Cookie": ctx.buildSessionCookie(token, req),
-        },
+    return okJson({ ok: true }, 200, {
+        "Set-Cookie": ctx.buildSessionCookie(token, req),
     });
 }

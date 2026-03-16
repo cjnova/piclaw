@@ -30,7 +30,7 @@ export async function handleContentPrimaryRoutes(channel, req, pathname, url) {
     if (req.method === "POST" && pathname === "/post") {
         return await channel.handlePost(req, false);
     }
-    if (req.method === "POST" && pathname === "/reply") {
+    if (req.method === "POST" && pathname === "/post/reply") {
         return await channel.handlePost(req, true);
     }
     if (req.method === "PATCH" && pathname.startsWith("/post/")) {

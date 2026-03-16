@@ -39,7 +39,7 @@ export async function handleUpdatePostRequest(req, id, ctx) {
         updated.data.thread_id = body.thread_id;
     }
     ctx.broadcastInteractionUpdated(updated);
-    return ctx.json({ ok: true, id: updated.id });
+    return ctx.json({ status: "ok", ok: true, id: updated.id });
 }
 /** POST /internal/post orchestration. */
 export async function handleInternalPostRequest(req, ctx) {
@@ -61,5 +61,5 @@ export async function handleInternalPostRequest(req, ctx) {
     if (!interaction)
         return ctx.json({ error: "Failed to store" }, 500);
     ctx.broadcastAgentResponse(interaction);
-    return ctx.json({ ok: true, id: interaction.id }, 201);
+    return ctx.json({ status: "ok", ok: true, id: interaction.id }, 201);
 }

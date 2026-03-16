@@ -8,7 +8,7 @@ const AGENT_AVATAR_URL = '/static/icon-192.png';
  * Get avatar letter and color from name
  * Returns object with { letter, color, image }
  */
-export function getAvatarInfo(name, avatarUrl) {
+export function getAvatarInfo(name, avatarUrl, isAgent = false) {
     const resolvedName = name || DEFAULT_AGENT_NAME;
     const letter = resolvedName.charAt(0).toUpperCase();
 
@@ -48,7 +48,8 @@ export function getAvatarInfo(name, avatarUrl) {
     const normalized = resolvedName.trim().toLowerCase();
     const normalizedAvatar = typeof avatarUrl === 'string' ? avatarUrl.trim() : '';
     const customImage = normalizedAvatar ? normalizedAvatar : null;
-    const image = customImage || ((normalized === DEFAULT_AGENT_NAME.toLowerCase() || normalized === 'pi') ? AGENT_AVATAR_URL : null);
+    const shouldUseDefaultImage = isAgent || normalized === DEFAULT_AGENT_NAME.toLowerCase() || normalized === 'pi';
+    const image = customImage || (shouldUseDefaultImage ? AGENT_AVATAR_URL : null);
 
     return { letter, color, image };
 }

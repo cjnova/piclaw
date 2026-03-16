@@ -5,6 +5,7 @@ import {
   getStatusElapsedLabel,
   isCompactionStatus,
   parseStatusStartedAt,
+  resolveStatusPanelTitle,
 } from "../../web/src/ui/status-duration.js";
 
 describe("status duration helpers", () => {
@@ -32,5 +33,41 @@ describe("status duration helpers", () => {
       Date.parse("2026-03-14T14:02:05.000Z")
     );
     expect(label).toBe("2:05");
+  });
+
+  test("uses non-empty status title when available", () => {
+    expect(
+      resolveStatusPanelTitle({
+        type: "intent",
+        title: "Compaction in progress",
+      })
+    ).toBe("Compaction in progress");
+  });
+
+  test("falls back to compacting-context label for empty compaction intent", () => {
+    expect(
+      resolveStatusPanelTitle({
+        type: "intent",
+        intent_key: "compaction",
+      })
+    ).toBe("Compacting context");
+  });
+
+  test("uses status text fallback when title is empty", () => {
+    expect(
+      resolveStatusPanelTitle({
+        type: "intent",
+        status: "Retrying…",
+      })
+    ).toBe("Retrying…");
+  });
+
+  test("falls back to working label for other empty intent-like states", () => {
+    expect(
+      resolveStatusPanelTitle({
+        type: "intent",
+        intent_key: "unknown",
+      })
+    ).toBe("Working...");
   });
 });

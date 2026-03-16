@@ -40,9 +40,6 @@ export async function handleShellRoutes(channel, req, pathname, flags, serveStat
     if (req.method === "GET" && pathname === "/terminal/session") {
         return channel.handleTerminalSession(req);
     }
-    if (req.method === "GET" && pathname === "/agents") {
-        return await channel.handleAgents();
-    }
     if (flags.isAvatar) {
         return await channel.handleAvatar("agent", req);
     }

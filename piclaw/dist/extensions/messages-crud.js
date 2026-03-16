@@ -466,27 +466,28 @@ function executeDelete(params, defaultChat) {
         };
     }
     const chatJid = normalizeChatJid(params.chat_jid, defaultChat);
-    if (!chatJid) {
-        return {
-            content: [{ type: "text", text: "Cannot infer target chat. Provide chat_jid." }],
-            details: { action: "delete", deleted_row_ids: [], skipped_row_ids: [] },
-        };
-    }
     const force = params.force === true;
     const dryRun = params.dry_run === true;
     const roleFilter = normalizeRole(params.role);
     const skipped = new Map();
     const rootDeletePlan = new Map();
+    const alreadyPlanned = new Set();
     for (const rootId of requested) {
         const root = fetchByRowId(chatJid, roleFilter, rootId);
         if (!root) {
             skipped.set(rootId, ["not_found"]);
             continue;
         }
-        const cascade = fetchCascadeRows(chatJid, root.rowid);
+        const targetChatJid = root.chat_jid;
+        const cascade = fetchCascadeRows(targetChatJid, root.rowid);
         const overlapsSkipped = cascade.some((row) => skipped.has(row.rowid));
         if (overlapsSkipped) {
             skipped.set(root.rowid, ["cascade_dependency_skipped"]);
+            continue;
+        }
+        const overlapsPlanned = cascade.some((row) => alreadyPlanned.has(row.rowid));
+        if (overlapsPlanned) {
+            skipped.set(root.rowid, ["cascade_dependency_planned"]);
             continue;
         }
         const hasAttachments = cascade.some((row) => rowHasAttachments(row.rowid));
@@ -496,17 +497,20 @@ function executeDelete(params, defaultChat) {
             }
             continue;
         }
-        rootDeletePlan.set(root.rowid, cascade.map((row) => row.rowid));
+        const rowIds = cascade.map((row) => row.rowid);
+        rootDeletePlan.set(root.rowid, { chatJid: targetChatJid, rowIds });
+        for (const id of rowIds)
+            alreadyPlanned.add(id);
     }
     const planned = new Set();
-    for (const rowIds of rootDeletePlan.values()) {
-        for (const id of rowIds)
+    for (const plan of rootDeletePlan.values()) {
+        for (const id of plan.rowIds)
             planned.add(id);
     }
     const finalDeleted = new Set();
     if (!dryRun) {
-        for (const rootId of rootDeletePlan.keys()) {
-            const removed = deleteThreadByRowId(chatJid, rootId);
+        for (const [rootId, plan] of rootDeletePlan.entries()) {
+            const removed = deleteThreadByRowId(plan.chatJid, rootId);
             for (const removedRowId of removed) {
                 if (!skipped.has(removedRowId))
                     finalDeleted.add(removedRowId);

@@ -572,7 +572,7 @@ export function Post({ post, onClick, onHashtagClick, onMessageRef, onScrollToMe
 
     // Get avatar info based on the name
     const avatarInfo = isAgent
-        ? getAvatarInfo(agentName, agentAvatarUrl)
+        ? getAvatarInfo(agentName, agentAvatarUrl, true)
         : getAvatarInfo(resolvedUserName, userAvatarUrl);
     const normalizedUserBackground = typeof userAvatarBackground === 'string'
         ? userAvatarBackground.trim().toLowerCase()

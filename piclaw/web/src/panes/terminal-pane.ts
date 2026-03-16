@@ -205,6 +205,7 @@ class TerminalPaneInstance implements PaneInstance {
     private windowResizeListener = null;
     private resizeFrame = 0;
     private lastAppliedThemeSignature = null;
+    private lastResizeSignature: string | null = null;
 
     constructor(container: HTMLElement, _context: PaneContext) {
         this.container = container;
@@ -233,6 +234,20 @@ class TerminalPaneInstance implements PaneInstance {
         this.termEl.setAttribute('aria-label', `Terminal ${message}`);
     }
 
+    private getResizeSignature(): string {
+        try {
+            const containerRect = this.container?.getBoundingClientRect?.();
+            const bodyRect = this.bodyEl?.getBoundingClientRect?.();
+            const cWidth = Number.isFinite(containerRect?.width) ? containerRect.width : 0;
+            const cHeight = Number.isFinite(containerRect?.height) ? containerRect.height : 0;
+            const bWidth = Number.isFinite(bodyRect?.width) ? bodyRect.width : 0;
+            const bHeight = Number.isFinite(bodyRect?.height) ? bodyRect.height : 0;
+            return `${Math.round(cWidth)}x${Math.round(cHeight)}:${Math.round(bWidth)}x${Math.round(bHeight)}`;
+        } catch {
+            return "0x0:0x0";
+        }
+    }
+
     private syncHostLayout(): void {
         const host = this.bodyEl.querySelector('.terminal-live-host');
         if (!(host instanceof HTMLElement)) return;
@@ -255,11 +270,18 @@ class TerminalPaneInstance implements PaneInstance {
 
     private scheduleResize(): void {
         if (this.disposed) return;
+
+        const signature = this.getResizeSignature();
+        if (this.lastResizeSignature === signature) {
+            return;
+        }
+
         if (this.resizeFrame) {
             cancelAnimationFrame(this.resizeFrame);
         }
         this.resizeFrame = requestAnimationFrame(() => {
             this.resizeFrame = 0;
+            this.lastResizeSignature = this.getResizeSignature();
             this.resize();
         });
     }
@@ -412,9 +434,11 @@ class TerminalPaneInstance implements PaneInstance {
         this.windowResizeListener = onWindowResize;
 
         if (typeof ResizeObserver !== 'undefined') {
-            const observer = new ResizeObserver(() => this.scheduleResize());
+            const observer = new ResizeObserver(() => {
+                if (this.disposed) return;
+                this.scheduleResize();
+            });
             observer.observe(this.container);
-            observer.observe(this.bodyEl);
             this.resizeObserver = observer;
         }
     }

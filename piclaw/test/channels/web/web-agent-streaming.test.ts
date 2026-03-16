@@ -116,4 +116,52 @@ describe("web agent streaming", () => {
 
     restoreEnv();
   });
+
+  test("auto-compaction start/end status events always carry non-empty titles", async () => {
+    const ws = getTestWorkspace();
+    const restoreEnv = setEnv({
+      PICLAW_WORKSPACE: ws.workspace,
+      PICLAW_STORE: ws.store,
+      PICLAW_DATA: ws.data,
+    });
+    initDatabase();
+
+    const events: Array<{ type: string; data: any }> = [];
+
+    const agentPool = {
+      setSessionBinder: () => {},
+      runAgent: async (_prompt: string, _chatJid: string, options: any) => {
+        options.onEvent?.(makeEvent("auto_compaction_start", { reason: "overflow" }));
+        options.onEvent?.(makeEvent("message_update", { assistantMessageEvent: { type: "text_start" } }));
+        options.onEvent?.(makeEvent("message_update", { assistantMessageEvent: { type: "text_delta", delta: "compact" } }));
+        options.onEvent?.(makeEvent("auto_compaction_end", { errorMessage: null }));
+        return { status: "success", result: "compaction response", attachments: [] };
+      },
+      getContextUsageForChat: async () => null,
+    } as any;
+
+    const channel = new WebChannel({ queue: new AgentQueue(), agentPool });
+    channel.broadcastEvent = (type: string, data: unknown) => {
+      events.push({ type, data });
+    };
+
+    const interaction = channel.storeMessage("web:default", "hello", false, []);
+    expect(interaction).not.toBeNull();
+
+    await channel.processChat("web:default", "default");
+
+    const compactionStarts = events.filter(
+      (event) => event.type === "agent_status" && event.data?.type === "intent" && event.data?.intent_key === "compaction"
+    );
+    expect(compactionStarts.length).toBeGreaterThanOrEqual(1);
+    const compactionStart = compactionStarts[0];
+    expect(typeof compactionStart.data?.title).toBe("string");
+    expect(String(compactionStart.data.title).trim()).toBe("Compacting context");
+    const done = events.find(
+      (event) => event.type === "agent_status" && event.data?.type === "done"
+    );
+    expect(done).toBeDefined();
+
+    restoreEnv();
+  });
 });

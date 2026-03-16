@@ -3,7 +3,7 @@ import { html, useEffect, useState } from '../vendor/preact-htm.js';
 import { addToWhitelist, respondToAgentRequest } from '../api.js';
 import { renderThinkingMarkdown } from '../markdown.js';
 import { getTurnColor } from '../ui/agent-utils.js';
-import { getStatusElapsedLabel, isCompactionStatus } from '../ui/status-duration.js';
+import { getStatusElapsedLabel, isCompactionStatus, resolveStatusPanelTitle } from '../ui/status-duration.js';
 
 /** Preact component: agent status bar with draft/thought/plan panels. */
 export function AgentStatus({ status, draft, plan, thought, pendingRequest, intent, turnId, steerQueued, onPanelToggle }) {
@@ -168,21 +168,25 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
     const pendingTitle = pendingRequest?.tool_call?.title;
     const pendingMessage = pendingTitle ? `Awaiting approval: ${pendingTitle}` : 'Awaiting approval';
     const compactionElapsedLabel = statusIsCompaction ? getStatusElapsedLabel(status, nowMs) : null;
-    const renderIntentPanel = (payload, color, elapsedLabel = null) => html`
-        <div
-            class="agent-thinking agent-thinking-intent"
-            aria-live="polite"
-            style=${color ? `--turn-color: ${color};` : ''}
-            title=${payload?.detail || ''}
-        >
-            <div class="agent-thinking-title intent">
-                ${color && html`<span class=${dotClass} aria-hidden="true"></span>`}
-                <span class="agent-thinking-title-text">${payload.title}</span>
-                ${elapsedLabel && html`<span class="agent-status-elapsed">${elapsedLabel}</span>`}
+    const renderIntentPanel = (payload, color, elapsedLabel = null) => {
+        const titleText = resolveStatusPanelTitle(payload);
+
+        return html`
+            <div
+                class="agent-thinking agent-thinking-intent"
+                aria-live="polite"
+                style=${color ? `--turn-color: ${color};` : ''}
+                title=${payload?.detail || ''}
+            >
+                <div class="agent-thinking-title intent">
+                    ${color && html`<span class=${dotClass} aria-hidden="true"></span>`}
+                    <span class="agent-thinking-title-text">${titleText}</span>
+                    ${elapsedLabel && html`<span class="agent-status-elapsed">${elapsedLabel}</span>`}
+                </div>
+                ${payload.detail && html`<div class="agent-thinking-body">${payload.detail}</div>`}
             </div>
-            ${payload.detail && html`<div class="agent-thinking-body">${payload.detail}</div>`}
-        </div>
-    `;
+        `;
+    };
 
     return html`
         <div class="agent-status-panel">

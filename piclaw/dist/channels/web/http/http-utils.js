@@ -7,13 +7,22 @@
  * Consumers: All web/handlers/*.ts modules and web/http/response-service.ts.
  */
 /** Build a JSON HTTP response with consistent content-type headers. */
-export function jsonResponse(data, status = 200) {
+export function jsonResponse(data, status = 200, headers) {
+    const responseHeaders = new Headers(headers);
+    if (!responseHeaders.has("Content-Type"))
+        responseHeaders.set("Content-Type", "application/json");
     return new Response(JSON.stringify(data), {
         status,
-        headers: {
-            "Content-Type": "application/json",
-        },
+        headers: responseHeaders,
     });
+}
+/** Build the standard lightweight success envelope used by simple web mutations. */
+export function okJson(data = {}, status = 200, headers) {
+    return jsonResponse({ status: "ok", ...data }, status, headers);
+}
+/** Build the standard lightweight error envelope used by web JSON endpoints. */
+export function errorJson(error, status = 400, headers) {
+    return jsonResponse({ error }, status, headers);
 }
 /** Clamp an integer value between min and max bounds. */
 export function clampInt(value, fallback, min, max) {

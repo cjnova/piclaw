@@ -4,6 +4,7 @@
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse, } from "@simplewebauthn/server";
 import { createWebSession, DEFAULT_WEB_USER_ID, consumeWebauthnEnrollment, getWebauthnCredentialById, getWebauthnCredentialsForRpId, getWebauthnEnrollment, storeWebauthnCredential, updateWebauthnCredentialCounter, } from "../../db.js";
 import { ASSISTANT_NAME, USER_NAME, WEB_SESSION_TTL } from "../../core/config.js";
+import { okJson } from "./http/http-utils.js";
 import { randomSessionToken } from "./auth.js";
 import { base64UrlToBuffer, bufferToBase64Url, resolveWebauthnRpInfo, } from "./webauthn-challenges.js";
 function getTtlSeconds() {
@@ -98,12 +99,8 @@ export async function handleWebauthnLoginFinish(req, ctx) {
     updateWebauthnCredentialCounter(stored.credential_id, result.authenticationInfo.newCounter);
     const sessionToken = (ctx.randomToken ?? randomSessionToken)();
     createWebSession(sessionToken, DEFAULT_WEB_USER_ID, getTtlSeconds(), "passkey");
-    return new Response(JSON.stringify({ ok: true }), {
-        status: 200,
-        headers: {
-            "Content-Type": "application/json",
-            "Set-Cookie": ctx.buildSessionCookie(sessionToken, req),
-        },
+    return okJson({ ok: true }, 200, {
+        "Set-Cookie": ctx.buildSessionCookie(sessionToken, req),
     });
 }
 /** Start a passkey registration ceremony from a valid enrollment token. */
@@ -208,5 +205,5 @@ export async function handleWebauthnRegisterFinish(req, ctx) {
         sign_count: info.credential.counter || 0,
         transports,
     });
-    return ctx.json({ ok: true });
+    return okJson({ ok: true });
 }

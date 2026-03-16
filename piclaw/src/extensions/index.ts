@@ -28,6 +28,7 @@ import { sqlIntrospect } from "./sql-introspect.js";
 import { scheduledTasks } from "./scheduled-tasks.js";
 import { workspaceSearch } from "./workspace-search.js";
 import { uiThemeExtension } from "./ui-theme.js";
+import { smartCompaction } from "./smart-compaction.js";
 
 /** Array of all built-in extension factories to register on session creation. */
 export const builtinExtensionFactories: ExtensionFactory[] = [
@@ -40,4 +41,5 @@ export const builtinExtensionFactories: ExtensionFactory[] = [
   scheduledTasks,
   workspaceSearch,
   uiThemeExtension,
+  smartCompaction,
 ];
