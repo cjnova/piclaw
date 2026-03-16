@@ -51,20 +51,15 @@ import {
     closeProvisionalChatWindow,
     describeBranchOpenError,
     getChatWindowOpenOptions,
-    isStandaloneWebAppMode,
     navigateProvisionalChatWindow,
     openProvisionalChatWindow,
     primeProvisionalChatWindow,
 } from './ui/chat-window.js';
-import { shouldClearQueuedSteerState } from './ui/queue-state.js';
+import { resolveQueueActionChatJid, shouldClearQueuedSteerState } from './ui/queue-state.js';
 import { isCompactionStatus } from './ui/status-duration.js';
-
-function missingApi(name, fallback) {
-    if (typeof window !== 'undefined') {
-        console.warn(`[app] API export missing: ${name}. Using fallback behavior.`);
-    }
-    return async () => fallback;
-}
+import { installStandaloneMobileViewportFix } from './ui/mobile-viewport.js';
+import { resolveOptionalApi } from './ui/optional-api.js';
+import { watchReturnToApp, watchStandaloneWebAppMode } from './ui/app-resume.js';
 
 const BTW_SESSION_KEY = 'piclaw_btw_session';
 
@@ -106,36 +101,16 @@ const getAgents = api.getAgents;
 const getAgentThought = api.getAgentThought;
 const setAgentThoughtVisibility = api.setAgentThoughtVisibility;
 const getAgentStatus = api.getAgentStatus;
-const getAgentContext = typeof api.getAgentContext === 'function'
-    ? api.getAgentContext
-    : missingApi('getAgentContext', null);
-const getAgentModels = typeof api.getAgentModels === 'function'
-    ? api.getAgentModels
-    : missingApi('getAgentModels', { current: null, models: [] });
-const getActiveChatAgents = typeof api.getActiveChatAgents === 'function'
-    ? api.getActiveChatAgents
-    : missingApi('getActiveChatAgents', { chats: [] });
-const getChatBranches = typeof api.getChatBranches === 'function'
-    ? api.getChatBranches
-    : missingApi('getChatBranches', { chats: [] });
-const renameChatBranch = typeof api.renameChatBranch === 'function'
-    ? api.renameChatBranch
-    : missingApi('renameChatBranch', null);
-const pruneChatBranch = typeof api.pruneChatBranch === 'function'
-    ? api.pruneChatBranch
-    : missingApi('pruneChatBranch', null);
-const getAgentQueueState = typeof api.getAgentQueueState === 'function'
-    ? api.getAgentQueueState
-    : missingApi('getAgentQueueState', { count: 0 });
-const steerAgentQueueItem = typeof api.steerAgentQueueItem === 'function'
-    ? api.steerAgentQueueItem
-    : missingApi('steerAgentQueueItem', { removed: false, queued: 'steer' });
-const removeAgentQueueItem = typeof api.removeAgentQueueItem === 'function'
-    ? api.removeAgentQueueItem
-    : missingApi('removeAgentQueueItem', { removed: false });
-const streamSidePrompt = typeof api.streamSidePrompt === 'function'
-    ? api.streamSidePrompt
-    : missingApi('streamSidePrompt', null);
+const getAgentContext = resolveOptionalApi(api, 'getAgentContext', null);
+const getAgentModels = resolveOptionalApi(api, 'getAgentModels', { current: null, models: [] });
+const getActiveChatAgents = resolveOptionalApi(api, 'getActiveChatAgents', { chats: [] });
+const getChatBranches = resolveOptionalApi(api, 'getChatBranches', { chats: [] });
+const renameChatBranch = resolveOptionalApi(api, 'renameChatBranch', null);
+const pruneChatBranch = resolveOptionalApi(api, 'pruneChatBranch', null);
+const getAgentQueueState = resolveOptionalApi(api, 'getAgentQueueState', { count: 0 });
+const steerAgentQueueItem = resolveOptionalApi(api, 'steerAgentQueueItem', { removed: false, queued: 'steer' });
+const removeAgentQueueItem = resolveOptionalApi(api, 'removeAgentQueueItem', { removed: false });
+const streamSidePrompt = resolveOptionalApi(api, 'streamSidePrompt', null);
 
 // Configure marked for safe rendering
 if (window.marked) {
@@ -413,53 +388,16 @@ function MainApp({ locationParams }) {
     }, []);
 
     useEffect(() => {
-        if (typeof window === 'undefined') return;
-
-        const refreshWebAppMode = () => {
-            setIsWebAppMode(isStandaloneWebAppMode());
-        };
-
-        refreshWebAppMode();
-
-        const queries = [
-            '(display-mode: standalone)',
-            '(display-mode: minimal-ui)',
-            '(display-mode: fullscreen)',
-        ];
-        const mediaQueries = queries
-            .map((query) => {
-                try {
-                    return window.matchMedia(query);
-                } catch {
-                    return null;
-                }
-            })
-            .filter(Boolean);
-
-        const removers = mediaQueries.map((mql) => {
-            if (typeof mql.addEventListener === 'function') {
-                mql.addEventListener('change', refreshWebAppMode);
-                return () => mql.removeEventListener('change', refreshWebAppMode);
-            }
-            if (typeof mql.addListener === 'function') {
-                mql.addListener(refreshWebAppMode);
-                return () => mql.removeListener(refreshWebAppMode);
-            }
-            return () => {};
-        });
-
-        window.addEventListener('focus', refreshWebAppMode);
-        window.addEventListener('pageshow', refreshWebAppMode);
-        return () => {
-            for (const remove of removers) remove();
-            window.removeEventListener('focus', refreshWebAppMode);
-            window.removeEventListener('pageshow', refreshWebAppMode);
-        };
+        return watchStandaloneWebAppMode(setIsWebAppMode);
     }, []);
 
     useEffect(() => {
         setLocalStorageItem('workspaceOpen', String(workspaceOpen));
     }, [workspaceOpen]);
+
+    useEffect(() => {
+        return installStandaloneMobileViewportFix();
+    }, []);
 
     useEffect(() => {
         return () => {
@@ -2091,33 +2029,6 @@ function MainApp({ locationParams }) {
             return;
         }
 
-        // Handle agent requests (permission, choices)
-        if (eventType === 'agent_request') {
-            if (!isCurrentChatEvent) return;
-            console.log('Agent request:', data);
-            if (turnId && currentTurnIdRef.current && turnId !== currentTurnIdRef.current) {
-                return;
-            }
-            if (turnId) setActiveTurn(turnId);
-            noteAgentActivity({ running: true, clearSilence: true });
-            setPendingRequest(data);
-            pendingRequestRef.current = data;
-            return;
-        }
-
-        if (eventType === 'agent_request_timeout') {
-            if (!isCurrentChatEvent) return;
-            console.log('Agent request timeout:', data);
-            if (turnId && currentTurnIdRef.current && turnId !== currentTurnIdRef.current) {
-                return;
-            }
-            setPendingRequest(null);
-            pendingRequestRef.current = null;
-            clearAgentRunState();
-            setAgentStatus({ type: 'error', title: 'Permission request timed out' });
-            return;
-        }
-
         if (eventType === 'model_changed') {
             if (!isCurrentChatEvent) return;
             if (data?.model !== undefined) setActiveModel(data.model);
@@ -2276,23 +2187,11 @@ function MainApp({ locationParams }) {
     // Returning to the tab/webapp should restore current context-affordance
     // truth immediately instead of waiting for the 15s/60s backstop poller.
     useEffect(() => {
-        if (typeof window === 'undefined' || typeof document === 'undefined') return;
-
-        const handleReturnToApp = () => {
-            if (document.visibilityState && document.visibilityState !== 'visible') return;
+        return watchReturnToApp(() => {
             refreshAgentStatus();
             refreshContextUsage();
             refreshQueueState();
-        };
-
-        window.addEventListener('focus', handleReturnToApp);
-        window.addEventListener('pageshow', handleReturnToApp);
-        document.addEventListener('visibilitychange', handleReturnToApp);
-        return () => {
-            window.removeEventListener('focus', handleReturnToApp);
-            window.removeEventListener('pageshow', handleReturnToApp);
-            document.removeEventListener('visibilitychange', handleReturnToApp);
-        };
+        });
     }, [refreshAgentStatus, refreshContextUsage, refreshQueueState]);
 
     const toggleWorkspace = useCallback(() => {
