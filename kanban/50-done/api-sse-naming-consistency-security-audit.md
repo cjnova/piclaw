@@ -1,7 +1,7 @@
 ---
 id: api-sse-naming-consistency-security-audit
 title: Audit API endpoints and SSE events for naming, consistency, formats, and security
-status: review
+status: done
 priority: medium
 created: 2026-03-14
 updated: 2026-03-16
@@ -246,10 +246,14 @@ fixes or follow-up tickets.
   - `piclaw/kanban/00-inbox/clarify-agent-response-sse-contract.md`
   - `piclaw/kanban/00-inbox/extension-ui-sse-client-contract-gap.md`
 - With those remaining structural questions extracted, the main audit umbrella is now considered complete enough to move to review.
-- Review focus should be:
+- Review focus was:
   - inventory artefacts are accurate enough
   - the landed naming/response/security slices are coherent together
   - the remaining work has been cleanly split into separate follow-up tickets instead of being left implicit
+- Review conclusion:
+  - accepted as complete for the audit umbrella
+  - remaining work is explicitly split into follow-up tickets rather than kept open here
+  - ticket is ready to move to done
 
 ### 2026-03-15
 - Lane change: `00-inbox` → `20-doing` to start the API/SSE audit as the next unblocked follow-on after the post-release audit and shell lifecycle refactor were committed.

@@ -78,6 +78,15 @@ The web SSE client currently listens for:
 - `agent_followup_consumed`
 - `agent_followup_removed`
 - `workspace_update`
+- `extension_ui_request`
+- `extension_ui_timeout`
+- `extension_ui_notify`
+- `extension_ui_status`
+- `extension_ui_working`
+- `extension_ui_widget`
+- `extension_ui_title`
+- `extension_ui_editor_text`
+- `extension_ui_error`
 - `agent_draft`
 - `agent_draft_delta`
 - `agent_thought`

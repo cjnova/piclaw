@@ -60,5 +60,5 @@ This is now a bounded design/cleanup task rather than a broad exploratory audit.
 
 ## Links
 
-- `piclaw/kanban/40-review/api-sse-naming-consistency-security-audit.md`
+- `piclaw/kanban/50-done/api-sse-naming-consistency-security-audit.md`
 - `piclaw/piclaw/docs/web-api-endpoint-inventory.md`

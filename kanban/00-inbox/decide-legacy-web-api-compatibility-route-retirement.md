@@ -58,5 +58,5 @@ What remains is a product and maintenance policy decision:
 
 ## Links
 
-- `piclaw/kanban/40-review/api-sse-naming-consistency-security-audit.md`
+- `piclaw/kanban/50-done/api-sse-naming-consistency-security-audit.md`
 - `piclaw/piclaw/docs/web-api-endpoint-inventory.md`

@@ -50,5 +50,5 @@ The current event works, but it may eventually be worth deciding whether to:
 
 ## Links
 
-- `piclaw/kanban/40-review/api-sse-naming-consistency-security-audit.md`
+- `piclaw/kanban/50-done/api-sse-naming-consistency-security-audit.md`
 - `piclaw/piclaw/docs/web-sse-inventory.md`
