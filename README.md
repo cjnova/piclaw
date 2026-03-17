@@ -243,7 +243,6 @@ PiClaw works with any OCI-compliant runtime.
 
 ## Documentation
 
-- [Changelog](CHANGELOG.md) — user-visible and operator-visible changes since `v1.5.2`
 - [Configuration](docs/configuration.md) — all env vars, TOTP, TLS, keychain, Pushover, WhatsApp
 - [Reverse proxy / Cloudflare Tunnel](docs/reverse-proxy.md) — trust-proxy setup, forwarded headers, examples, troubleshooting
 - [Architecture](docs/architecture.md) — codebase layout and design decisions

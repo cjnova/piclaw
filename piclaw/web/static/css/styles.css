@@ -2677,10 +2677,18 @@ body {
 }
 
 
+.compose-send-stack {
+    position: relative;
+    display: inline-flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    flex: 0 0 auto;
+}
+
 .compose-connection-status {
     position: absolute;
-    top: -10px;
-    right: 10px;
+    right: 0;
+    bottom: 0;
     z-index: 3;
     display: inline-flex;
     align-items: center;
@@ -2699,11 +2707,6 @@ body {
     vertical-align: middle;
     pointer-events: none;
     box-shadow: var(--shadow-sm);
-}
-
-.compose-connection-status.connection-status {
-    right: 10px;
-    bottom: auto;
 }
 
 .compose-actions {

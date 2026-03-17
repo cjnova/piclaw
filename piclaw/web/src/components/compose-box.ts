@@ -1081,11 +1081,6 @@ export function ComposeBox({
                 onDragLeave=${handleDragLeave}
                 onDrop=${handleDrop}
             >
-                ${connectionStatus !== 'connected' && html`
-                    <span class="compose-connection-status connection-status ${connectionStatus}" title=${connectionStatusTitle}>
-                        ${connectionStatusLabel}
-                    </span>
-                `}
                 <div class="compose-input-main">
                     ${submitError && !hasAttachments && html`
                         <div class="compose-submit-error compose-submit-error-top" role="status" aria-live="polite">${submitError}</div>
@@ -1361,15 +1356,26 @@ export function ComposeBox({
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                             <input type="file" accept="image/*" multiple hidden onChange=${handleFileChange} />
                         </label>
-                        <button 
-                            class="icon-btn send-btn" 
-                            type="button"
-                            onClick=${() => { void handleSubmit(); }}
-                            disabled=${!canSend}
-                            title="Send (Enter)"
-                        >
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-                        </button>
+                    `}
+                    ${(connectionStatus !== 'connected' || !searchMode) && html`
+                        <div class="compose-send-stack">
+                            ${connectionStatus !== 'connected' && html`
+                                <span class="compose-connection-status connection-status ${connectionStatus}" title=${connectionStatusTitle}>
+                                    ${connectionStatusLabel}
+                                </span>
+                            `}
+                            ${!searchMode && html`
+                                <button 
+                                    class="icon-btn send-btn" 
+                                    type="button"
+                                    onClick=${() => { void handleSubmit(); }}
+                                    disabled=${!canSend}
+                                    title="Send (Enter)"
+                                >
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                                </button>
+                            `}
+                        </div>
                     `}
                 </div>
             </div>
