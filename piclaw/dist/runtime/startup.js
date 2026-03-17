@@ -35,7 +35,7 @@ export async function startWebChannel(queue, agentPool) {
         });
         if (!interaction)
             return null;
-        web.broadcastEvent("new_post", interaction);
+        web.broadcastEvent(isBot ? "agent_response" : "new_post", interaction);
         return interaction.id;
     });
     return web;

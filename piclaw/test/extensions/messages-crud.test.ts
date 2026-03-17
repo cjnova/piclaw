@@ -282,4 +282,46 @@ describe("messages tool extension", () => {
     });
     expect(forced.details.deleted_row_ids).toContain(rowId);
   });
+
+  test("post with type=agent passes isBot=true to postFn", async () => {
+    const { runMessagesTool } = await importFresh<typeof import("../src/extensions/messages-crud.js")>("../src/extensions/messages-crud.js");
+
+    const calls: Array<{ chatJid: string; content: string; isBot: boolean; mediaIds: number[]; contentBlocks?: unknown[] }> = [];
+    const fakePostFn = (cj: string, c: string, bot: boolean, mids: number[], cb?: unknown[]) => {
+      calls.push({ chatJid: cj, content: c, isBot: bot, mediaIds: mids, contentBlocks: cb });
+      return 99999;
+    };
+
+    const result = runMessagesTool(
+      { action: "post", type: "agent", content: "Agent card message", content_blocks: [{ type: "adaptive_card", card_id: "test-abc" }] },
+      chatJid,
+      fakePostFn,
+    );
+
+    expect(result.details.posted).toBe(1);
+    expect(result.details.row_id).toBe(99999);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].isBot).toBe(true);
+    expect(calls[0].content).toBe("Agent card message");
+    expect(calls[0].contentBlocks).toEqual([{ type: "adaptive_card", card_id: "test-abc" }]);
+  });
+
+  test("post without type defaults to user (isBot=false)", async () => {
+    const { runMessagesTool } = await importFresh<typeof import("../src/extensions/messages-crud.js")>("../src/extensions/messages-crud.js");
+
+    const calls: Array<{ isBot: boolean }> = [];
+    const fakePostFn = (_cj: string, _c: string, bot: boolean, _mids: number[], _cb?: unknown[]) => {
+      calls.push({ isBot: bot });
+      return 88888;
+    };
+
+    const result = runMessagesTool(
+      { action: "post", content: "User message" },
+      chatJid,
+      fakePostFn,
+    );
+
+    expect(result.details.posted).toBe(1);
+    expect(calls[0].isBot).toBe(false);
+  });
 });
