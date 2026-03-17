@@ -1,10 +1,10 @@
 ---
 id: login-command-passthrough
 title: Pass /login command through to pi and effect successful logins
-status: inbox
+status: doing
 priority: medium
 created: 2026-03-11
-updated: 2026-03-11
+updated: 2026-03-17
 tags:
   - work-item
   - kanban
@@ -52,6 +52,9 @@ It is not about piclaw's own web/TOTP/passkey session login.
 - How should provider-auth prompts/URLs be relayed through the web chat flow?
 
 ## Updates
+
+### 2026-03-17
+- Moved from `00-inbox` to `20-doing` for active implementation.
 
 ### 2026-03-12
 - Refined from 5-question pass:

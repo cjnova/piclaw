@@ -1,10 +1,10 @@
 ---
 id: opengraph-previews-too-narrow-in-desktop
 title: Fix OpenGraph preview sizing in desktop split layout
-status: blocked
+status: done
 priority: medium
 created: 2026-03-11
-updated: 2026-03-11
+updated: 2026-03-17
 target_release: next
 tags:
   - work-item
@@ -58,6 +58,9 @@ Cons: extra JS complexity, potentially unnecessary if CSS-only solves issue.
 Start with **Path A**; escalate to **Path B** only if edge-case regressions remain.
 
 ## Updates
+
+### 2026-03-17
+- Marked done and moved from `30-blocked` to `50-done`.
 
 ### 2026-03-11
 - Ticket formalized from freeform note.
