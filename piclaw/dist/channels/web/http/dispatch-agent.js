@@ -52,6 +52,9 @@ export async function handleAgentRoutes(channel, req, pathname, url) {
     if (req.method === "POST" && pathname === "/agent/branch-prune") {
         return await channel.handleAgentBranchPrune(req);
     }
+    if (req.method === "POST" && pathname === "/agent/branch-restore") {
+        return await channel.handleAgentBranchRestore(req);
+    }
     if (req.method === "POST" && pathname === "/agent/peer-message") {
         return await channel.handleAgentPeerMessage(req);
     }

@@ -2364,25 +2364,43 @@ function MainApp({ locationParams }) {
         }
     }, [currentBranchRecord, refreshActiveChatAgents, refreshCurrentChatBranches, showIntentToast]);
 
-    const handlePruneCurrentBranch = useCallback(async () => {
-        if (typeof window === 'undefined' || !currentBranchRecord?.chat_jid) return;
-        const isRootBranch = currentBranchRecord.chat_jid === (currentBranchRecord.root_chat_jid || currentBranchRecord.chat_jid);
+    const handlePruneCurrentBranch = useCallback(async (targetChatJid = null) => {
+        if (typeof window === 'undefined') return;
+
+        const requestedChatJid = typeof targetChatJid === 'string' && targetChatJid.trim()
+            ? targetChatJid.trim()
+            : '';
+        const fallbackCurrentChatJid = typeof currentChatJid === 'string' && currentChatJid.trim()
+            ? currentChatJid.trim()
+            : '';
+        const chatJid = requestedChatJid || currentBranchRecord?.chat_jid || fallbackCurrentChatJid;
+        if (!chatJid) {
+            showIntentToast('Could not prune branch', 'No active session is selected yet.', 'warning', 4000);
+            return;
+        }
+
+        const branch = (currentBranchRecord?.chat_jid === chatJid ? currentBranchRecord : null)
+            || currentChatBranches.find((item) => item?.chat_jid === chatJid)
+            || activeChatAgents.find((item) => item?.chat_jid === chatJid)
+            || null;
+
+        const isRootBranch = branch?.chat_jid === (branch?.root_chat_jid || branch?.chat_jid);
         if (isRootBranch) {
             showIntentToast('Cannot prune branch', 'The root chat branch cannot be pruned.', 'warning', 4000);
             return;
         }
 
-        const label = currentBranchRecord.display_name || `@${currentBranchRecord.agent_name || currentBranchRecord.chat_jid}`;
+        const label = `@${branch?.agent_name || chatJid}${branch?.chat_jid ? ` — ${branch.chat_jid}` : ''}`;
         const confirmed = window.confirm(`Prune ${label}?\n\nThis archives the branch agent and removes it from the branch picker. Chat history is preserved.`);
         if (!confirmed) return;
 
         try {
-            await pruneChatBranch(currentBranchRecord.chat_jid);
+            await pruneChatBranch(chatJid);
             await Promise.allSettled([
                 refreshActiveChatAgents(),
                 refreshCurrentChatBranches(),
             ]);
-            const fallbackChatJid = currentBranchRecord.root_chat_jid || 'web:default';
+            const fallbackChatJid = branch?.root_chat_jid || 'web:default';
             showIntentToast('Branch pruned', `${label} has been archived.`, 'info', 3000);
             const nextUrl = buildChatWindowUrl(window.location.href, fallbackChatJid, { chatOnly: chatOnlyMode });
             window.location.assign(nextUrl);
@@ -2390,7 +2408,7 @@ function MainApp({ locationParams }) {
             const message = error instanceof Error ? error.message : String(error || 'Could not prune branch.');
             showIntentToast('Could not prune branch', message || 'Could not prune branch.', 'warning', 5000);
         }
-    }, [chatOnlyMode, currentBranchRecord, refreshActiveChatAgents, refreshCurrentChatBranches, showIntentToast]);
+    }, [activeChatAgents, chatOnlyMode, currentBranchRecord, currentChatBranches, currentChatJid, refreshActiveChatAgents, refreshCurrentChatBranches, showIntentToast]);
 
     const handleRestoreBranch = useCallback(async (targetChatJid) => {
         const normalized = typeof targetChatJid === 'string' ? targetChatJid.trim() : '';
@@ -2644,9 +2662,9 @@ function MainApp({ locationParams }) {
                     <div class="chat-window-header">
                         <div class="chat-window-header-main">
                             <span class="chat-window-header-title">
-                                ${currentBranchRecord?.display_name || currentBranchRecord?.agent_name ? `@${currentBranchRecord?.agent_name || currentChatJid}` : currentChatJid}
+                                ${currentBranchRecord?.agent_name ? `@${currentBranchRecord.agent_name}` : currentChatJid}
                             </span>
-                            <span class="chat-window-header-subtitle">${currentBranchRecord?.display_name || currentChatJid}</span>
+                            <span class="chat-window-header-subtitle">${currentBranchRecord?.chat_jid || currentChatJid}</span>
                         </div>
                         <div class="chat-window-header-actions">
                             ${currentChatBranches.length > 1 && html`
@@ -2659,7 +2677,7 @@ function MainApp({ locationParams }) {
                                     >
                                         ${currentChatBranches.map((branch) => html`
                                             <option key=${branch.chat_jid} value=${branch.chat_jid}>
-                                                ${`@${branch.agent_name}${branch.display_name ? ` — ${branch.display_name}` : ''}${branch.is_active ? ' • active' : ''}`}
+                                                ${`@${branch.agent_name} — ${branch.chat_jid}${branch.is_active ? ' • active' : ''}`}
                                             </option>
                                         `)}
                                     </select>

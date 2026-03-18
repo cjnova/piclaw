@@ -240,6 +240,17 @@ export function ComposeBox({
         visibleAgentCount: visibleMentionAgents.length,
         hasContextIndicator: Boolean(contextUsage && contextUsage.percent != null),
     });
+    const currentSessionAgent = (() => {
+        for (const chat of Array.isArray(activeChatAgents) ? activeChatAgents : []) {
+            const chatJid = typeof chat?.chat_jid === 'string' ? chat.chat_jid.trim() : '';
+            if (chatJid && chatJid === currentChatJid) return chat;
+        }
+        return null;
+    })();
+    const isCurrentRootSession = Boolean(
+        currentSessionAgent
+        && currentSessionAgent.chat_jid === (currentSessionAgent.root_chat_jid || currentSessionAgent.chat_jid)
+    );
     const switchableChatAgents = (() => {
         const seen = new Set();
         const chats = [];
@@ -258,7 +269,7 @@ export function ComposeBox({
     const canRestoreSession = hasSwitchableChatAgents && typeof onRestoreSession === 'function';
     const canRenameSession = !searchMode && typeof onRenameSession === 'function';
     const canCreateSession = !searchMode && typeof onCreateSession === 'function';
-    const canDeleteSession = !searchMode && typeof onDeleteSession === 'function';
+    const canDeleteSession = !searchMode && typeof onDeleteSession === 'function' && !isCurrentRootSession;
     const showSessionSwitcherButton = !searchMode && (canSwitchSession || canRestoreSession || canRenameSession || canCreateSession || canDeleteSession);
     const modelHintLabel = activeModel || '';
     const modelHintSuffix = supportsThinking && thinkingLevel ? ` (${thinkingLevel})` : '';
@@ -536,7 +547,7 @@ export function ComposeBox({
         if (typeof onDeleteSession !== 'function') return;
         setShowSessionPopup(false);
         try {
-            await onDeleteSession();
+            await onDeleteSession(currentChatJid);
         } catch (error) {
             console.warn('Failed to delete session:', error);
         }
@@ -1319,7 +1330,7 @@ export function ComposeBox({
                                     onMouseEnter=${() => setMentionIndex(i)}
                                 >
                                     <span class="slash-name">@${agent.agent_name}</span>
-                                    <span class="slash-desc">${agent.display_name || agent.chat_jid || 'Active agent'}</span>
+                                    <span class="slash-desc">${agent.chat_jid || 'Active agent'}</span>
                                 </div>
                             `)}
                         </div>
@@ -1378,12 +1389,25 @@ export function ComposeBox({
                         <div class="compose-model-popup" ref=${sessionPopupRef}>
                             <div class="compose-model-popup-title">Manage sessions & agents</div>
                             <div class="compose-model-popup-menu" role="menu" aria-label="Sessions and agents">
+                                ${html`
+                                    <div class="compose-model-popup-item current" role="note" aria-live="polite">
+                                        ${(() => {
+                                            const currentHandle = typeof currentSessionAgent?.agent_name === 'string' && currentSessionAgent.agent_name.trim()
+                                                ? `@${currentSessionAgent.agent_name.trim()}`
+                                                : currentChatJid;
+                                            const currentId = typeof currentSessionAgent?.chat_jid === 'string' && currentSessionAgent.chat_jid.trim()
+                                                ? currentSessionAgent.chat_jid.trim()
+                                                : currentChatJid;
+                                            return `${currentHandle} — ${currentId} • current`;
+                                        })()}
+                                    </div>
+                                `}
                                 ${!hasSwitchableChatAgents && html`
                                     <div class="compose-model-popup-empty">No other sessions yet.</div>
                                 `}
                                 ${hasSwitchableChatAgents && switchableChatAgents.map((chat) => {
                                     const archived = Boolean(chat.archived_at);
-                                    const label = `@${chat.agent_name}${chat.display_name ? ` — ${chat.display_name}` : ''}${chat.is_active ? ' • active' : ''}${archived ? ' • archived' : ''}`;
+                                    const label = `@${chat.agent_name} — ${chat.chat_jid}${chat.is_active ? ' • active' : ''}${archived ? ' • archived' : ''}`;
                                     return html`
                                         <button
                                             key=${chat.chat_jid}
@@ -1479,7 +1503,7 @@ export function ComposeBox({
                                     type="button"
                                     class=${`compose-agent-chip${agent.is_active ? ' active' : ''}`}
                                     onClick=${() => handleAgentChipClick(agent)}
-                                    title=${`${agent.display_name || agent.chat_jid || 'Active agent'} — switch to @${agent.agent_name}`}
+                                    title=${`${agent.chat_jid || 'Active agent'} — switch to @${agent.agent_name}`}
                                 >
                                     <span class="compose-agent-chip-handle">@${agent.agent_name}</span>
                                 </button>

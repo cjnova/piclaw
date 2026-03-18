@@ -2643,6 +2643,14 @@ body {
     color: var(--text-primary);
 }
 
+.compose-model-popup-item.current {
+    cursor: default;
+    font-weight: 600;
+    color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--accent-color) 22%, transparent);
+}
+
 .compose-model-popup-actions {
     display: flex;
     gap: var(--spacing-xs);
@@ -5243,7 +5251,12 @@ body {
         text-overflow: ellipsis;
     }
 
+    .compose-model-hint {
+        font-size: 9.2px;
+    }
+
     .compose-model-usage-hint {
+        font-size: 8.4px;
         line-height: 1.2;
         white-space: nowrap;
     }
@@ -5324,7 +5337,12 @@ body {
         text-overflow: ellipsis;
     }
 
+    .compose-model-hint {
+        font-size: 9.2px;
+    }
+
     .compose-model-usage-hint {
+        font-size: 8.4px;
         line-height: 1.2;
         white-space: nowrap;
     }

@@ -52,7 +52,7 @@ export function getDataRateLimitRule(method, pathname) {
             message: "Too many queued-message actions. Slow down.",
         };
     }
-    if (method === "POST" && (pathname === "/agent/branch-fork" || pathname === "/agent/branch-rename" || pathname === "/agent/branch-prune")) {
+    if (method === "POST" && (pathname === "/agent/branch-fork" || pathname === "/agent/branch-rename" || pathname === "/agent/branch-prune" || pathname === "/agent/branch-restore")) {
         return {
             bucket: "data/agent_branch",
             limit: DATA_AGENT_BRANCH_LIMIT,
