@@ -308,6 +308,22 @@ export function parseUserGithub(args, raw) {
         raw,
     };
 }
+/** Parse /login arguments: optional provider name. */
+export function parseLogin(args, raw) {
+    return {
+        type: "login",
+        provider: args.trim() || undefined,
+        raw,
+    };
+}
+/** Parse /logout arguments: optional provider name. */
+export function parseLogout(args, raw) {
+    return {
+        type: "logout",
+        provider: args.trim() || undefined,
+        raw,
+    };
+}
 /** Parse /search-workspace arguments: query, scope, limit, offset, flags. */
 export function parseSearch(args, raw) {
     const tokens = splitArgs(args);
@@ -473,4 +489,6 @@ export const COMMAND_PARSERS = {
     "/user-name": parseUserName,
     "/user-avatar": parseUserAvatar,
     "/user-github": parseUserGithub,
+    "/login": parseLogin,
+    "/logout": parseLogout,
 };

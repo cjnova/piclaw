@@ -164,6 +164,16 @@ export type AgentControlCommand =
       raw: string;
     }
   | {
+      type: "login";
+      provider?: string;
+      raw: string;
+    }
+  | {
+      type: "logout";
+      provider?: string;
+      raw: string;
+    }
+  | {
       type: "totp";
       action?: "enrol" | "enroll";
       raw: string;

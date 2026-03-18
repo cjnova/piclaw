@@ -19,6 +19,7 @@ import { handleBash, handleShell } from "./handlers/operations.js";
 import { handleFollowupMode, handleQueue, handleSteeringMode, handleSteer } from "./handlers/queue.js";
 import { handleExportHtml, handleFork, handleForks, handleNewSession, handleSessionName, handleSessionRotate, handleSwitchSession, } from "./handlers/session.js";
 import { handlePasskey } from "./handlers/passkey.js";
+import { handleLogin, handleLogout } from "./handlers/login.js";
 import { handleTotp } from "./handlers/totp.js";
 import { handleQr } from "./handlers/qr.js";
 import { handleLabel, handleLabels, handleTree } from "./handlers/tree.js";
@@ -82,6 +83,10 @@ export async function applyControlCommand(session, modelRegistry, command) {
             return handleExportHtml(session, command);
         case "passkey":
             return handlePasskey(session, command);
+        case "login":
+            return handleLogin(session, modelRegistry, command);
+        case "logout":
+            return handleLogout(session, modelRegistry, command);
         case "totp":
             return handleTotp(session, command);
         case "qr":

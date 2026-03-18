@@ -351,6 +351,24 @@ export function parseUserGithub(args: string, raw: string): AgentControlCommand 
   };
 }
 
+/** Parse /login arguments: optional provider name. */
+export function parseLogin(args: string, raw: string): AgentControlCommand {
+  return {
+    type: "login",
+    provider: args.trim() || undefined,
+    raw,
+  };
+}
+
+/** Parse /logout arguments: optional provider name. */
+export function parseLogout(args: string, raw: string): AgentControlCommand {
+  return {
+    type: "logout",
+    provider: args.trim() || undefined,
+    raw,
+  };
+}
+
 /** Parse /search-workspace arguments: query, scope, limit, offset, flags. */
 export function parseSearch(args: string, raw: string): AgentControlCommand {
   const tokens = splitArgs(args);
@@ -494,4 +512,6 @@ export const COMMAND_PARSERS: Record<string, CommandParser> = {
   "/user-name": parseUserName,
   "/user-avatar": parseUserAvatar,
   "/user-github": parseUserGithub,
+  "/login": parseLogin,
+  "/logout": parseLogout,
 };
