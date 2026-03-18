@@ -36,7 +36,7 @@ describe("runtime startup helpers", () => {
     }
   });
 
-  test("queueStartupResumePendingIpc skips when a resume task is already queued", () => {
+  test("queueStartupResumePendingIpc always queues a fresh startup resume task", () => {
     const ws = createTempWorkspace("piclaw-startup-");
 
     try {
@@ -64,8 +64,12 @@ describe("runtime startup helpers", () => {
       });
       expect(run.exitCode).toBe(0);
 
-      const files = readdirSync(tasksDir).filter((file) => file.startsWith("resume_pending_"));
-      expect(files).toEqual(["resume_pending_existing.json"]);
+      const files = readdirSync(tasksDir)
+        .filter((file) => file.startsWith("resume_pending_"))
+        .sort();
+      expect(files.length).toBe(2);
+      expect(files).toContain("resume_pending_existing.json");
+      expect(files.some((file) => file !== "resume_pending_existing.json")).toBe(true);
     } finally {
       ws.cleanup();
     }

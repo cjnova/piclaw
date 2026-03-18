@@ -2727,26 +2727,28 @@ body {
 }
 
 .compose-mention-btn {
-    font-family: var(--font-family-mono);
-    font-weight: 700;
-    font-size: 15px;
-    line-height: 1;
-    width: 30px;
-    height: 30px;
-    min-width: 30px;
-    min-height: 30px;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
     padding: 0;
-    border: 1px solid color-mix(in srgb, var(--accent-color) 35%, var(--border-color));
+    border: 1px solid var(--border-color);
     border-radius: 999px;
+    background: transparent;
 }
 
-.compose-mention-btn span {
-    display: inline-block;
-    transform: translateY(-0.5px);
-}
-
+.compose-mention-btn:hover,
+.compose-mention-btn:focus-visible,
 .compose-mention-btn.active {
     background-color: var(--accent-soft, rgba(29, 155, 240, 0.1));
+    border-color: color-mix(in srgb, var(--accent-color) 42%, var(--border-color));
+    outline: none;
+}
+
+.compose-mention-icon {
+    width: 16px;
+    height: 16px;
+    display: block;
 }
 
 .compose-actions .icon-btn svg {
@@ -2794,8 +2796,10 @@ body {
     transition: background-color var(--ui-transition-fast), color var(--ui-transition-fast), border-color var(--ui-transition-fast), box-shadow var(--ui-transition-fast);
 }
 
-.icon-btn:hover {
+.icon-btn:hover,
+.icon-btn:focus-visible {
     background-color: var(--accent-soft, rgba(29, 155, 240, 0.1));
+    outline: none;
 }
 
 .icon-btn svg {
