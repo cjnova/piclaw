@@ -1,10 +1,11 @@
 ---
 id: port-btw-extension-with-popup-ui
 title: Port btw extension with popup UI
-status: blocked
+status: done
 priority: low
 created: 2026-03-11
-updated: 2026-03-12
+updated: 2026-03-18
+completed: 2026-03-18
 target_release: next
 tags:
   - work-item
@@ -80,6 +81,10 @@ Use **Path A** and start design prep now, but do implementation only after exten
 - [ ] Ticket moved to `50-done/`
 
 ## Updates
+
+### 2026-03-18
+- Lane change: `30-blocked` → `50-done` from triage submission (`btwPopup: done`).
+- No implementation is being tracked in this ticket for v1.5.x code now; the prior supersession direction remains valid.
 
 ### 2026-03-16
 - Marked as superseded in practice, though not auto-closed in this pass.
