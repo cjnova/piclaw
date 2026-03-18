@@ -2,7 +2,7 @@
  * runtime/startup.ts – Runtime startup wiring helpers.
  */
 
-import { mkdirSync, readdirSync, writeFileSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import type { AgentPool } from "../agent-pool.js";
 import { WebChannel } from "../channels/web.js";
@@ -47,6 +47,10 @@ export async function startWebChannel(queue: AgentQueue, agentPool: AgentPool): 
   const web = new WebChannel({ queue, agentPool });
   await web.start();
   web.recoverInflightRuns();
+  // Run an immediate pending-resume scan at startup so deferred queued
+  // follow-ups are picked up even before IPC workers process resume tasks.
+  // Queue dedupe keeps this safe when IPC-driven resume_pending runs too.
+  web.resumePendingChats();
 
   // Wire the messages tool post action to use the web channel for broadcast.
   setMessagesPostFn((chatJid, content, isBot, mediaIds, contentBlocks) => {
@@ -69,12 +73,6 @@ export function queueStartupResumePendingIpc(): void {
   try {
     const tasksDir = join(DATA_DIR, "ipc", "tasks");
     mkdirSync(tasksDir, { recursive: true });
-
-    const alreadyQueued = readdirSync(tasksDir).some((file) => file.startsWith("resume_pending_"));
-    if (alreadyQueued) {
-      console.log("[startup] resume_pending IPC already queued; skipping duplicate startup resume.");
-      return;
-    }
 
     const payload = {
       type: "resume_pending",

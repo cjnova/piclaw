@@ -1436,7 +1436,10 @@ export function ComposeBox({
                             aria-label="Switch active session/agent"
                             aria-expanded=${showSessionPopup ? 'true' : 'false'}
                         >
-                            <span>@</span>
+                            <svg class="compose-mention-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                                <circle cx="12" cy="12" r="4.25" />
+                                <path d="M16.25 7.75v5.4a2.1 2.1 0 0 0 4.2 0V12a8.45 8.45 0 1 0-4.2 7.33" />
+                            </svg>
                         </button>
                     `}
                     ${searchMode && html`

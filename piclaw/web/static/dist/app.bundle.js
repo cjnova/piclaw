@@ -383,7 +383,10 @@ ${v.map((m_,R0)=>{let x0=t0[R0]?.name||`attachment-${R0+1}`;return`- attachment:
                             aria-label="Switch active session/agent"
                             aria-expanded=${z0?"true":"false"}
                         >
-                            <span>@</span>
+                            <svg class="compose-mention-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+                                <circle cx="12" cy="12" r="4.25" />
+                                <path d="M16.25 7.75v5.4a2.1 2.1 0 0 0 4.2 0V12a8.45 8.45 0 1 0-4.2 7.33" />
+                            </svg>
                         </button>
                     `}
                     ${j&&B`
@@ -1927,5 +1930,5 @@ This archives the branch agent and removes it from the branch picker. Chat histo
         </div>
     `}function Aj(){let _=typeof window>"u"?new URLSearchParams:new URL(window.location.href).searchParams;return B`<${yj} locationParams=${_} />`}A3(B`<${Aj} />`,document.getElementById("app"));
 
-//# debugId=4ADA7533E10F5BB464756E2164756E21
+//# debugId=CE7EE4BD0B73A1DA64756E2164756E21
 //# sourceMappingURL=app.bundle.js.map
