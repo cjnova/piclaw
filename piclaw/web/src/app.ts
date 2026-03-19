@@ -302,6 +302,61 @@ function MainApp({ locationParams }) {
         if (zenMode && !editorOpen) exitZenMode();
     }, [zenMode, editorOpen, exitZenMode]);
 
+    // ── Voice mode ──────────────────────────────────────────────
+    const [voiceEnabled, setVoiceEnabled] = useState(() => {
+        try { return localStorage.getItem('piclaw-voice-mode') === '1'; } catch { return false; }
+    });
+    const [voiceListening, setVoiceListening] = useState(false);
+    const voiceLastInputWasVoiceRef = useRef(false);
+
+    const toggleVoiceMode = useCallback(() => {
+        const next = !voiceEnabled;
+        setVoiceEnabled(next);
+        try { localStorage.setItem('piclaw-voice-mode', next ? '1' : '0'); } catch {}
+        if (!next) {
+            // Turning off — stop everything
+            import('./ui/voice-mode.js').then((vm) => { vm.stopRecognition(); vm.stopSpeaking(); });
+            setVoiceListening(false);
+        }
+    }, [voiceEnabled]);
+
+    const handleMicClick = useCallback(() => {
+        if (!voiceEnabled) {
+            // First click enables voice mode + starts listening
+            setVoiceEnabled(true);
+            try { localStorage.setItem('piclaw-voice-mode', '1'); } catch {}
+        }
+        import('./ui/voice-mode.js').then((vm) => {
+            if (vm.isRecognizing()) {
+                vm.stopRecognition();
+                setVoiceListening(false);
+                return;
+            }
+            vm.stopSpeaking();
+            const composeEl = document.querySelector('.compose-input');
+            const started = vm.startRecognition({
+                onInterim: (text) => {
+                    if (composeEl) (composeEl as HTMLTextAreaElement).value = text;
+                },
+                onFinal: (text) => {
+                    if (composeEl) {
+                        (composeEl as HTMLTextAreaElement).value = text;
+                        (composeEl as HTMLTextAreaElement).dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                },
+                onEnd: () => setVoiceListening(false),
+                onError: (error) => {
+                    console.warn('[voice]', error);
+                    setVoiceListening(false);
+                },
+            });
+            if (started) {
+                setVoiceListening(true);
+                voiceLastInputWasVoiceRef.current = true;
+            }
+        });
+    }, [voiceEnabled]);
+
     // Mount/dispose editor extension instance when active tab changes
     useEffect(() => {
         const container = editorContainerRef.current;
@@ -2238,6 +2293,13 @@ function MainApp({ locationParams }) {
                 post: data,
                 turnId: currentTurnIdRef.current,
             };
+            // Auto-speak terse summary when voice mode is on and last input was voice
+            if (voiceEnabled && voiceLastInputWasVoiceRef.current && data?.content) {
+                voiceLastInputWasVoiceRef.current = false;
+                import('./ui/voice-mode.js').then((vm) => {
+                    vm.speakTerse(data.content);
+                });
+            }
         }
         if (!activeHashtag && !activeSearch && !activeSearchOpen && isCurrentChatEvent && (eventType === 'new_post' || eventType === 'new_reply' || eventType === 'agent_response')) {
             setPosts((prev) => {
@@ -2868,6 +2930,10 @@ function MainApp({ locationParams }) {
                     activeChatAgents=${activeChatAgents}
                     currentChatJid=${currentChatJid}
                     connectionStatus=${connectionStatus}
+                    voiceEnabled=${voiceEnabled}
+                    voiceListening=${voiceListening}
+                    onVoiceToggle=${toggleVoiceMode}
+                    onMicClick=${handleMicClick}
                     activeModel=${activeModel}
                     modelUsage=${activeModelUsage}
                     thinkingLevel=${activeThinkingLevel}

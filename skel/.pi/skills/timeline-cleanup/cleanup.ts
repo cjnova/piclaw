@@ -1,5 +1,8 @@
 /**
- * Timeline cleanup helper — delete low-value messages from the web chat.
+ * Timeline cleanup helper — delete low-value messages from web chat timelines.
+ *
+ * Cleanup resolves the full session scope (all web session trees) so branch
+ * chats are cleaned alongside the anchor chat.
  *
  * Usage:
  *   import { cleanupTimeline, cleanupAll } from "./cleanup.ts";
@@ -8,7 +11,12 @@
  */
 import Database from "bun:sqlite";
 import { execSync } from "node:child_process";
-import { copyFileSync, statSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { copyFileSync, statSync, rmSync, writeFileSync, chmodSync, existsSync } from "node:fs";
+import {
+  resolveSessionScope,
+  fallbackSessionScope,
+  summariseSessionScope,
+} from "/workspace/scripts/lib/chat-session-scope";
 
 const DB_PATH = `${process.env.PICLAW_STORE || "/workspace/.piclaw/store"}/messages.db`;
 
@@ -74,15 +82,27 @@ export async function cleanupTimeline(opts: CleanupOptions): Promise<CleanupResu
   const dbSizeBefore = humanSize(statSync(DB_PATH).size);
   const db = new Database(DB_PATH, { readonly: true });
 
+  // Resolve session scope so all web branches are covered
+  const scope = chatJid.startsWith("web:") && existsSync(DB_PATH)
+    ? resolveSessionScope(db, chatJid)
+    : fallbackSessionScope(chatJid);
+  const scopeChats = scope.chats.map(chat => chat.chatJid);
+
   // Build WHERE clauses
   const conditions: string[] = [];
   const params: (string | number)[] = [];
   let paramIdx = 1;
 
-  // Chat JID
-  conditions.push(`m.chat_jid = ?${paramIdx}`);
-  params.push(chatJid);
-  paramIdx++;
+  // Chat JID scope (IN clause for all scoped chats)
+  if (scopeChats.length === 1) {
+    conditions.push(`m.chat_jid = ?${paramIdx}`);
+    params.push(scopeChats[0]);
+    paramIdx++;
+  } else {
+    const placeholders = scopeChats.map(() => `?${paramIdx++}`).join(", ");
+    conditions.push(`m.chat_jid IN (${placeholders})`);
+    params.push(...scopeChats);
+  }
 
   // Before rowid
   if (opts.beforeRowid) {

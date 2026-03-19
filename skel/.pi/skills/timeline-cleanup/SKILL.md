@@ -11,9 +11,10 @@ Delete messages from the web chat timeline that match keyword patterns, then opt
 ## How It Works
 
 1. Query the messages DB (from `PICLAW_STORE/messages.db`) for rows matching the given patterns
-2. Exclude messages that have media attachments — unless `--include-media` is passed
-3. Delete matching messages via the `/post/{id}?cascade=true` HTTP API
-4. Optionally vacuum the database (requires a brief piclaw restart)
+2. Resolve the full session scope — for `web:*` chats, this includes all session trees and branches
+3. Exclude messages that have media attachments — unless `--include-media` is passed
+4. Delete matching messages via the `/post/{id}?cascade=true` HTTP API
+5. Optionally vacuum the database (requires a brief piclaw restart)
 
 ## Usage
 
