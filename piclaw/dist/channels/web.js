@@ -982,21 +982,26 @@ export class WebChannel {
             if (updatedCardInteraction) {
                 this.interactionBroadcaster.broadcastInteractionUpdated(updatedCardInteraction);
             }
-            // Get authStorage via a /login command (it routes through the pool)
-            // For Card 1 (picker) → show Card 2; for Card 2 (execute) → perform action
+            // Get authStorage via control command routing
             let authResult;
             if (submissionData.intent === "provider-auth") {
-                // Card 1: route through /login to get picker result with Card 2
+                // Card 1 → show Card 2
                 const providerId = String(submissionData.provider || "").trim();
                 const action = String(submissionData.action || "").trim();
-                // Use internal slash command to access authStorage
-                // Build a synthetic command that handleProviderAuthPicker would handle
-                const pickerResult = await this.agentPool.applySlashCommand(chatJid, `/login __picker__ ${providerId} ${action}`);
+                const pickerResult = await this.agentPool.applyControlCommand(chatJid, {
+                    type: "login",
+                    provider: `__picker__ ${providerId} ${action}`,
+                    raw: `/login __picker__ ${providerId} ${action}`,
+                });
                 authResult = pickerResult;
             }
             else {
-                // Card 2: execute
-                const executeResult = await this.agentPool.applySlashCommand(chatJid, `/login __execute__ ${JSON.stringify(submissionData)}`);
+                // Card 2 → execute
+                const executeResult = await this.agentPool.applyControlCommand(chatJid, {
+                    type: "login",
+                    provider: `__execute__ ${JSON.stringify(submissionData)}`,
+                    raw: `/login __execute__`,
+                });
                 authResult = executeResult;
             }
             // Post result — with or without cards
