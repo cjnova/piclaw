@@ -214,7 +214,7 @@ fi
 
 if [ -d "/workspace" ]; then
     mkdir -p "$WORKSPACE_SUPERVISOR_DIR/conf.d"
-    chown agent:agent "$WORKSPACE_SUPERVISOR_DIR" "$WORKSPACE_SUPERVISOR_DIR/conf.d" 2>/dev/null || true
+    chown agent:agent /workspace/.piclaw "$WORKSPACE_SUPERVISOR_DIR" "$WORKSPACE_SUPERVISOR_DIR/conf.d" 2>/dev/null || true
 
     if [ -f "$SUPERVISOR_DEFAULTS_DIR/supervisord.conf" ] && [ ! -f "$WORKSPACE_SUPERVISOR_DIR/supervisord.conf" ]; then
         cp "$SUPERVISOR_DEFAULTS_DIR/supervisord.conf" "$WORKSPACE_SUPERVISOR_DIR/supervisord.conf"
