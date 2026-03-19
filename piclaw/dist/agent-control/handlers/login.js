@@ -286,11 +286,17 @@ function buildLogoutCard(def, currentAuth) {
     };
 }
 // ── OAuth background flow ───────────────────────────────────────
-function startOAuthBackground(authStorage, providerId) {
+async function startOAuthBackground(authStorage, providerId) {
     let authUrl = "";
     let instructions = "";
+    let authReceived = null;
+    const authReady = new Promise((resolve) => { authReceived = resolve; });
     const loginPromise = authStorage.login(providerId, {
-        onAuth: (info) => { authUrl = info.url; instructions = info.instructions || ""; },
+        onAuth: (info) => {
+            authUrl = info.url;
+            instructions = info.instructions || "";
+            authReceived?.();
+        },
         onProgress: () => { },
         onPrompt: async () => "",
         onManualCodeInput: () => new Promise((_, reject) => { setTimeout(() => reject(new Error("Timed out")), 180_000); }),
@@ -298,10 +304,9 @@ function startOAuthBackground(authStorage, providerId) {
     loginPromise
         .then(() => { authStorage.reload(); console.log(`[login] OAuth completed for ${providerId}`); })
         .catch((err) => { console.warn(`[login] OAuth failed for ${providerId}: ${err instanceof Error ? err.message : err}`); });
-    const start = Date.now();
-    while (!authUrl && Date.now() - start < 3000) {
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
-    }
+    // Wait up to 10s for onAuth to fire (needs event loop for network I/O)
+    const timeout = new Promise((resolve) => setTimeout(resolve, 10_000));
+    await Promise.race([authReady, timeout]);
     return authUrl ? { authUrl, instructions } : null;
 }
 // ── Command handlers ────────────────────────────────────────────
@@ -355,7 +360,7 @@ export async function handleLogout(session, modelRegistry, command) {
     };
 }
 /** Handle Card 1 submission → show Card 2. */
-export function handleProviderAuthPicker(authStorage, data) {
+export async function handleProviderAuthPicker(authStorage, data) {
     const providerId = String(data.provider || "").trim();
     const action = String(data.action || "").trim();
     const def = PROVIDER_DEFS.find((p) => p.id === providerId);
@@ -369,7 +374,7 @@ export function handleProviderAuthPicker(authStorage, data) {
     if (action === "oauth") {
         if (!def.hasOAuth)
             return { status: "error", message: `**${def.name}** doesn't support OAuth.` };
-        const result = startOAuthBackground(authStorage, providerId);
+        const result = await startOAuthBackground(authStorage, providerId);
         if (!result)
             return { status: "error", message: `Could not start OAuth for **${def.name}**.` };
         return { status: "success", message: `OAuth login for ${def.name}`, contentBlocks: [buildOAuthCard(def, result.authUrl, result.instructions)] };
