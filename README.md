@@ -27,23 +27,6 @@ Inspired by [agentbox](https://github.com/rcarmo/agentbox) and [nanoclaw](https:
 >
 > Source builds are mainly for development. If something looks wrong in production, validate it against GHCR first.
 
-### Install directly from the repo with Bun
-
-> [!NOTE]
-> This is the Docker-free install path.
->
-> **Experimental for now**: Bun-first, Linux/macOS, and intended to avoid a manual build step, but not yet positioned as the main production install route or a generally supported deployment target.
->
-> One reason this path exists is to support people who want to run PiClaw on low-end ARM SBCs, lightweight VMs, or other sandboxed environments where Docker is not the best fit or is not available.
->
-> The repository root is the install/package boundary. The nested `runtime/` directory is the implementation subtree used by the packaged CLI, web assets, extensions, and skills.
-
-```bash
-bun add -g github:rcarmo/piclaw
-```
-
-See [docs/install-from-repo.md](docs/install-from-repo.md) for scope and caveats.
-
 ### Run from GHCR
 
 ```bash
@@ -60,6 +43,23 @@ docker run -d \
 ```
 
 Open `http://localhost:8080`.
+
+### Install directly from the repo with Bun
+
+> [!NOTE]
+> This is the Docker-free install path.
+>
+> **Experimental for now**: Bun-first, Linux/macOS, and intended to avoid a manual build step, but not yet positioned as the main production install route or a generally supported deployment target.
+>
+> One reason this path exists is to support people who want to run PiClaw on low-end ARM SBCs, lightweight VMs, or other sandboxed environments where Docker is not the best fit or is not available.
+>
+> The repository root is the install/package boundary. The nested `runtime/` directory is the implementation subtree used by the packaged CLI, web assets, extensions, and skills.
+
+```bash
+bun add -g github:rcarmo/piclaw
+```
+
+See [docs/install-from-repo.md](docs/install-from-repo.md) for scope and caveats.
 
 To use `pi` interactively inside the container:
 
