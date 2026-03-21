@@ -47,21 +47,28 @@ export function FloatingWidgetPane({ widget, onClose, onWidgetEvent }) {
             } catch {}
         };
 
-        const handleLoad = () => {
-            if (frameLoadedRef.current) return;
-            frameLoadedRef.current = true;
+        const syncHostState = () => {
             postToFrame('widget.init');
             postToFrame('widget.update');
         };
 
+        const handleLoad = () => {
+            frameLoadedRef.current = true;
+            syncHostState();
+        };
+
         iframe.addEventListener('load', handleLoad);
 
-        const readyState = iframe.contentDocument?.readyState;
-        if (readyState === 'complete' || readyState === 'interactive') {
-            queueMicrotask(handleLoad);
-        }
+        // srcdoc iframes can finish loading before this effect attaches the
+        // listener, especially on fast local rebuilds. Retry a few times so the
+        // widget always receives init/update once its bridge is ready.
+        const retryDelays = [0, 40, 120, 300, 800];
+        const retryTimers = retryDelays.map((delay) => setTimeout(syncHostState, delay));
 
-        return () => iframe.removeEventListener('load', handleLoad);
+        return () => {
+            iframe.removeEventListener('load', handleLoad);
+            retryTimers.forEach((timer) => clearTimeout(timer));
+        };
     }, [widget, srcDoc]);
 
     useEffect(() => {
