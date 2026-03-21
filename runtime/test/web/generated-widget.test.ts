@@ -149,6 +149,7 @@ describe("generated widget helpers", () => {
       widgetId: "tool-live-1",
       toolCallId: "tool-live-1",
       turnId: null,
+      capabilities: ["interactive"],
       source: "live",
       status: "streaming",
     });
@@ -159,7 +160,7 @@ describe("generated widget helpers", () => {
     expect(srcdoc).toContain("widget.ready");
   });
 
-  test("timeline widgets keep the stricter no-script sandbox", () => {
+  test("timeline widgets keep the stricter no-script sandbox by default", () => {
     const widget = buildGeneratedWidgetPayload({
       type: "generated_widget",
       title: "Static widget",
@@ -175,6 +176,34 @@ describe("generated widget helpers", () => {
     const srcdoc = buildWidgetSrcDoc(widget);
     expect(srcdoc).toContain("script-src 'none'");
     expect(srcdoc).not.toContain("window.piclawWidget");
+  });
+
+  test("timeline widgets can opt into the interactive sandbox explicitly", () => {
+    const widget = buildGeneratedWidgetPayload({
+      type: "generated_widget",
+      title: "Interactive timeline widget",
+      capabilities: ["interactive"],
+      artifact: {
+        kind: "html",
+        html: "<div>interactive timeline</div>",
+      },
+    });
+
+    expect(widget).not.toBeNull();
+    expect(isInteractiveGeneratedWidget(widget)).toBe(true);
+    expect(getGeneratedWidgetIframeSandbox(widget)).toBe("allow-downloads allow-scripts");
+    expect(getGeneratedWidgetInitPayload(widget)).toEqual({
+      title: "Interactive timeline widget",
+      widgetId: null,
+      toolCallId: null,
+      turnId: null,
+      capabilities: ["interactive"],
+      source: "timeline",
+      status: "final",
+    });
+    const srcdoc = buildWidgetSrcDoc(widget);
+    expect(srcdoc).toContain("script-src 'unsafe-inline'");
+    expect(srcdoc).toContain("window.piclawWidget");
   });
 
   test("widget submission helpers extract text and close intent", () => {

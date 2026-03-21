@@ -16,6 +16,7 @@ export interface GeneratedWidgetPayload {
   originChatJid: string | null;
   widgetId: string | null;
   artifact: GeneratedWidgetArtifact;
+  capabilities?: string[];
   source?: GeneratedWidgetSource;
   status?: GeneratedWidgetStatus;
   turnId?: string | null;
@@ -66,6 +67,17 @@ function readOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function normalizeCapabilities(input: unknown, interactiveFallback = false): string[] {
+  const values = Array.isArray(input)
+    ? input
+    : (interactiveFallback ? ['interactive'] : []);
+  const normalized = values
+    .filter((value) => typeof value === 'string')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  return Array.from(new Set(normalized));
+}
+
 function escapeJsonForInlineScript(value: unknown): string {
   return JSON.stringify(value)
     .replace(/</g, '\\u003c')
@@ -88,6 +100,7 @@ export function buildGeneratedWidgetPayload(block: any, post?: any): GeneratedWi
     originChatJid: typeof post?.chat_jid === "string" ? post.chat_jid : null,
     widgetId: block.widget_id || block.id || null,
     artifact,
+    capabilities: normalizeCapabilities(block.capabilities, block.interactive === true),
     source: 'timeline',
     status: 'final',
   };
@@ -116,6 +129,7 @@ export function normalizeLiveGeneratedWidgetPayload(block: any): GeneratedWidget
     originChatJid: readOptionalString(block?.origin_chat_jid) || readOptionalString(block?.originChatJid) || readOptionalString(block?.chat_jid) || null,
     widgetId,
     artifact,
+    capabilities: normalizeCapabilities(block?.capabilities, true),
     source: 'live',
     status: normalizedStatus,
     turnId,
@@ -145,7 +159,9 @@ export function getGeneratedWidgetSessionKey(widget: any): string | null {
 export function isInteractiveGeneratedWidget(widget: any): boolean {
   const artifact = widget?.artifact || {};
   const kind = artifact.kind || widget?.kind || null;
-  return widget?.source === 'live' && kind === 'html';
+  const capabilities = Array.isArray(widget?.capabilities) ? widget.capabilities : [];
+  const interactiveCapability = capabilities.some((value) => typeof value === 'string' && value.trim().toLowerCase() === 'interactive');
+  return kind === 'html' && (widget?.source === 'live' || interactiveCapability);
 }
 
 export function getGeneratedWidgetIframeSandbox(widget: any): string {
@@ -160,6 +176,7 @@ export function getGeneratedWidgetInitPayload(widget: any): Record<string, unkno
     widgetId: readOptionalString(widget?.widgetId) || readOptionalString(widget?.widget_id),
     toolCallId: readOptionalString(widget?.toolCallId) || readOptionalString(widget?.tool_call_id),
     turnId: readOptionalString(widget?.turnId) || readOptionalString(widget?.turn_id),
+    capabilities: Array.isArray(widget?.capabilities) ? widget.capabilities : [],
     source: widget?.source === 'live' ? 'live' : 'timeline',
     status: readOptionalString(widget?.status) || 'final',
   };
