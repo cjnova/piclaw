@@ -165,6 +165,36 @@ export function getGeneratedWidgetInitPayload(widget: any): Record<string, unkno
   };
 }
 
+export function getGeneratedWidgetSubmissionText(payload: any): string | null {
+  if (typeof payload === 'string' && payload.trim()) return payload.trim();
+  if (!payload || typeof payload !== 'object') return null;
+
+  const direct = readOptionalString(payload.text)
+    || readOptionalString(payload.content)
+    || readOptionalString(payload.message)
+    || readOptionalString(payload.prompt)
+    || readOptionalString(payload.value);
+  if (direct) return direct;
+
+  const data = payload.data;
+  if (typeof data === 'string' && data.trim()) return data.trim();
+  if (data && typeof data === 'object') {
+    const nested = readOptionalString(data.text)
+      || readOptionalString(data.content)
+      || readOptionalString(data.message)
+      || readOptionalString(data.prompt)
+      || readOptionalString(data.value);
+    if (nested) return nested;
+  }
+
+  return null;
+}
+
+export function getGeneratedWidgetShouldCloseOnSubmit(payload: any): boolean {
+  if (!payload || typeof payload !== 'object') return false;
+  return payload.close === true || payload.dismiss === true || payload.closeAfterSubmit === true;
+}
+
 export function getGeneratedWidgetEmptyStateMessage(widget: any): string {
   const status = readOptionalString(widget?.status);
   if (status === 'loading' || status === 'streaming') {

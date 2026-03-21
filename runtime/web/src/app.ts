@@ -58,7 +58,12 @@ import {
     primeProvisionalChatWindow,
 } from './ui/chat-window.js';
 import { resolveQueueActionChatJid, shouldClearQueuedSteerState } from './ui/queue-state.js';
-import { normalizeLiveGeneratedWidgetPayload, getGeneratedWidgetSessionKey } from './ui/generated-widget.js';
+import {
+    normalizeLiveGeneratedWidgetPayload,
+    getGeneratedWidgetSessionKey,
+    getGeneratedWidgetSubmissionText,
+    getGeneratedWidgetShouldCloseOnSubmit,
+} from './ui/generated-widget.js';
 import { isCompactionStatus } from './ui/status-duration.js';
 import { installStandaloneMobileViewportFix } from './ui/mobile-viewport.js';
 import { resolveOptionalApi } from './ui/optional-api.js';
@@ -2716,7 +2721,51 @@ function MainApp({ locationParams }) {
             return;
         }
 
-        if (kind === 'widget.ready' || kind === 'widget.submit' || kind === 'widget.request_refresh') {
+        if (kind === 'widget.submit') {
+            const submissionText = getGeneratedWidgetSubmissionText(event?.payload);
+            const closeAfterSubmit = getGeneratedWidgetShouldCloseOnSubmit(event?.payload);
+
+            setFloatingWidget((current) => {
+                const currentKey = getGeneratedWidgetSessionKey(current);
+                if (!current || currentKey !== sessionKey) return current;
+                return {
+                    ...current,
+                    runtimeState: {
+                        ...(current.runtimeState || {}),
+                        lastEventKind: kind,
+                        lastEventPayload: event?.payload || null,
+                        lastSubmitAt: new Date().toISOString(),
+                    },
+                };
+            });
+
+            if (!submissionText) {
+                showIntentToast('Widget submission received', 'The widget submitted data without a message payload yet.', 'info', 3500);
+                if (closeAfterSubmit) handleCloseFloatingWidget();
+                return;
+            }
+
+            (async () => {
+                try {
+                    const response = await api.sendAgentMessage('default', submissionText, null, [], isComposeBoxAgentActive ? 'queue' : null, currentChatJid);
+                    handleMessageResponse(response);
+                    showIntentToast(
+                        response?.queued === 'followup' ? 'Widget submission queued' : 'Widget submission sent',
+                        response?.queued === 'followup'
+                            ? 'The widget message was queued because the agent is busy.'
+                            : 'The widget message was sent to the chat.',
+                        'info',
+                        3500,
+                    );
+                    if (closeAfterSubmit) handleCloseFloatingWidget();
+                } catch (error) {
+                    showIntentToast('Widget submission failed', error?.message || 'Could not send the widget message.', 'warning', 5000);
+                }
+            })();
+            return;
+        }
+
+        if (kind === 'widget.ready' || kind === 'widget.request_refresh') {
             setFloatingWidget((current) => {
                 const currentKey = getGeneratedWidgetSessionKey(current);
                 if (!current || currentKey !== sessionKey) return current;
@@ -2727,13 +2776,16 @@ function MainApp({ locationParams }) {
                         lastEventKind: kind,
                         lastEventPayload: event?.payload || null,
                         ...(kind === 'widget.ready' ? { readyAt: new Date().toISOString() } : {}),
-                        ...(kind === 'widget.submit' ? { lastSubmitAt: new Date().toISOString() } : {}),
                         ...(kind === 'widget.request_refresh' ? { lastRefreshRequestAt: new Date().toISOString() } : {}),
                     },
                 };
             });
+
+            if (kind === 'widget.request_refresh') {
+                showIntentToast('Widget refresh requested', 'Live widget refresh callbacks are not wired yet.', 'info', 3000);
+            }
         }
-    }, [handleCloseFloatingWidget]);
+    }, [currentChatJid, handleCloseFloatingWidget, handleMessageResponse, isComposeBoxAgentActive, showIntentToast]);
 
     useEffect(() => {
         dismissedLiveWidgetKeysRef.current.clear();

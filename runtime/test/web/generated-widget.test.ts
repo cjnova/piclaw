@@ -7,6 +7,8 @@ import {
   getGeneratedWidgetIframeSandbox,
   getGeneratedWidgetInitPayload,
   getGeneratedWidgetSessionKey,
+  getGeneratedWidgetShouldCloseOnSubmit,
+  getGeneratedWidgetSubmissionText,
   isInteractiveGeneratedWidget,
   normalizeLiveGeneratedWidgetPayload,
 } from "../../web/src/ui/generated-widget.js";
@@ -173,6 +175,18 @@ describe("generated widget helpers", () => {
     const srcdoc = buildWidgetSrcDoc(widget);
     expect(srcdoc).toContain("script-src 'none'");
     expect(srcdoc).not.toContain("window.piclawWidget");
+  });
+
+  test("widget submission helpers extract text and close intent", () => {
+    expect(getGeneratedWidgetSubmissionText("  hello from widget  ")).toBe("hello from widget");
+    expect(getGeneratedWidgetSubmissionText({ text: "submit me" })).toBe("submit me");
+    expect(getGeneratedWidgetSubmissionText({ data: { message: "nested payload" } })).toBe("nested payload");
+    expect(getGeneratedWidgetSubmissionText({})).toBeNull();
+
+    expect(getGeneratedWidgetShouldCloseOnSubmit({ close: true })).toBe(true);
+    expect(getGeneratedWidgetShouldCloseOnSubmit({ dismiss: true })).toBe(true);
+    expect(getGeneratedWidgetShouldCloseOnSubmit({ closeAfterSubmit: true })).toBe(true);
+    expect(getGeneratedWidgetShouldCloseOnSubmit({ close: false })).toBe(false);
   });
 
   test("live widget empty-state messaging reflects loading and error status", () => {
