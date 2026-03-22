@@ -4,6 +4,7 @@ import {
     buildWidgetSrcDoc,
     getGeneratedWidgetEmptyStateMessage,
     getGeneratedWidgetHostPayload,
+    getGeneratedWidgetHostWindowName,
     getGeneratedWidgetIframeSandbox,
     getGeneratedWidgetInitPayload,
     getGeneratedWidgetSessionKey,
@@ -34,6 +35,11 @@ export function FloatingWidgetPane({ widget, onClose, onWidgetEvent }) {
 
         const postToFrame = (type) => {
             try {
+                const hostName = getGeneratedWidgetHostWindowName(widget);
+                iframe.name = hostName;
+                if (iframe.contentWindow) {
+                    iframe.contentWindow.name = hostName;
+                }
                 iframe.contentWindow?.postMessage({
                     __piclawGeneratedWidgetHost: true,
                     type,
@@ -76,6 +82,9 @@ export function FloatingWidgetPane({ widget, onClose, onWidgetEvent }) {
         const iframe = frameRef.current;
         if (!iframe?.contentWindow) return undefined;
         try {
+            const hostName = getGeneratedWidgetHostWindowName(widget);
+            iframe.name = hostName;
+            iframe.contentWindow.name = hostName;
             iframe.contentWindow.postMessage({
                 __piclawGeneratedWidgetHost: true,
                 type: 'widget.update',
@@ -159,6 +168,7 @@ export function FloatingWidgetPane({ widget, onClose, onWidgetEvent }) {
                                 ref=${frameRef}
                                 class="floating-widget-frame"
                                 title=${title}
+                                name=${getGeneratedWidgetHostWindowName(widget)}
                                 sandbox=${sandbox}
                                 referrerpolicy="no-referrer"
                                 srcdoc=${srcDoc}

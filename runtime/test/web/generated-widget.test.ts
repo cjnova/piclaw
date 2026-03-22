@@ -158,6 +158,7 @@ describe("generated widget helpers", () => {
     expect(srcdoc).toContain("script-src 'unsafe-inline'");
     expect(srcdoc).toContain("window.piclawWidget");
     expect(srcdoc).toContain("widget.ready");
+    expect(srcdoc).toContain("window.name");
   });
 
   test("timeline widgets keep the stricter no-script sandbox by default", () => {

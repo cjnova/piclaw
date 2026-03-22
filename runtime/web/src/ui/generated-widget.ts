@@ -78,6 +78,8 @@ function normalizeCapabilities(input: unknown, interactiveFallback = false): str
   return Array.from(new Set(normalized));
 }
 
+const GENERATED_WIDGET_WINDOW_NAME_PREFIX = '__PICLAW_WIDGET_HOST__:';
+
 function escapeJsonForInlineScript(value: unknown): string {
   return JSON.stringify(value)
     .replace(/</g, '\\u003c')
@@ -194,6 +196,10 @@ export function getGeneratedWidgetHostPayload(widget: any): Record<string, unkno
   };
 }
 
+export function getGeneratedWidgetHostWindowName(widget: any): string {
+  return `${GENERATED_WIDGET_WINDOW_NAME_PREFIX}${JSON.stringify(getGeneratedWidgetHostPayload(widget))}`;
+}
+
 export function getGeneratedWidgetSubmissionText(payload: any): string | null {
   if (typeof payload === 'string' && payload.trim()) return payload.trim();
   if (!payload || typeof payload !== 'object') return null;
@@ -254,6 +260,34 @@ function buildWidgetBootstrapScript(widget: any): string {
     } catch {}
   }
 
+  const windowNamePrefix = ${escapeJsonForInlineScript(GENERATED_WIDGET_WINDOW_NAME_PREFIX)};
+  let lastWindowName = null;
+  function applyHostEnvelope(data) {
+    if (!data) return;
+    window.piclawWidget.lastHostMessage = data;
+    if (data.type === 'widget.init' || data.type === 'widget.update' || data.type === 'widget.complete' || data.type === 'widget.error') {
+      window.piclawWidget.hostState = data.payload || null;
+    }
+    window.dispatchEvent(new CustomEvent('piclaw:widget-message', { detail: data }));
+  }
+
+  function readWindowNameState() {
+    try {
+      const raw = window.name || '';
+      if (!raw || raw === lastWindowName || !raw.startsWith(windowNamePrefix)) return;
+      lastWindowName = raw;
+      const payload = JSON.parse(raw.slice(windowNamePrefix.length));
+      applyHostEnvelope({
+        __piclawGeneratedWidgetHost: true,
+        type: 'widget.update',
+        widgetId: meta.widgetId || null,
+        toolCallId: meta.toolCallId || null,
+        turnId: meta.turnId || null,
+        payload,
+      });
+    } catch {}
+  }
+
   window.piclawWidget = {
     meta,
     lastHostMessage: null,
@@ -268,16 +302,15 @@ function buildWidgetBootstrapScript(widget: any): string {
     const data = event && event.data;
     if (!data || data.__piclawGeneratedWidgetHost !== true) return;
     if ((data.widgetId || null) !== (meta.widgetId || null)) return;
-    window.piclawWidget.lastHostMessage = data;
-    if (data.type === 'widget.init' || data.type === 'widget.update' || data.type === 'widget.complete' || data.type === 'widget.error') {
-      window.piclawWidget.hostState = data.payload || null;
-    }
-    window.dispatchEvent(new CustomEvent('piclaw:widget-message', { detail: data }));
+    applyHostEnvelope(data);
   });
 
   function announceReady() {
+    readWindowNameState();
     post('widget.ready', { title: document.title || meta.title || 'Generated widget' });
   }
+
+  setInterval(readWindowNameState, 250);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', announceReady, { once: true });
