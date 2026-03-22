@@ -10,17 +10,22 @@ Generate a 7-day token usage chart (all chats) and post it to the web UI timelin
 
 ## Steps
 
-1. Run the chart script:
+1. Run the standard chart script (default mode):
    ```bash
    bun /workspace/piclaw/runtime/skills/token-chart/token-chart.ts
    ```
 
-2. Post safely to the web chat (JSON-encoded, no Pushover nudge):
+2. Run the **alternative provider+model mode** (stacked series by provider + model):
+   ```bash
+   bun /workspace/piclaw/runtime/skills/token-chart/token-chart.ts --mode provider-model
+   ```
+
+3. Post safely to the web chat (JSON-encoded, no Pushover nudge):
    ```bash
    bun /workspace/piclaw/runtime/skills/token-chart/token-chart.ts --ipc
    ```
 
-3. If you explicitly want a Pushover nudge as well:
+4. If you explicitly want a Pushover nudge as well:
    ```bash
    bun /workspace/piclaw/runtime/skills/token-chart/token-chart.ts --ipc --nudge
    ```
@@ -31,4 +36,5 @@ Generate a 7-day token usage chart (all chats) and post it to the web UI timelin
 - Styling is handled by the web UI CSS (token-chart image selector).
 - Numbers are formatted using K/M in labels and summaries.
 - Uses the `token_usage` table by default; pass `--source sessions` (or `--sessions-dir`) to read session JSONL files.
+- `--mode provider-model` draws an alternative chart grouping tokens by provider/model.
 - Use this on demand (not scheduled yet).

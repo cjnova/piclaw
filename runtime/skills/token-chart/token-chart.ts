@@ -20,6 +20,7 @@
 import { readdirSync, statSync, readFileSync, mkdirSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import Database from "bun:sqlite";
+import { generateProviderModelChart } from "./token-usage-by-provider-model-chart";
 
 const args = process.argv.slice(2);
 const daysArgIndex = args.indexOf("--days");
@@ -36,6 +37,15 @@ const sourceArgIndex = args.indexOf("--source");
 const sourceCandidate = sourceArgIndex >= 0 ? args[sourceArgIndex + 1] : undefined;
 const source = sourceCandidate && !sourceCandidate.startsWith("--") ? sourceCandidate : "db";
 const useSessions = source === "sessions" || sessionsArgIndex >= 0;
+
+const modeArgIndex = args.indexOf("--mode");
+const modeCandidate = modeArgIndex >= 0 ? args[modeArgIndex + 1] : undefined;
+const chartMode = modeCandidate && !modeCandidate.startsWith("--") ? modeCandidate : "default";
+const isProviderModelMode = ["provider-model", "provider-model-chart", "provider-model-alt"].includes(chartMode);
+
+if (chartMode !== "default" && chartMode !== "provider-model" && chartMode !== "provider-model-chart" && chartMode !== "provider-model-alt") {
+  console.warn(`[token-chart] Unknown mode: ${chartMode}. Falling back to default chart.`);
+}
 
 const ipcEnabled = args.includes("--ipc");
 const nudgeEnabled = args.includes("--nudge");
@@ -78,6 +88,47 @@ const formatCompact = (value: number): string => {
   }
   return value.toString();
 };
+
+const formatDayLocalLabel = (day: string) => {
+  const d = new Date(`${day}T00:00:00Z`);
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${dayNames[d.getDay()]} ${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+function runProviderModelMode() {
+  const result = generateProviderModelChart({
+    days: targetDays,
+    dbPath,
+    now,
+  });
+
+  const dataUrl = `data:image/svg+xml;base64,${Buffer.from(result.svg).toString("base64")}`;
+  const total = Math.round(result.totalTokens);
+
+  const summaryLines = [
+    `![token-chart](${dataUrl})`,
+    "",
+    `Alternative chart (provider + model): last ${targetDays} days • ${formatCompact(total)} tokens across ${result.seriesCount} series`,
+    ...result.dayTotals.map((point) => `• ${formatDayLocalLabel(point.day)}: ${formatCompact(point.total)} tokens`),
+  ];
+
+  const message = summaryLines.join("\n");
+  if (ipcEnabled) {
+    mkdirSync(messagesDir, { recursive: true });
+    const outPath = join(messagesDir, `msg_${Date.now()}_tokenchart.json`);
+    const payload = { type: "message", chatJid, text: message, noNudge: !nudgeEnabled };
+    writeFileSync(outPath, JSON.stringify(payload, null, 2));
+    process.stdout.write(outPath);
+  } else {
+    process.stdout.write(message);
+  }
+}
+
+if (isProviderModelMode) {
+  runProviderModelMode();
+  process.exit(0);
+}
 
 for (let i = 0; i < targetDays; i += 1) {
   const d = new Date(start);
