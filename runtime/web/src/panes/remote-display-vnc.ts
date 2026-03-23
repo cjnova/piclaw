@@ -39,7 +39,7 @@ function normalizeEncodings(encodings) {
         }
     }
     if (values.length > 0) return values;
-    return [16, 5, 2, 1, 0, -223];
+    return [5, 2, 1, 0, -223];
 }
 
 function toUint8Array(chunk) {

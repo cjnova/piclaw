@@ -73,7 +73,6 @@ describe("VncRemoteDisplayProtocol", () => {
     expect(serverInit.outgoing[0][0]).toBe(0); // SetPixelFormat
     expect(serverInit.outgoing[1][0]).toBe(2); // SetEncodings
     expect(Array.from(serverInit.outgoing[1].slice(4))).toEqual([
-      0, 0, 0, 16, // ZRLE
       0, 0, 0, 5, // Hextile
       0, 0, 0, 2, // RRE
       0, 0, 0, 1, // CopyRect

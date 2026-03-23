@@ -649,7 +649,8 @@ class VncPaneInstance implements PaneInstance {
 
                 // Pipeline mode: WASM owns the full framebuffer — paint it in one
                 // putImageData call instead of iterating individual rects.
-                if (event.framebuffer && event.framebuffer.length > 0 && event.width > 0 && event.height > 0) {
+                const hasPipelineRects = (event.rects || []).some(r => r.kind === 'pipeline');
+                if (event.framebuffer && event.framebuffer.length > 0 && event.width > 0 && event.height > 0 && hasPipelineRects) {
                     this.ensureCanvasSize(event.width, event.height, { reveal: true });
                     for (const rect of event.rects || []) {
                         if (rect.kind === 'resize') {
