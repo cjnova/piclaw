@@ -496,6 +496,9 @@ function MainApp({ locationParams, navigate }) {
     const renameBranchInFlightRef = useRef(false);
     const [isRenamingBranch, setIsRenamingBranch] = useState(false);
     const renameBranchLockUntilRef = useRef(0);
+    const [isRenameBranchFormOpen, setIsRenameBranchFormOpen] = useState(false);
+    const [renameBranchNameDraft, setRenameBranchNameDraft] = useState('');
+    const renameBranchNameInputRef = useRef(null);
 
     const clearIntentToast = useCallback(() => {
         if (intentToastTimerRef.current) {
@@ -507,6 +510,16 @@ function MainApp({ locationParams, navigate }) {
 
     // Refresh timestamps every 30 seconds
     useTimestampRefresh(30000);
+
+    useEffect(() => {
+        if (!isRenameBranchFormOpen) return;
+        requestAnimationFrame(() => {
+            if (isRenameBranchFormOpen) {
+                renameBranchNameInputRef.current?.focus();
+                renameBranchNameInputRef.current?.select?.();
+            }
+        });
+    }, [isRenameBranchFormOpen]);
 
     useEffect(() => {
         return initTheme();
@@ -2630,8 +2643,38 @@ function MainApp({ locationParams, navigate }) {
         navigate?.(url);
     }, [chatOnlyMode, currentChatJid, navigate]);
 
-    const handleRenameCurrentBranch = useCallback(async () => {
+    const openRenameCurrentBranchForm = useCallback(() => {
         if (typeof window === 'undefined' || !currentBranchRecord?.chat_jid) return;
+
+        const now = Date.now();
+        const promptLock = getRenameBranchPromptLock();
+        if (!promptLock) return;
+
+        if (
+            renameBranchInFlightRef.current
+            || now < renameBranchLockUntilRef.current
+            || promptLock.inFlight
+            || now < promptLock.cooldownUntil
+        ) {
+            return;
+        }
+
+        setRenameBranchNameDraft(currentBranchRecord.agent_name || '');
+        setIsRenameBranchFormOpen(true);
+    }, [currentBranchRecord]);
+
+    const closeRenameCurrentBranchForm = useCallback(() => {
+        setIsRenameBranchFormOpen(false);
+        setRenameBranchNameDraft('');
+    }, []);
+
+    const handleRenameCurrentBranch = useCallback(async (nextName) => {
+        if (typeof window === 'undefined' || !currentBranchRecord?.chat_jid) return;
+
+        if (typeof nextName !== 'string') {
+            openRenameCurrentBranchForm();
+            return;
+        }
 
         const now = Date.now();
         const promptLock = getRenameBranchPromptLock();
@@ -2652,15 +2695,8 @@ function MainApp({ locationParams, navigate }) {
 
         try {
             const currentHandle = currentBranchRecord.agent_name || '';
-            const nextName = window.prompt('Agent handle (@name)', currentHandle);
-            if (nextName === null) return;
-
             const trimmed = nextName.trim();
-            const nextAgentName = trimmed
-                .toLowerCase()
-                .replace(/[^a-z0-9_-]+/g, '-')
-                .replace(/^-+|-+$/g, '')
-                .replace(/-{2,}/g, '-') || currentHandle;
+            const nextAgentName = trimmed || currentHandle;
 
             const response = await renameChatBranch(currentBranchRecord.chat_jid, {
                 agentName: nextAgentName,
@@ -2671,6 +2707,7 @@ function MainApp({ locationParams, navigate }) {
             ]);
             const savedHandle = response?.branch?.agent_name || nextAgentName || currentHandle;
             showIntentToast('Branch renamed', `@${savedHandle}`, 'info', 3500);
+            closeRenameCurrentBranchForm();
         } catch (error) {
             const rawMessage = error instanceof Error ? error.message : String(error || 'Could not rename branch.');
             const message = /already in use/i.test(rawMessage || '')
@@ -2682,13 +2719,13 @@ function MainApp({ locationParams, navigate }) {
             setIsRenamingBranch(false);
             const unlockedAt = Date.now() + RENAME_BRANCH_PROMPT_GUARD_MS;
             renameBranchLockUntilRef.current = unlockedAt;
-            const promptLock = getRenameBranchPromptLock();
-            if (promptLock) {
-                promptLock.inFlight = false;
-                promptLock.cooldownUntil = unlockedAt;
+            const promptLockRef = getRenameBranchPromptLock();
+            if (promptLockRef) {
+                promptLockRef.inFlight = false;
+                promptLockRef.cooldownUntil = unlockedAt;
             }
         }
-    }, [currentBranchRecord, refreshActiveChatAgents, refreshCurrentChatBranches, setIsRenamingBranch, showIntentToast]);
+    }, [closeRenameCurrentBranchForm, currentBranchRecord, refreshActiveChatAgents, refreshCurrentChatBranches, openRenameCurrentBranchForm, setIsRenamingBranch, showIntentToast]);
 
     const handlePruneCurrentBranch = useCallback(async (targetChatJid = null) => {
         if (typeof window === 'undefined') return;
@@ -3290,6 +3327,52 @@ function MainApp({ locationParams, navigate }) {
 
     return html`
         <div class=${`app-shell${workspaceOpen ? '' : ' workspace-collapsed'}${editorOpen ? ' editor-open' : ''}${chatOnlyMode ? ' chat-only' : ''}${zenMode ? ' zen-mode' : ''}`} ref=${appShellRef}>
+            ${isRenameBranchFormOpen && html`
+                <div class="rename-branch-overlay" onPointerDown=${(event) => {
+                    if (event.target === event.currentTarget) {
+                        closeRenameCurrentBranchForm();
+                    }
+                }}>
+                    <form
+                        class="rename-branch-panel"
+                        onSubmit=${(event) => {
+                            event.preventDefault();
+                            void handleRenameCurrentBranch(renameBranchNameDraft);
+                        }}
+                    >
+                        <div class="rename-branch-title">Rename branch handle</div>
+                        <input
+                            ref=${renameBranchNameInputRef}
+                            value=${renameBranchNameDraft}
+                            onInput=${(event) => {
+                                const next = event.currentTarget?.value ?? '';
+                                setRenameBranchNameDraft(String(next));
+                            }}
+                            onKeyDown=${(event) => {
+                                if (event.key === 'Escape') {
+                                    event.preventDefault();
+                                    closeRenameCurrentBranchForm();
+                                }
+                            }}
+                            autocomplete="off"
+                            placeholder="Handle (letters, numbers, - and _ only)"
+                        />
+                        <div class="rename-branch-actions">
+                            <button type="submit" class="compose-model-popup-btn primary" disabled=${isRenamingBranch}>
+                                ${isRenamingBranch ? 'Renaming…' : 'Save'}
+                            </button>
+                            <button
+                                type="button"
+                                class="compose-model-popup-btn"
+                                onClick=${closeRenameCurrentBranchForm}
+                                disabled=${isRenamingBranch}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `}
             ${!chatOnlyMode && html`
                 <${WorkspaceExplorer}
                     onFileSelect=${addFileRef}
@@ -3400,7 +3483,7 @@ function MainApp({ locationParams, navigate }) {
                                 <button
                                     class="chat-window-header-button"
                                     type="button"
-                                    onClick=${handleRenameCurrentBranch}
+                                    onClick=${openRenameCurrentBranchForm}
                                     title=${isRenamingBranch ? 'Renaming branch…' : 'Rename this branch'}
                                     aria-label="Rename this branch"
                                     disabled=${isRenamingBranch}
