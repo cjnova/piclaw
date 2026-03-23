@@ -36,7 +36,7 @@ RUN apt-get update && \
     net-tools iproute2 dnsutils \
     rsync file strace \
     build-essential cmake make pkg-config \
-    procps psmisc supervisor sqlite3 restic openssh-client && \
+    procps psmisc supervisor sqlite3 restic openssh-client sshfs fuse3 && \
     # Tailscale (for container networking scenarios)
     curl -fsSL https://tailscale.com/install.sh | sh && \
     mkdir -p /etc/supervisor/conf.d /var/log/supervisor /var/log/piclaw /var/run/supervisor && \

@@ -44,6 +44,24 @@ docker run -d \
 
 Open `http://localhost:8080`.
 
+> [!NOTE] 
+> If you plan to use SSHFS (`sshfs` inside the container), start with FUSE-enabled permissions:
+>
+> ```bash
+docker run -d \
+>   --name piclaw \
+>   --restart unless-stopped \
+>   -p 8080:8080 \
+>   --device /dev/fuse \
+>   --cap-add SYS_ADMIN \
+>   -e PICLAW_WEB_PORT=8080 \
+>   -v "$(pwd)/home:/config" \
+>   -v "$(pwd)/workspace:/workspace" \
+>   ghcr.io/rcarmo/piclaw:latest
+> ```
+>
+> Depending on host/container security policy, `--security-opt apparmor:unconfined` may also be required.
+
 To use `pi` interactively inside the container:
 
 ```bash
