@@ -9,6 +9,7 @@
     "piclaw": "runtime/src/index.ts"
   },
   "files": [
+    "scripts/postinstall.ts",
     "runtime/src",
     "runtime/extensions",
     "runtime/skills",
@@ -22,6 +23,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "postinstall": "bun run scripts/postinstall.ts",
     "start": "bun run runtime/src/index.ts",
     "dev": "bun --watch runtime/src/index.ts",
     "build": "cd runtime && rm -rf dist && tsc -p tsconfig.json",

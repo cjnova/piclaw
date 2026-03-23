@@ -20,6 +20,29 @@ The repository root is the package/install boundary for this flow. The nested
 `runtime/` directory is an implementation detail that contains the runtime
 sources, web app, extensions, vendored assets, and skills.
 
+## What happens at install time
+
+A `postinstall` script runs automatically after `bun add` to build assets
+that are too large to commit to git or that require a compilation step:
+
+| Asset | Size | What it does |
+|---|---|---|
+| draw.io viewer | ~35 MB | Downloads `draw.war` from GitHub releases, extracts webapp |
+| Web bundles | ~2 MB | Builds `app.bundle.js`, `login.bundle.js`, CSS from source |
+| TypeScript dist | ~1 MB | Compiles `runtime/src/` → `runtime/dist/` |
+
+All other vendored assets (Mermaid, CodeMirror, KaTeX, Ghostty, fonts,
+Office viewer, VNC decoder, etc.) are committed to git and available
+immediately after install.
+
+If `postinstall` was skipped (e.g. `--ignore-scripts`), run manually:
+
+```bash
+bun run build:vendor:drawio   # draw.io viewer
+bun run build:web             # web bundles (includes all other vendors)
+bun run build                 # compile TypeScript
+```
+
 ## Current scope
 
 This path is intended for:
