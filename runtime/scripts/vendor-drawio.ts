@@ -3,7 +3,8 @@
  * vendor-drawio.ts — Download and extract draw.io webapp from GitHub releases.
  *
  * Downloads the draw.war file from jgraph/drawio releases, extracts the
- * minimal webapp files needed for embed mode, and writes metadata.
+ * minimal webapp files needed for embed mode using fflate (pure JS, no
+ * external tools), and writes metadata.
  *
  * Pattern follows vendor-firacode-nerd-font.ts.
  */
@@ -11,21 +12,19 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
+import { unzipSync } from "fflate";
 
 const DRAWIO_VERSION = "v29.6.1";
 const WAR_URL = `https://github.com/jgraph/drawio/releases/download/${DRAWIO_VERSION}/draw.war`;
 const CACHE_DIR = resolve(process.cwd(), ".cache", "vendor", "drawio", DRAWIO_VERSION);
 const WAR_PATH = resolve(CACHE_DIR, "draw.war");
-const EXTRACT_DIR = resolve(CACHE_DIR, "webapp");
 const OUTPUT_DIR = "extensions/drawio-editor/vendor";
 const METADATA_FILE = resolve(process.cwd(), OUTPUT_DIR, "drawio.meta.json");
 
 /** Files/directories to copy from the extracted WAR. */
-const COPY_ITEMS = [
-  // Entry point
+const COPY_PREFIXES = [
   "index.html",
   "favicon.ico",
-  // Core JS
   "js/app.min.js",
   "js/bootstrap.js",
   "js/main.js",
@@ -34,7 +33,6 @@ const COPY_ITEMS = [
   "js/extensions.min.js",
   "js/stencils.min.js",
   "js/shapes-14-6-5.min.js",
-  // JS subdirectories (referenced by app)
   "js/deflate/",
   "js/jszip/",
   "js/spin/",
@@ -42,23 +40,13 @@ const COPY_ITEMS = [
   "js/freehand/",
   "js/rough/",
   "js/cryptojs/",
-  // Styles
   "styles/",
-  // Images (toolbar icons, UI elements)
   "images/",
-  // Shape library assets (AWS/Azure/GCP/etc.)
   "img/",
-  // Localization and app resources
   "resources/",
-  // mxGraph resources
   "mxgraph/",
-  // Math rendering
   "math4/",
 ];
-
-function sha256ForFile(path: string): string {
-  return createHash("sha256").update(readFileSync(path)).digest("hex");
-}
 
 function dirSizeBytes(dir: string): number {
   let total = 0;
@@ -71,17 +59,10 @@ function dirSizeBytes(dir: string): number {
   return total;
 }
 
-function copyRecursive(src: string, dest: string): void {
-  const st = statSync(src);
-  if (st.isDirectory()) {
-    mkdirSync(dest, { recursive: true });
-    for (const name of readdirSync(src)) {
-      copyRecursive(resolve(src, name), resolve(dest, name));
-    }
-  } else {
-    mkdirSync(dirname(dest), { recursive: true });
-    writeFileSync(dest, readFileSync(src));
-  }
+function shouldCopy(entryPath: string): boolean {
+  return COPY_PREFIXES.some((prefix) =>
+    prefix.endsWith("/") ? entryPath.startsWith(prefix) : entryPath === prefix
+  );
 }
 
 async function ensureWar(): Promise<void> {
@@ -101,19 +82,22 @@ async function ensureWar(): Promise<void> {
   process.stdout.write(`[vendor:drawio] WAR downloaded: ${(bytes.length / 1048576).toFixed(1)} MB\n`);
 }
 
-function ensureExtracted(): void {
-  if (existsSync(resolve(EXTRACT_DIR, "index.html"))) return;
+function extractAndCopy(outputBase: string): number {
+  process.stdout.write(`[vendor:drawio] Extracting WAR with fflate...\n`);
+  const warBytes = readFileSync(WAR_PATH);
+  const entries = unzipSync(new Uint8Array(warBytes));
 
-  mkdirSync(EXTRACT_DIR, { recursive: true });
-  process.stdout.write(`[vendor:drawio] Extracting WAR...\n`);
-  const proc = Bun.spawnSync(["unzip", "-qo", WAR_PATH, "-d", EXTRACT_DIR], {
-    cwd: CACHE_DIR,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (proc.exitCode !== 0) {
-    throw new Error(`Failed to extract WAR: ${proc.stderr.toString()}`);
+  let copiedFiles = 0;
+  for (const [path, data] of Object.entries(entries)) {
+    if (!shouldCopy(path)) continue;
+    // Skip directory entries (zero-length with trailing /)
+    if (path.endsWith("/")) continue;
+    const dest = resolve(outputBase, path);
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, data);
+    copiedFiles++;
   }
+  return copiedFiles;
 }
 
 async function main(): Promise<void> {
@@ -121,21 +105,14 @@ async function main(): Promise<void> {
   const outputBase = resolve(process.cwd(), OUTPUT_DIR);
 
   await ensureWar();
-  ensureExtracted();
 
-  // Copy minimal files
-  let copiedFiles = 0;
-  for (const item of COPY_ITEMS) {
-    const src = resolve(EXTRACT_DIR, item);
-    const dest = resolve(outputBase, item);
-    if (!existsSync(src)) {
-      process.stdout.write(`${logPrefix} WARN: ${item} not found in WAR, skipping\n`);
-      continue;
-    }
-    copyRecursive(src, dest);
-    copiedFiles++;
+  // Check if already extracted
+  if (existsSync(resolve(outputBase, "index.html"))) {
+    process.stdout.write(`${logPrefix} vendor already present, skipping extraction\n`);
+    return;
   }
 
+  const copiedFiles = extractAndCopy(outputBase);
   const totalSize = dirSizeBytes(outputBase);
   const totalMb = (totalSize / 1048576).toFixed(1);
 
