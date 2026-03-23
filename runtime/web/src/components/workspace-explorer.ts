@@ -23,6 +23,7 @@ import {
     readWorkspaceScaleEnvironment,
     resolveWorkspaceScale,
 } from '../ui/workspace-scale.js';
+import { hasSpecializedWorkspaceTab, shouldAutoOpenWorkspaceFile } from '../ui/workspace-auto-open.js';
 
 const REFRESH_INTERVAL_MS = 60000;
 
@@ -35,7 +36,7 @@ const isHiddenNode = (node) => {
 function hasOpenableWorkspaceTab(path) {
     const normalized = String(path || '').trim();
     if (!normalized || normalized.endsWith('/')) return false;
-    return Boolean(paneRegistry.resolve({ path: normalized, mode: 'edit' }));
+    return hasSpecializedWorkspaceTab(normalized, (context) => paneRegistry.resolve(context));
 }
 
 // ── Tree data helpers ─────────────────────────────────────────────────────────
@@ -808,15 +809,26 @@ export function WorkspaceExplorer({
     }, [headerMenuOpen]);
 
     // ── loadPreview ───────────────────────────────────────────────────────────
-    const loadPreview = async (path) => {
+    const loadPreview = async (path, options = {}) => {
+        const autoOpen = Boolean(options?.autoOpen);
+        const normalized = String(path || '').trim();
         setLoadingPreview(true);
         setPreview(null);
         setDownloadId(null);
         try {
-            const data = await getWorkspaceFile(path, 20000);
+            const data = await getWorkspaceFile(normalized, 20000);
+            if (autoOpen && normalized && shouldAutoOpenWorkspaceFile(normalized, data, {
+                resolvePane: (context) => paneRegistry.resolve(context),
+            })) {
+                onOpenEditorRef.current?.(normalized, data);
+                return data;
+            }
             setPreview(data);
+            return data;
         } catch (err) {
-            setPreview({ error: err.message || 'Failed to load preview' });
+            const failure = { error: err.message || 'Failed to load preview' };
+            setPreview(failure);
+            return failure;
         } finally {
             setLoadingPreview(false);
         }
@@ -1413,11 +1425,12 @@ export function WorkspaceExplorer({
             setSelectedPath(clickedPath);
             const node = nodeMapRef.current.get(clickedPath);
             if (node) onFileSelectRef.current?.(node.path, node);
-            const shouldOpenInTab = !isActionClick && !isCaretClick && hasOpenableWorkspaceTab(clickedPath);
-            if (shouldOpenInTab) {
+            const shouldOpenSpecializedTab = !isActionClick && !isCaretClick && hasOpenableWorkspaceTab(clickedPath);
+            if (shouldOpenSpecializedTab) {
                 onOpenEditorRef.current?.(clickedPath, previewRef.current);
             } else {
-                loadPreviewRef.current?.(clickedPath);
+                const shouldAttemptEditableAutoOpen = !isActionClick && !isCaretClick;
+                loadPreviewRef.current?.(clickedPath, { autoOpen: shouldAttemptEditableAutoOpen });
             }
         }
     }).current;
