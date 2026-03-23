@@ -50,7 +50,8 @@ function callProcess(fn: string, data: Uint8Array, x: number, y: number, w: numb
 function readFb(): Uint8ClampedArray {
   const ptr = wasm.getFramebufferPtr();
   const len = wasm.getFramebufferLen();
-  return new Uint8ClampedArray(wasm.memory.buffer, ptr, len);
+  // Copy out — WASM memory.buffer can be replaced after memory grows
+  return new Uint8ClampedArray(new Uint8Array(wasm.memory.buffer, ptr, len).slice().buffer);
 }
 
 function pixelAt(x: number, y: number, fbWidth: number): number[] {
@@ -403,5 +404,29 @@ describe("WASM pipeline – through VncRemoteDisplayProtocol", () => {
     expect(pipeline.getFramebuffer().length).toBe(8 * 6 * 4);
     const rects = (result.events[0] as any).rects;
     expect(rects[0].kind).toBe("resize");
+  });
+
+  test("survives many frames without memory errors", () => {
+    const pipeline = buildPipeline();
+    const protocol = connectProtocol({ pipeline });
+    protocol.receive(buildServerInit({ width: 64, height: 64, name: "Stress" }));
+
+    // Send 200 raw framebuffer updates to exercise WASM memory allocation/GC
+    for (let frame = 0; frame < 200; frame++) {
+      const pixel = bytes(
+        (frame & 0xff), 0x00, ((frame >> 8) & 0xff), 0x00,
+      );
+      const result = protocol.receive(bytes(
+        0, 0, 0, 1,
+        0, 0, 0, 0,
+        0, 1, 0, 1,
+        0, 0, 0, 0,    // raw
+        ...pixel,
+      ));
+      expect(result.events).toHaveLength(1);
+      const fb = (result.events[0] as any).framebuffer;
+      expect(fb).toBeDefined();
+      expect(fb.length).toBe(64 * 64 * 4);
+    }
   });
 });

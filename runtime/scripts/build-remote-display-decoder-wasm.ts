@@ -25,11 +25,12 @@ function main(): void {
     ASC_BIN,
     SOURCE_FILE,
     "--target", "release",
-    "--runtime", "stub",
+    "--runtime", "incremental",
     "--exportRuntime",
     "--optimizeLevel", "3",
     "--shrinkLevel", "0",
     "--noAssert",
+    "--stackSize", "65536",
     "--outFile", OUTPUT_FILE,
   ], {
     cwd: PROJECT_DIR,

@@ -76,6 +76,7 @@ export async function loadRemoteDisplayWasmDecoder(): Promise<WasmDisplayPipelin
             }
 
             // Helper: call a process* function that takes (dataBuffer, x, y, w, h, pf...)
+            // Allocates input in WASM, calls the function, then frees the input.
             function callProcess(fnName, data, x, y, w, h, pf) {
                 const input = normalizeInput(data);
                 const ptr = ex.__pin(ex.__newArrayBuffer(input));
@@ -90,6 +91,7 @@ export async function loadRemoteDisplayWasmDecoder(): Promise<WasmDisplayPipelin
                     );
                 } finally {
                     ex.__unpin(ptr);
+                    try { ex.__collect(); } catch {}
                 }
             }
 
@@ -101,8 +103,12 @@ export async function loadRemoteDisplayWasmDecoder(): Promise<WasmDisplayPipelin
                 getFramebuffer() {
                     const ptr = ex.getFramebufferPtr();
                     const len = ex.getFramebufferLen();
-                    // Create a view directly into WASM linear memory — zero copy
-                    return new Uint8ClampedArray(ex.memory.buffer, ptr, len);
+                    // Copy out of WASM linear memory — memory.buffer can be
+                    // detached/replaced when WASM memory grows, so a view is
+                    // not safe to hold across calls.
+                    return new Uint8ClampedArray(
+                        new Uint8Array(ex.memory.buffer, ptr, len).slice().buffer
+                    );
                 },
 
                 getFramebufferWidth() { return ex.getFramebufferWidth(); },
