@@ -22,7 +22,6 @@ function seedBranchFamily(db: any) {
     root_chat_jid: "web:default",
     parent_branch_id: null,
     agent_name: "root",
-    display_name: "Root Chat",
   });
 
   db.storeChatMetadata("web:branch-a", now, "Alpha Branch");
@@ -31,7 +30,6 @@ function seedBranchFamily(db: any) {
     root_chat_jid: "web:default",
     parent_branch_id: root.branch_id,
     agent_name: "alpha",
-    display_name: "Alpha Branch",
   });
 
   db.storeChatMetadata("web:branch-b", now, "Beta Branch");
@@ -40,7 +38,6 @@ function seedBranchFamily(db: any) {
     root_chat_jid: "web:default",
     parent_branch_id: root.branch_id,
     agent_name: "beta",
-    display_name: "Beta Branch",
   });
 }
 
@@ -53,9 +50,9 @@ function createStubAgentPool(db: any) {
     root_chat_jid: branch.root_chat_jid,
     parent_branch_id: branch.parent_branch_id,
     agent_name: branch.agent_name,
-    display_name: branch.display_name,
+    display_name: null,
     session_id: null,
-    session_name: branch.display_name,
+    session_name: branch.agent_name,
     model: null,
     is_active: activeChats.has(branch.chat_jid),
     has_side_session: false,
@@ -102,11 +99,11 @@ function createStubAgentPool(db: any) {
       const branch = db.getChatBranchByAgentName(String(agentName || "").trim().toLowerCase());
       return branch ? { chat_jid: branch.chat_jid, agent_name: branch.agent_name } : null;
     },
-    renameChatBranch: async (chatJid: string, options: { agentName?: string | null; displayName?: string | null } = {}) => {
+    renameChatBranch: async (chatJid: string, options: { agentName?: string | null } = {}) => {
       return db.renameChatBranchIdentity({
         chat_jid: chatJid,
         agent_name: options.agentName ?? null,
-        display_name: options.displayName ?? null,
+        
       });
     },
     pruneChatBranch: async (chatJid: string) => {
@@ -257,7 +254,6 @@ optionalBrowserTest("optional browser isolation: rename and prune stay scoped to
     },
     body: JSON.stringify({
       chat_jid: "web:branch-a",
-      display_name: "Alpha Branch Renamed",
       agent_name: "alpha-renamed",
     }),
   });

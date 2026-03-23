@@ -2,8 +2,7 @@
  * db/chat-branches.ts – Explicit branch/session registry for web chat branches.
  *
  * Branch identity is defined entirely by the `agent_name` handle.
- * The `display_name` column is retained in the schema for migration
- * compatibility but is no longer read or written by application code.
+ * The legacy `display_name` column is dropped on first startup via migration.
  */
 
 import { getDb } from "./connection.js";
@@ -16,7 +15,6 @@ interface ChatBranchRow {
   root_chat_jid: string;
   parent_branch_id: string | null;
   agent_name: string;
-  display_name: string | null;   // legacy column — always NULL in new rows
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -30,7 +28,7 @@ function toRecord(row: ChatBranchRow | null | undefined): ChatBranchRecord | nul
     root_chat_jid: row.root_chat_jid,
     parent_branch_id: row.parent_branch_id,
     agent_name: row.agent_name,
-    display_name: row.display_name,   // preserved for read compat, always NULL in new rows
+    display_name: null,
     created_at: row.created_at,
     updated_at: row.updated_at,
     archived_at: row.archived_at,
@@ -94,7 +92,7 @@ function requireUniqueAgentName(agentName: string, excludeBranchId?: string | nu
 export function getChatBranchByChatJid(chatJid: string): ChatBranchRecord | null {
   const db = getDb();
   const row = db.prepare(
-    `SELECT branch_id, chat_jid, root_chat_jid, parent_branch_id, agent_name, display_name, created_at, updated_at, archived_at
+    `SELECT branch_id, chat_jid, root_chat_jid, parent_branch_id, agent_name, created_at, updated_at, archived_at
        FROM chat_branches
       WHERE chat_jid = ?`
   ).get(chatJid) as ChatBranchRow | undefined;
@@ -106,7 +104,7 @@ export function getChatBranchByAgentName(agentName: string): ChatBranchRecord | 
   if (!normalized) return null;
   const db = getDb();
   const row = db.prepare(
-    `SELECT branch_id, chat_jid, root_chat_jid, parent_branch_id, agent_name, display_name, created_at, updated_at, archived_at
+    `SELECT branch_id, chat_jid, root_chat_jid, parent_branch_id, agent_name, created_at, updated_at, archived_at
        FROM chat_branches
       WHERE agent_name = ?
         AND archived_at IS NULL`
@@ -122,14 +120,14 @@ export function listChatBranches(
   const includeArchived = Boolean(options?.includeArchived);
   const rows = rootChatJid
     ? db.prepare(
-      `SELECT branch_id, chat_jid, root_chat_jid, parent_branch_id, agent_name, display_name, created_at, updated_at, archived_at
+      `SELECT branch_id, chat_jid, root_chat_jid, parent_branch_id, agent_name, created_at, updated_at, archived_at
          FROM chat_branches
         WHERE root_chat_jid = ?
           AND (? = 1 OR archived_at IS NULL)
         ORDER BY created_at ASC, chat_jid ASC`
     ).all(rootChatJid, includeArchived ? 1 : 0)
     : db.prepare(
-      `SELECT branch_id, chat_jid, root_chat_jid, parent_branch_id, agent_name, display_name, created_at, updated_at, archived_at
+      `SELECT branch_id, chat_jid, root_chat_jid, parent_branch_id, agent_name, created_at, updated_at, archived_at
          FROM chat_branches
         WHERE (? = 1 OR archived_at IS NULL)
         ORDER BY created_at ASC, chat_jid ASC`
@@ -170,7 +168,6 @@ export function ensureChatBranch(input: {
             SET root_chat_jid = ?,
                 parent_branch_id = ?,
                 agent_name = ?,
-                display_name = NULL,
                 updated_at = ?,
                 archived_at = NULL
           WHERE branch_id = ?`
@@ -187,8 +184,8 @@ export function ensureChatBranch(input: {
 
   db.prepare(
     `INSERT INTO chat_branches (
-      branch_id, chat_jid, root_chat_jid, parent_branch_id, agent_name, display_name, created_at, updated_at, archived_at
-    ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, NULL)`
+      branch_id, chat_jid, root_chat_jid, parent_branch_id, agent_name, created_at, updated_at, archived_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`
   ).run(branchId, chatJid, rootChatJid, parentBranchId, agentName, now, now);
 
   return getChatBranchByChatJid(chatJid)!;
@@ -219,7 +216,6 @@ export function renameChatBranchIdentity(input: {
   db.prepare(
     `UPDATE chat_branches
         SET agent_name = ?,
-            display_name = NULL,
             updated_at = ?
       WHERE branch_id = ?`
   ).run(nextAgentName, now, existing.branch_id);
@@ -276,7 +272,6 @@ export function restoreChatBranchIdentity(input: {
   db.prepare(
     `UPDATE chat_branches
         SET agent_name = ?,
-            display_name = NULL,
             archived_at = NULL,
             updated_at = ?
       WHERE branch_id = ?`
