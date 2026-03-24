@@ -47,6 +47,7 @@ import { storeAgentTurn } from "../agent-message-store.js";
 import { resolveThreadId, resolveThreadRootId } from "../threading.js";
 import { createUuid } from "../../../utils/ids.js";
 import type { AttachmentInfo } from "../../../agent-pool/attachments.js";
+import { checkPendingShutdown } from "../../../runtime/shutdown-registry.js";
 
 function parseLeadingAgentMention(content: string): { agentName: string; remainder: string } | null {
   const match = content.match(/^\s*@([a-zA-Z0-9][a-zA-Z0-9_-]{0,31})(?:\s+([\s\S]*))?$/);
@@ -899,6 +900,10 @@ export async function processChat(
 
     // Start the next queued follow-up only after this turn has fully finalized.
     materializeNextDeferredFollowup();
+
+    // If the exit_process tool was called during this turn, trigger graceful
+    // shutdown now that the response has been persisted and broadcast.
+    checkPendingShutdown();
   };
 
   const output = await channel.agentPool.runAgent(prompt, chatJid, {
