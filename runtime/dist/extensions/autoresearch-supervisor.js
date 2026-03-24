@@ -286,6 +286,10 @@ const StopSchema = Type.Object({
 });
 const StatusSchema = Type.Object({});
 let pendingLaunch = null;
+/** Resolve the chat JID to use for status cards — prefer env override, then fallback. */
+function resolveStatusChatJid() {
+    return process.env.PICLAW_CHAT_JID || "web:default";
+}
 export function getPendingLaunch() {
     return pendingLaunch;
 }
@@ -326,7 +330,7 @@ function buildResult(text, details = {}) {
         details: { tool: "autoresearch", ...details },
     };
 }
-async function startAutoresearch(params, broadcastEvent) {
+async function startAutoresearch(params, broadcastEvent, chatJid) {
     // Prerequisites
     const piPath = spawnSync("which", ["pi"], { encoding: "utf8" }).stdout.trim();
     if (!piPath)
@@ -416,6 +420,7 @@ async function startAutoresearch(params, broadcastEvent) {
         return buildResult(`❌ Failed to create tmux session (exit ${tmuxResult.status}).`);
     }
     // Set up active experiment tracking
+    const resolvedChatJid = chatJid || resolveStatusChatJid();
     activeExperiment = {
         id,
         tmuxSession,
@@ -428,6 +433,7 @@ async function startAutoresearch(params, broadcastEvent) {
         lastJsonlOffset: existsSync(jsonlPath) ? readFileSync(jsonlPath, "utf-8").length : 0,
         lastBroadcastedRun: 0,
         lastActivityAt: Date.now(),
+        chatJid: resolvedChatJid,
     };
     // Start JSONL polling
     activeExperiment.pollInterval = setInterval(() => {
@@ -440,7 +446,7 @@ async function startAutoresearch(params, broadcastEvent) {
             stopPolling();
             if (existsSync(jsonlP)) {
                 const summary = buildExperimentSummary(parseJsonlFile(jsonlP));
-                postStatusCard(expId, summary, summary.totalRuns > 0 ? "completed" : "failed");
+                postStatusCard(expId, summary, summary.totalRuns > 0 ? "completed" : "failed", resolvedChatJid);
             }
             broadcastEvent("autoresearch_stopped", {
                 experiment_id: expId,
@@ -462,7 +468,7 @@ async function startAutoresearch(params, broadcastEvent) {
                     const tmux = activeExperiment.tmuxSession;
                     stopPolling();
                     const summary = buildExperimentSummary(allEntries);
-                    postStatusCard(expId, summary, "completed");
+                    postStatusCard(expId, summary, "completed", resolvedChatJid);
                     // Kill the idle tmux session
                     spawnSync("tmux", ["send-keys", "-t", tmux, "C-c", ""], { stdio: "ignore" });
                     setTimeout(() => spawnSync("tmux", ["kill-session", "-t", tmux], { stdio: "ignore" }), 2000);
@@ -495,7 +501,7 @@ async function startAutoresearch(params, broadcastEvent) {
                     summary,
                 });
                 // Post timeline card update on every result
-                postStatusCard(activeExperiment.id, summary, "running", "web:default", activeExperiment.tmuxSession);
+                postStatusCard(activeExperiment.id, summary, "running", activeExperiment.chatJid, activeExperiment.tmuxSession);
             }
         }
     }, 2000);
@@ -515,7 +521,7 @@ async function startAutoresearch(params, broadcastEvent) {
     // Post initial timeline status card
     const initialSummary = buildExperimentSummary([]);
     initialSummary.name = params.prompt.slice(0, 80);
-    postStatusCard(id, initialSummary, "running", "web:default", tmuxSession);
+    postStatusCard(id, initialSummary, "running", resolvedChatJid, tmuxSession);
     return buildResult(parts.join("\n"), {
         experiment_id: id,
         tmux_session: tmuxSession,
@@ -558,7 +564,7 @@ async function stopAutoresearch(params) {
     if (existsSync(exp.jsonlPath)) {
         const summary = buildExperimentSummary(parseJsonlFile(exp.jsonlPath));
         parts.push("", `Results: ${summary.totalRuns} runs, ${summary.kept} kept, ${summary.discarded} discarded`, summary.bestMetric !== null ? `Best ${summary.metricName}: ${summary.bestMetric}${summary.metricUnit}` : "", summary.confidence !== null ? `Confidence: ${summary.confidence.toFixed(1)}×` : "");
-        postStatusCard(exp.id, summary, "stopped");
+        postStatusCard(exp.id, summary, "stopped", exp.chatJid);
     }
     activeExperiment = null;
     return buildResult(parts.filter(Boolean).join("\n"), {
@@ -617,7 +623,7 @@ const HINT = [
  */
 export async function startAutoresearchFromCard(params) {
     const noop = () => { };
-    const result = await startAutoresearch(params, noop);
+    const result = await startAutoresearch(params, noop, resolveStatusChatJid());
     return result.content[0]?.type === "text" ? result.content[0].text : "Launched.";
 }
 export const autoresearchSupervisor = (pi) => {
@@ -668,17 +674,18 @@ export const autoresearchSupervisor = (pi) => {
                     prompt: params.prompt,
                     max_iterations: params.max_iterations,
                 };
+                const pickerChatJid = resolveStatusChatJid();
                 const card = buildModelPickerCard(models, currentModel);
                 postMessagesToolMessage({
                     action: "post",
                     type: "agent",
-                    chat_jid: "web:default",
+                    chat_jid: pickerChatJid,
                     content: "Select a model for the autoresearch experiment.",
                     content_blocks: [card],
-                }, "web:default");
+                }, pickerChatJid);
                 return buildResult("Model picker posted. Select a model and click Launch to start the experiment.", { pending: true });
             }
-            return startAutoresearch(params, broadcastEvent);
+            return startAutoresearch(params, broadcastEvent, resolveStatusChatJid());
         },
     });
     pi.registerTool({
@@ -740,6 +747,7 @@ export const autoresearchSupervisor = (pi) => {
                 lastJsonlOffset: existsSync(jsonlPath) ? readFileSync(jsonlPath, "utf-8").length : 0,
                 lastBroadcastedRun: 0,
                 lastActivityAt: Date.now(),
+                chatJid: resolveStatusChatJid(),
             };
             // Resume polling
             activeExperiment.pollInterval = setInterval(() => {
@@ -749,7 +757,7 @@ export const autoresearchSupervisor = (pi) => {
                     stopPolling();
                     if (existsSync(activeExperiment.jsonlPath)) {
                         const summary = buildExperimentSummary(parseJsonlFile(activeExperiment.jsonlPath));
-                        postStatusCard(activeExperiment.id, summary, summary.totalRuns > 0 ? "completed" : "failed");
+                        postStatusCard(activeExperiment.id, summary, summary.totalRuns > 0 ? "completed" : "failed", activeExperiment.chatJid);
                     }
                     activeExperiment = null;
                     return;
@@ -766,7 +774,7 @@ export const autoresearchSupervisor = (pi) => {
                     if (entry.type !== "config") {
                         const allEntries = parseJsonlFile(activeExperiment.jsonlPath);
                         const summary = buildExperimentSummary(allEntries);
-                        postStatusCard(activeExperiment.id, summary, "running", "web:default", activeExperiment.tmuxSession);
+                        postStatusCard(activeExperiment.id, summary, "running", activeExperiment.chatJid, activeExperiment.tmuxSession);
                     }
                 }
             }, 2000);
@@ -775,7 +783,7 @@ export const autoresearchSupervisor = (pi) => {
                 const currentEntries = parseJsonlFile(jsonlPath);
                 if (currentEntries.length > 0) {
                     const summary = buildExperimentSummary(currentEntries);
-                    postStatusCard(id, summary, "running", "web:default", tmuxSession);
+                    postStatusCard(id, summary, "running", resolveStatusChatJid(), tmuxSession);
                 }
             }
             console.log(`[autoresearch] Re-attached to running experiment ${id} (tmux: ${tmuxSession})`);

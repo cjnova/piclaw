@@ -41,6 +41,8 @@ interface ActiveExperiment {
   lastBroadcastedRun: number;
   /** Timestamp of the last new JSONL entry — used for idle detection. */
   lastActivityAt: number;
+  /** Chat JID where status cards should be posted (defaults to env or web:default). */
+  chatJid: string;
 }
 
 let activeExperiment: ActiveExperiment | null = null;
@@ -358,6 +360,11 @@ interface PendingLaunch {
 
 let pendingLaunch: PendingLaunch | null = null;
 
+/** Resolve the chat JID to use for status cards — prefer env override, then fallback. */
+function resolveStatusChatJid(): string {
+  return process.env.PICLAW_CHAT_JID || "web:default";
+}
+
 export function getPendingLaunch(): PendingLaunch | null {
   return pendingLaunch;
 }
@@ -410,6 +417,7 @@ function buildResult(text: string, details: Record<string, unknown> = {}): Agent
 async function startAutoresearch(
   params: { project_dir: string; prompt: string; model?: string; max_iterations?: number; sandbox?: boolean },
   broadcastEvent: (type: string, data: unknown) => void,
+  chatJid?: string,
 ): Promise<AgentToolResult<Record<string, unknown>>> {
   // Prerequisites
   const piPath = spawnSync("which", ["pi"], { encoding: "utf8" }).stdout.trim();
@@ -515,6 +523,7 @@ async function startAutoresearch(
 
 
   // Set up active experiment tracking
+  const resolvedChatJid = chatJid || resolveStatusChatJid();
   activeExperiment = {
     id,
     tmuxSession,
@@ -527,6 +536,7 @@ async function startAutoresearch(
     lastJsonlOffset: existsSync(jsonlPath) ? readFileSync(jsonlPath, "utf-8").length : 0,
     lastBroadcastedRun: 0,
     lastActivityAt: Date.now(),
+    chatJid: resolvedChatJid,
   };
 
   // Start JSONL polling
@@ -540,7 +550,7 @@ async function startAutoresearch(
       stopPolling();
       if (existsSync(jsonlP)) {
         const summary = buildExperimentSummary(parseJsonlFile(jsonlP));
-        postStatusCard(expId, summary, summary.totalRuns > 0 ? "completed" : "failed");
+        postStatusCard(expId, summary, summary.totalRuns > 0 ? "completed" : "failed", resolvedChatJid);
       }
       broadcastEvent("autoresearch_stopped", {
         experiment_id: expId,
@@ -567,7 +577,7 @@ async function startAutoresearch(
           const tmux = activeExperiment.tmuxSession;
           stopPolling();
           const summary = buildExperimentSummary(allEntries);
-          postStatusCard(expId, summary, "completed");
+          postStatusCard(expId, summary, "completed", resolvedChatJid);
           // Kill the idle tmux session
           spawnSync("tmux", ["send-keys", "-t", tmux, "C-c", ""], { stdio: "ignore" });
           setTimeout(() => spawnSync("tmux", ["kill-session", "-t", tmux], { stdio: "ignore" }), 2000);
@@ -602,7 +612,7 @@ async function startAutoresearch(
         });
 
         // Post timeline card update on every result
-        postStatusCard(activeExperiment.id, summary, "running", "web:default", activeExperiment.tmuxSession);
+        postStatusCard(activeExperiment.id, summary, "running", activeExperiment.chatJid, activeExperiment.tmuxSession);
       }
     }
   }, 2000);
@@ -624,7 +634,7 @@ async function startAutoresearch(
   // Post initial timeline status card
   const initialSummary = buildExperimentSummary([]);
   initialSummary.name = params.prompt.slice(0, 80);
-  postStatusCard(id, initialSummary, "running", "web:default", tmuxSession);
+  postStatusCard(id, initialSummary, "running", resolvedChatJid, tmuxSession);
 
   return buildResult(parts.join("\n"), {
     experiment_id: id,
@@ -682,7 +692,7 @@ async function stopAutoresearch(
       summary.bestMetric !== null ? `Best ${summary.metricName}: ${summary.bestMetric}${summary.metricUnit}` : "",
       summary.confidence !== null ? `Confidence: ${summary.confidence.toFixed(1)}×` : "",
     );
-    postStatusCard(exp.id, summary, "stopped");
+    postStatusCard(exp.id, summary, "stopped", exp.chatJid);
   }
 
   activeExperiment = null;
@@ -764,7 +774,7 @@ export async function startAutoresearchFromCard(
   params: { project_dir: string; prompt: string; model?: string; max_iterations?: number; sandbox?: boolean },
 ): Promise<string> {
   const noop = () => {};
-  const result = await startAutoresearch(params, noop);
+  const result = await startAutoresearch(params, noop, resolveStatusChatJid());
   return result.content[0]?.type === "text" ? (result.content[0] as { text: string }).text : "Launched.";
 }
 
@@ -817,19 +827,20 @@ export const autoresearchSupervisor: ExtensionFactory = (pi: ExtensionAPI) => {
           prompt: params.prompt,
           max_iterations: params.max_iterations,
         };
+        const pickerChatJid = resolveStatusChatJid();
         const card = buildModelPickerCard(models, currentModel);
         postMessagesToolMessage({
           action: "post",
           type: "agent",
-          chat_jid: "web:default",
+          chat_jid: pickerChatJid,
           content: "Select a model for the autoresearch experiment.",
           content_blocks: [card],
-        }, "web:default");
+        }, pickerChatJid);
 
         return buildResult("Model picker posted. Select a model and click Launch to start the experiment.", { pending: true });
       }
 
-      return startAutoresearch(params, broadcastEvent);
+      return startAutoresearch(params, broadcastEvent, resolveStatusChatJid());
     },
   });
 
@@ -887,6 +898,7 @@ export const autoresearchSupervisor: ExtensionFactory = (pi: ExtensionAPI) => {
         lastJsonlOffset: existsSync(jsonlPath) ? readFileSync(jsonlPath, "utf-8").length : 0,
         lastBroadcastedRun: 0,
         lastActivityAt: Date.now(),
+        chatJid: resolveStatusChatJid(),
       };
 
       // Resume polling
@@ -896,7 +908,7 @@ export const autoresearchSupervisor: ExtensionFactory = (pi: ExtensionAPI) => {
           stopPolling();
           if (existsSync(activeExperiment.jsonlPath)) {
             const summary = buildExperimentSummary(parseJsonlFile(activeExperiment.jsonlPath));
-            postStatusCard(activeExperiment.id, summary, summary.totalRuns > 0 ? "completed" : "failed");
+            postStatusCard(activeExperiment.id, summary, summary.totalRuns > 0 ? "completed" : "failed", activeExperiment.chatJid);
           }
           activeExperiment = null;
           return;
@@ -912,7 +924,7 @@ export const autoresearchSupervisor: ExtensionFactory = (pi: ExtensionAPI) => {
           if (entry.type !== "config") {
             const allEntries = parseJsonlFile(activeExperiment.jsonlPath);
             const summary = buildExperimentSummary(allEntries);
-            postStatusCard(activeExperiment.id, summary, "running", "web:default", activeExperiment.tmuxSession);
+            postStatusCard(activeExperiment.id, summary, "running", activeExperiment.chatJid, activeExperiment.tmuxSession);
           }
         }
       }, 2000);
@@ -922,7 +934,7 @@ export const autoresearchSupervisor: ExtensionFactory = (pi: ExtensionAPI) => {
         const currentEntries = parseJsonlFile(jsonlPath);
         if (currentEntries.length > 0) {
           const summary = buildExperimentSummary(currentEntries);
-          postStatusCard(id, summary, "running", "web:default", tmuxSession);
+          postStatusCard(id, summary, "running", resolveStatusChatJid(), tmuxSession);
         }
       }
 
