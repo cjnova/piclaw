@@ -119,7 +119,7 @@ You can gate the entire web UI behind a 6-digit TOTP challenge and optionally en
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `PICLAW_WEB_TOTP_SECRET` | _(empty)_ | Base32 TOTP secret. When set, `/login` requires a 6-digit code before issuing a `piclaw_session` cookie. Leave unset to keep the UI open. |
+| `PICLAW_WEB_TOTP_SECRET` | _(empty)_ | Base32 TOTP secret. When set, `/login` requires a 6-digit code before issuing a `piclaw_session` cookie. Leave unset to keep the UI open until you initialize TOTP with `/totp`. |
 | `PICLAW_WEB_PASSKEY_MODE` | `totp-fallback` | Passkey mode: `totp-fallback`, `passkey-only`, or `totp-only`. |
 | `PICLAW_WEB_TOTP_WINDOW` | `1` | TOTP step skew (number of 30s windows to accept on either side). |
 | `PICLAW_WEB_SESSION_TTL` | `604800` (7 days) | Session cookie lifetime in seconds. |
@@ -127,11 +127,35 @@ You can gate the entire web UI behind a 6-digit TOTP challenge and optionally en
 
 ### Setup flow (TOTP)
 
-1. Set `PICLAW_WEB_TOTP_SECRET` to a base32 string (e.g. output of `oathtool --totp -b`).
-2. Restart piclaw. Visiting the UI redirects to `/login`.
-3. Enter the 6-digit code from your authenticator app to receive an HTTP-only `piclaw_session` cookie.
-4. Sessions expire automatically after `PICLAW_WEB_SESSION_TTL` seconds or when you delete the cookie.
-5. To show a QR code for the configured secret, run `/totp enrol` in the web UI.
+You can either preconfigure `PICLAW_WEB_TOTP_SECRET` yourself or initialize it from the web UI.
+
+#### Web-first setup
+
+1. Leave `PICLAW_WEB_TOTP_SECRET` unset.
+2. Open the web UI and run `/totp`.
+3. Piclaw shows a single card containing a QR code, manual entry code, and a 6-digit confirmation input.
+4. Scan the QR (or paste the manual code) into your authenticator app.
+5. Enter a live 6-digit code into the same card and submit it.
+6. Only after successful confirmation does Piclaw commit the secret and establish a TOTP-authenticated browser session.
+7. If confirmation fails, nothing changes and the secret is not committed.
+
+#### Preconfigured setup
+
+1. Set `PICLAW_WEB_TOTP_SECRET` to a base32 string (for example, output from `oathtool --totp -b`).
+2. Restart piclaw.
+3. Visiting the UI redirects to `/login`.
+4. Enter the 6-digit code from your authenticator app to receive an HTTP-only `piclaw_session` cookie.
+5. Sessions expire automatically after `PICLAW_WEB_SESSION_TTL` seconds or when you delete the cookie.
+6. To re-display the active secret for another device, run `/totp` in the web UI.
+
+#### Reset flow
+
+1. Run `/totp reset <current-code>` in the web UI.
+2. Piclaw verifies the current active TOTP code first.
+3. If valid, Piclaw shows a single confirmation card containing the new QR/manual code plus a 6-digit confirmation input.
+4. Scan the new secret and confirm it from the same card.
+5. Only after successful confirmation does Piclaw commit the new secret and invalidate existing web sessions.
+6. If final confirmation fails, the old secret and current sessions remain unchanged.
 
 ### Passkey enrolment
 
@@ -144,8 +168,10 @@ You can gate the entire web UI behind a 6-digit TOTP challenge and optionally en
 - Multiple passkeys are supported per user; use `/passkey list` to review and `/passkey delete` to revoke.
 - Passkeys are bound to the hostname used during enrolment (RP ID).
 - Login attempts automatically try passkeys first when supported; TOTP remains as fallback unless you set `PICLAW_WEB_PASSKEY_MODE=passkey-only`.
+- `/passkey enrol` still requires a TOTP-authenticated session. Passkeys are a login factor; TOTP remains the enrollment/bootstrap factor.
 - All auth endpoints (`/auth/verify`, WebAuthn login, and enrol) are rate-limited per IP (10–20 attempts per 5 minutes).
 - After five failed TOTP attempts in five minutes, the IP is temporarily locked out for five minutes (with audit logs emitted on failures).
+- TOTP confirmation flows return explicit success/failure feedback and report whether the secret/session state changed.
 
 Internal automation still works via `/internal/post` as long as the request includes the configured secret in the `x-piclaw-internal-secret` header or the `Authorization` header.
 

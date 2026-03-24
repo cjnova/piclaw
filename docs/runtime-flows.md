@@ -6,10 +6,13 @@ This document covers the primary web‑first flows. WhatsApp is documented separ
 
 The web UI can be gated behind TOTP with optional WebAuthn passkeys. Passkeys are enrolled via the `/passkey enrol` slash command (after signing in with TOTP). The login page attempts passkeys automatically when supported and falls back to the TOTP form if none are available.
 
-- **Passkey enrolment**: `/passkey enrol` → one‑time link → WebAuthn registration
+- **Initial TOTP setup**: `/totp` → single card with QR + manual code + confirmation input → secret is committed only after successful confirmation
+- **Secondary-device setup**: `/totp` with an existing secret re-displays the same secret in the same single-card flow so another authenticator can be validated without rotating the secret
+- **Reset**: `/totp reset <current-code>` → verify current code → single card with new QR/manual code + confirmation input → new secret is committed only after successful confirmation, then existing web sessions are invalidated
+- **Passkey enrolment**: `/passkey enrol` → one-time link → WebAuthn registration
 - **Login**: passkey first (conditional mediation or first input focus), then TOTP fallback
 - **Multiple passkeys** are supported per user; manage with `/passkey list` and `/passkey delete`
-- Use `/totp enrol` to display a QR code for the configured TOTP secret
+- Every TOTP card submission returns explicit feedback describing validation success/failure and any changes performed
 
 ## Web UI → Agent → Web UI
 

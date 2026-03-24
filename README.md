@@ -258,12 +258,19 @@ Key environment variables:
 |---|---|---|
 | `PICLAW_WEB_PORT` | `8080` | Web UI port |
 | `PICLAW_WEB_TERMINAL_ENABLED` | `0` | Enable the authenticated web terminal |
-| `PICLAW_WEB_TOTP_SECRET` | _(empty)_ | Base32 TOTP secret; enables login gate |
+| `PICLAW_WEB_TOTP_SECRET` | _(empty)_ | Base32 TOTP secret; enables login gate (or leave unset and initialize with `/totp`) |
 | `PICLAW_WEB_PASSKEY_MODE` | `totp-fallback` | `totp-fallback`, `passkey-only`, or `totp-only` |
 | `PICLAW_ASSISTANT_NAME` | `PiClaw` | Display name in the UI |
 | `PICLAW_KEYCHAIN_KEY` | _(empty)_ | Master key for encrypted secret storage |
 
 For the full list, see [docs/configuration.md](docs/configuration.md).
+
+### Auth quick notes
+
+- Run `/totp` in the web UI to initialize TOTP with a single card that shows the QR code, manual entry code, and confirmation input.
+- The secret is committed only after that same card is confirmed with a valid live TOTP code.
+- `/totp reset <current-code>` stages a new secret, then commits it only after the new code is confirmed; existing web sessions are invalidated only after that succeeds.
+- `/passkey enrol` still requires a TOTP-authenticated session.
 
 ### Reverse proxies / tunnels
 
