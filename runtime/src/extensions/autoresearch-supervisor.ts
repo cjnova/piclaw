@@ -18,6 +18,7 @@ import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import { WORKSPACE_DIR } from "../core/config.js";
 import { postMessagesToolMessage } from "./messages-crud.js";
+import { deleteMessageByRowId } from "../db.js";
 
 // ── Paths ───────────────────────────────────────────────────────
 
@@ -237,6 +238,10 @@ function buildStatusCardBlock(
   };
 }
 
+/** Row ID of the last posted status card — used to delete it before posting a new one. */
+let lastStatusCardRowId: number | null = null;
+let statusCardBroadcast: ((type: string, data: unknown) => void) | null = null;
+
 function postStatusCard(
   experimentId: string,
   summary: ReturnType<typeof buildExperimentSummary>,
@@ -245,15 +250,30 @@ function postStatusCard(
   tmuxSession?: string,
 ): void {
   try {
+    // Delete previous card so only the latest one exists on the timeline
+    if (lastStatusCardRowId !== null) {
+      try {
+        deleteMessageByRowId(chatJid, lastStatusCardRowId);
+        statusCardBroadcast?.("interaction_deleted", { chat_jid: chatJid, ids: [lastStatusCardRowId] });
+      } catch { /* ok — may already be gone */ }
+      lastStatusCardRowId = null;
+    }
+
     const card = buildStatusCardBlock(experimentId, summary, status, tmuxSession);
     const fallback = `Autoresearch ${summary.name}: ${summary.totalRuns} runs, best ${summary.metricName}: ${summary.bestMetric !== null ? `${summary.bestMetric}${summary.metricUnit}` : "—"}`;
-    postMessagesToolMessage({
+    const result = postMessagesToolMessage({
       action: "post",
       type: "agent",
       chat_jid: chatJid,
       content: fallback,
       content_blocks: [card],
     }, chatJid);
+
+    // Track the row ID for next deletion
+    const rowId = (result.details as Record<string, unknown>)?.row_id;
+    if (typeof rowId === "number" && rowId > 0) {
+      lastStatusCardRowId = rowId;
+    }
   } catch (err) {
     console.warn("[autoresearch] Failed to post status card:", err);
   }
@@ -692,6 +712,7 @@ export const autoresearchSupervisor: ExtensionFactory = (pi: ExtensionAPI) => {
     const global = globalThis as { __PICLAW_BROADCAST_EVENT__?: (type: string, data: unknown) => void };
     if (typeof global.__PICLAW_BROADCAST_EVENT__ === "function") {
       broadcastEvent = global.__PICLAW_BROADCAST_EVENT__;
+      statusCardBroadcast = global.__PICLAW_BROADCAST_EVENT__;
     }
   } catch { /* ok */ }
 

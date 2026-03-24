@@ -16,6 +16,7 @@ import { join, resolve, dirname } from "node:path";
 import { Type } from "@sinclair/typebox";
 import { WORKSPACE_DIR } from "../core/config.js";
 import { postMessagesToolMessage } from "./messages-crud.js";
+import { deleteMessageByRowId } from "../db.js";
 // ── Paths ───────────────────────────────────────────────────────
 const VENDOR_DIR = resolve(dirname(import.meta.dir), "..", "vendor", "autoresearch");
 const SESSIONS_DIR = join(WORKSPACE_DIR, ".piclaw", "autoresearch-sessions");
@@ -190,17 +191,34 @@ function buildStatusCardBlock(experimentId, summary, status, tmuxSession) {
         },
     };
 }
+/** Row ID of the last posted status card — used to delete it before posting a new one. */
+let lastStatusCardRowId = null;
+let statusCardBroadcast = null;
 function postStatusCard(experimentId, summary, status, chatJid = "web:default", tmuxSession) {
     try {
+        // Delete previous card so only the latest one exists on the timeline
+        if (lastStatusCardRowId !== null) {
+            try {
+                deleteMessageByRowId(chatJid, lastStatusCardRowId);
+                statusCardBroadcast?.("interaction_deleted", { chat_jid: chatJid, ids: [lastStatusCardRowId] });
+            }
+            catch { /* ok — may already be gone */ }
+            lastStatusCardRowId = null;
+        }
         const card = buildStatusCardBlock(experimentId, summary, status, tmuxSession);
         const fallback = `Autoresearch ${summary.name}: ${summary.totalRuns} runs, best ${summary.metricName}: ${summary.bestMetric !== null ? `${summary.bestMetric}${summary.metricUnit}` : "—"}`;
-        postMessagesToolMessage({
+        const result = postMessagesToolMessage({
             action: "post",
             type: "agent",
             chat_jid: chatJid,
             content: fallback,
             content_blocks: [card],
         }, chatJid);
+        // Track the row ID for next deletion
+        const rowId = result.details?.row_id;
+        if (typeof rowId === "number" && rowId > 0) {
+            lastStatusCardRowId = rowId;
+        }
     }
     catch (err) {
         console.warn("[autoresearch] Failed to post status card:", err);
@@ -548,6 +566,7 @@ export const autoresearchSupervisor = (pi) => {
         const global = globalThis;
         if (typeof global.__PICLAW_BROADCAST_EVENT__ === "function") {
             broadcastEvent = global.__PICLAW_BROADCAST_EVENT__;
+            statusCardBroadcast = global.__PICLAW_BROADCAST_EVENT__;
         }
     }
     catch { /* ok */ }
