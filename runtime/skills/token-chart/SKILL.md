@@ -32,7 +32,8 @@ Generate a 7-day token usage chart (all chats) and post it to the web UI timelin
 
 ## Notes
 
-- The chart is rendered as an embedded SVG via markdown image syntax.
+- `--ipc` posts the chart as an inline SVG attachment via the IPC media mechanism.
+- Non-IPC output renders as embedded SVG via markdown image syntax.
 - Styling is handled by the web UI CSS (token-chart image selector).
 - Numbers are formatted using K/M in labels and summaries.
 - Uses the `token_usage` table by default; pass `--source sessions` (or `--sessions-dir`) to read session JSONL files.

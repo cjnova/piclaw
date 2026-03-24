@@ -103,6 +103,15 @@ function getArrayField(data: JsonRecord, key: string): unknown[] | undefined {
   return Array.isArray(value) ? value : undefined;
 }
 
+function resolveIpcChatJid(data: JsonRecord): string {
+  return (
+    getStringField(data, "chatJid") ||
+    getStringField(data, "chat_jid") ||
+    process.env.PICLAW_CHAT_JID ||
+    "web:default"
+  );
+}
+
 function isScheduleType(value: string): value is IpcScheduleType {
   return value === "cron" || value === "interval" || value === "once";
 }
@@ -275,10 +284,10 @@ export function stopIpcWatcher(): void {
  */
 export async function processMessageCommand(data: JsonRecord, deps: IpcDeps): Promise<void> {
   const type = getStringField(data, "type");
-  const chatJid = getStringField(data, "chatJid");
+  const chatJid = resolveIpcChatJid(data);
   const text = getStringField(data, "text") || "";
 
-  if (type !== "message" || !chatJid) return;
+  if (type !== "message") return;
 
   const media = getArrayField(data, "media") || [];
   const { mediaIds, contentBlocks, warnings } = await buildMediaPayloadFromIpcEntries(media);
@@ -313,8 +322,8 @@ export async function processTaskCommand(data: JsonRecord, deps: IpcDeps): Promi
     case "schedule_task": {
       const scheduleTypeValue = getStringField(data, "schedule_type");
       const scheduleValue = getStringField(data, "schedule_value");
-      const chatJid = getStringField(data, "chatJid");
-      if (!scheduleTypeValue || !scheduleValue || !chatJid || !isScheduleType(scheduleTypeValue)) return;
+      const chatJid = resolveIpcChatJid(data);
+      if (!scheduleTypeValue || !scheduleValue || !isScheduleType(scheduleTypeValue)) return;
 
       const taskKind = data.task_kind === "shell" || Boolean(data.command) ? "shell" : "agent";
       const nextRun = computeScheduledNextRun(scheduleTypeValue, String(scheduleValue));

@@ -36,7 +36,9 @@ const ipcEnabled = args.includes("--ipc");
 const nudgeEnabled = args.includes("--nudge");
 const chatJidIndex = args.indexOf("--chat-jid");
 const chatJidCandidate = chatJidIndex >= 0 ? args[chatJidIndex + 1] : undefined;
-const chatJid = chatJidCandidate && !chatJidCandidate.startsWith("--") ? chatJidCandidate : "web:default";
+const chatJid = chatJidCandidate && !chatJidCandidate.startsWith("--")
+  ? chatJidCandidate
+  : process.env.PICLAW_CHAT_JID || "web:default";
 const dataDir = process.env.PICLAW_DATA || "/workspace/.piclaw/data";
 const messagesDir = join(dataDir, "ipc", "messages");
 const mediaDir = join(dataDir, "ipc", "media");

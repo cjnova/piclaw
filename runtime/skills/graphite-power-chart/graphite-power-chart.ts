@@ -20,7 +20,7 @@
  */
 
 import { mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
+import { basename, join } from "path";
 
 const args = process.argv.slice(2);
 
@@ -81,9 +81,10 @@ const unitSuffix = unit ? ` ${unit}` : "";
 
 const ipcEnabled = args.includes("--ipc");
 const nudgeEnabled = args.includes("--nudge");
-const chatJid = getArg("--chat-jid") || "web:default";
+const chatJid = getArg("--chat-jid") || process.env.PICLAW_CHAT_JID || "web:default";
 const dataDir = process.env.PICLAW_DATA || "/workspace/.piclaw/data";
 const messagesDir = join(dataDir, "ipc", "messages");
+const mediaDir = join(dataDir, "ipc", "media");
 
 const chooseResamplePeriod = (hours: number): string => {
   if (hours <= 3) return "1min";
@@ -314,12 +315,8 @@ const svg = `<?xml version="1.0" encoding="UTF-8"?>
   ${xLabels}
 </svg>`;
 
-const dataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
-
 const resampleLabel = resamplePeriod ? ` (avg @ ${resamplePeriod})` : "";
 const summaryLines = [
-  `![power-chart](${dataUrl})`,
-  "",
   `${seriesLabel} for ${displayName} — last ${targetHours}h${resampleLabel}`,
   `Avg ${formatValueWithUnit(avgValue)} • Min ${formatValueWithUnit(minValue)} • Max ${formatValueWithUnit(maxValue)} • Last ${formatValueWithUnit(lastValue)}`,
 ];
@@ -328,10 +325,27 @@ const message = summaryLines.join("\n");
 
 if (ipcEnabled) {
   mkdirSync(messagesDir, { recursive: true });
+  mkdirSync(mediaDir, { recursive: true });
+  const svgPath = join(mediaDir, `graphite-power-${Date.now()}.svg`);
+  writeFileSync(svgPath, svg, "utf8");
   const outPath = join(messagesDir, `msg_${Date.now()}_graphite_power.json`);
-  const payloadOut = { type: "message", chatJid, text: message, noNudge: !nudgeEnabled };
+  const payloadOut = {
+    type: "message",
+    chatJid,
+    text: message,
+    noNudge: !nudgeEnabled,
+    media: [
+      {
+        path: svgPath,
+        content_type: "image/svg+xml",
+        filename: basename(svgPath),
+        inline: true,
+      },
+    ],
+  };
   writeFileSync(outPath, JSON.stringify(payloadOut, null, 2));
   process.stdout.write(outPath);
 } else {
-  process.stdout.write(message);
+  const dataUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+  process.stdout.write([`![power-chart](${dataUrl})`, "", ...summaryLines].join("\n"));
 }

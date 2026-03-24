@@ -55,9 +55,13 @@ test("token chart --ipc writes JSON message safely", () => {
   expect(payload.type).toBe("message");
   expect(payload.chatJid).toBe("web:default");
   expect(payload.text).toContain("Token usage (all chats) — last 1 days");
-  expect(payload.text).toContain("![token-chart](data:image/svg+xml;base64,");
+  expect(payload.text).not.toContain("data:image/svg+xml;base64,");
   expect(payload.noNudge).toBe(true);
-  expect(payload.media).toBeUndefined();
+  expect(Array.isArray(payload.media)).toBe(true);
+  expect(payload.media[0]).toMatchObject({
+    content_type: "image/svg+xml",
+    inline: true,
+  });
 
   rmSync(base, { recursive: true, force: true });
 });

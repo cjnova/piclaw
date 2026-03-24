@@ -105,6 +105,21 @@ test("IPC message sends to web chat", async () => {
   expect(msg.text).toBe("hello");
 });
 
+test("IPC message falls back to PICLAW_CHAT_JID when chatJid is omitted", async () => {
+  const restore = setEnv({ PICLAW_CHAT_JID: "web:test-chat" });
+  const start = sentMessages.length;
+  try {
+    await ipc.processMessageCommand({ type: "message", text: "hello env" }, deps);
+    await waitFor(() => sentMessages.length > start);
+  } finally {
+    restore();
+  }
+
+  const msg = sentMessages[sentMessages.length - 1];
+  expect(msg.jid).toBe("web:test-chat");
+  expect(msg.text).toBe("hello env");
+});
+
 test("IPC message with media attaches files and supports inline rendering hints", async () => {
   const dataDir = config.DATA_DIR;
   const mediaPath = join(dataDir, `ipc_media_${Date.now()}.svg`);

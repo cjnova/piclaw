@@ -36,6 +36,6 @@ bun /workspace/.pi/skills/graphite-power-chart/graphite-power-chart.ts \
 - Default window is 12 hours.
 - Resampling is auto-selected based on window length using Graphite `summarize(..., "avg")`.
 - Use `--resample raw` to disable resampling.
-- Output is posted to the web timeline using the IPC message bus (no push by default).
+- `--ipc` posts the chart to the web timeline as an inline SVG attachment (no push by default).
 - Default Graphite base URL: `http://192.168.1.250:8086` (override with `--base-url` or `GRAPHITE_BASE_URL`).
 - Set a full `--metric` to adapt to other data sources.

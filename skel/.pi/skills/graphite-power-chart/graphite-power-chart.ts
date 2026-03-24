@@ -13,7 +13,7 @@
  * - Test sine-wave generator for offline visual checks.
  */
 import { mkdirSync, writeFileSync } from "fs";
-import { join, dirname } from "path";
+import { basename, join, dirname } from "path";
 
 
 // --help support
@@ -207,9 +207,10 @@ const unitSuffix = unit ? ` ${unit}` : "";
 
 const ipcEnabled = args.includes("--ipc");
 const nudgeEnabled = args.includes("--nudge");
-const chatJid = getArg("--chat-jid") || "web:default";
+const chatJid = getArg("--chat-jid") || process.env.PICLAW_CHAT_JID || "web:default";
 const dataDir = process.env.PICLAW_DATA || "/workspace/.piclaw/data";
 const messagesDir = join(dataDir, "ipc", "messages");
+const mediaDir = join(dataDir, "ipc", "media");
 
 /**
  * Choose an appropriate Graphite resample period for the time span.
@@ -835,8 +836,26 @@ const message = summaryLines.join("\n");
 
 if (ipcEnabled) {
   mkdirSync(messagesDir, { recursive: true });
+  mkdirSync(mediaDir, { recursive: true });
+  const svgPath = outputSvg || join(mediaDir, `graphite-power-${Date.now()}.svg`);
+  if (!outputSvg) {
+    writeFileSync(svgPath, svg);
+  }
   const outPath = join(messagesDir, `msg_${Date.now()}_graphite_power.json`);
-  const payloadOut = { type: "message", chatJid, text: message, noNudge: !nudgeEnabled };
+  const payloadOut = {
+    type: "message",
+    chatJid,
+    text: message,
+    noNudge: !nudgeEnabled,
+    media: [
+      {
+        path: svgPath,
+        content_type: "image/svg+xml",
+        filename: basename(svgPath),
+        inline: true,
+      },
+    ],
+  };
   writeFileSync(outPath, JSON.stringify(payloadOut, null, 2));
   process.stdout.write(outPath);
 } else {
