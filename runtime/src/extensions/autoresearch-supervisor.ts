@@ -373,11 +373,13 @@ async function startAutoresearch(
   // Build tmux command
   const tmuxSession = `${TMUX_SESSION_PREFIX}${id}`;
   const model = params.model || "";
-  const modelArgs = model ? `--model ${model}` : "";
+  const modelArgs = model ? `--model ${JSON.stringify(model)}` : "";
+  const extPath = join(VENDOR_DIR, "extensions", "pi-autoresearch", "index.ts");
+  const skillPath = join(VENDOR_DIR, "skills", "autoresearch-create");
+  const escapedPrompt = params.prompt.replace(/"/g, '\\"');
   const piCommand = [
-    `export PI_AGENT_DIR="${piAgentDir}"`,
     `cd ${JSON.stringify(projectDir)}`,
-    `exec pi ${modelArgs} "/skill:autoresearch-create ${params.prompt}"`,
+    `exec pi ${modelArgs} --extension ${JSON.stringify(extPath)} --skill ${JSON.stringify(skillPath)} --session-dir ${JSON.stringify(join(sessionDir, "sessions"))} "/skill:autoresearch-create ${escapedPrompt}"`,
   ].join(" && ");
 
   const tmuxResult = spawnSync("tmux", [
