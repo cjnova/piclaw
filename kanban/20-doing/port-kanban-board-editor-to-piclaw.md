@@ -1,7 +1,7 @@
 ---
 id: port-kanban-board-editor-to-piclaw
 title: Port kanban board editor from VS Code extension to piclaw web pane
-status: next
+status: doing
 priority: medium
 created: 2026-03-24
 updated: 2026-03-24
