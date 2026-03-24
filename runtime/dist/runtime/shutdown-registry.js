@@ -6,10 +6,13 @@
  * requestGracefulShutdown() to trigger the same orderly teardown
  * (queue drain → session dispose → web stop → process.exit) that SIGINT uses.
  *
- * If no handler has been registered yet (e.g. during tests), the fallback
- * is a simple delayed process.exit(0).
+ * For agent-initiated exits (exit_process tool), the actual shutdown is
+ * **deferred** until the current turn completes and is persisted to the DB.
+ * Call markPendingShutdown() during a tool call, then checkPendingShutdown()
+ * from finalizeSuccessfulRun() after the response is committed.
  */
 let registeredShutdown = null;
+let pendingShutdownReason = null;
 /**
  * Register the graceful shutdown handler.
  * Called once by bootstrapRuntime() after all services are wired.
@@ -18,17 +21,12 @@ export function registerShutdownHandler(handler) {
     registeredShutdown = handler;
 }
 /**
- * Request a graceful shutdown of the entire runtime.
+ * Request an immediate graceful shutdown of the entire runtime.
  *
- * If the runtime registered a handler via registerShutdownHandler(), it is
- * invoked (same path as SIGINT). Otherwise falls back to a simple
- * process.exit(0) after a short delay.
- *
- * @param reason Human-readable reason (logged).
- * @param delayMs Delay before fallback exit (only used when no handler is registered).
+ * Used by /exit slash command (which runs outside the agent turn).
+ * For exit_process tool (mid-turn), use markPendingShutdown() instead.
  */
 export function requestGracefulShutdown(reason, delayMs = 800) {
-    // Allow tests to intercept without touching process.exit
     const testScheduler = globalThis.__PICLAW_EXIT_SCHEDULER__;
     if (typeof testScheduler === "function") {
         testScheduler();
@@ -39,7 +37,34 @@ export function requestGracefulShutdown(reason, delayMs = 800) {
         void registeredShutdown(`exit_process: ${reason}`);
         return;
     }
-    // Fallback: no runtime handler registered (standalone / test).
     console.log(`[shutdown] No runtime handler registered; scheduling process.exit in ${delayMs}ms — ${reason}`);
     setTimeout(() => process.exit(0), delayMs);
+}
+/**
+ * Mark that a graceful shutdown should happen after the current turn
+ * completes and is persisted. Called by the exit_process tool.
+ */
+export function markPendingShutdown(reason) {
+    pendingShutdownReason = reason;
+    console.log(`[shutdown] Pending shutdown marked — will execute after turn completes: ${reason}`);
+}
+/**
+ * Check if a pending shutdown was requested. If so, execute it.
+ * Called from finalizeSuccessfulRun() after the response is committed to the DB.
+ */
+export function checkPendingShutdown() {
+    if (!pendingShutdownReason)
+        return;
+    const reason = pendingShutdownReason;
+    pendingShutdownReason = null;
+    // Short delay to ensure SSE broadcast of the final response reaches clients
+    setTimeout(() => {
+        requestGracefulShutdown(reason);
+    }, 500);
+}
+/**
+ * Check if a shutdown is pending (for status reporting).
+ */
+export function isPendingShutdown() {
+    return pendingShutdownReason !== null;
 }

@@ -20,6 +20,7 @@ import { broadcastInteractionUpdated } from "../interaction-service.js";
 import { storeAgentTurn } from "../agent-message-store.js";
 import { resolveThreadId, resolveThreadRootId } from "../threading.js";
 import { createUuid } from "../../../utils/ids.js";
+import { checkPendingShutdown } from "../../../runtime/shutdown-registry.js";
 function parseLeadingAgentMention(content) {
     const match = content.match(/^\s*@([a-zA-Z0-9][a-zA-Z0-9_-]{0,31})(?:\s+([\s\S]*))?$/);
     if (!match)
@@ -713,6 +714,9 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         }
         // Start the next queued follow-up only after this turn has fully finalized.
         materializeNextDeferredFollowup();
+        // If the exit_process tool was called during this turn, trigger graceful
+        // shutdown now that the response has been persisted and broadcast.
+        checkPendingShutdown();
     };
     const output = await channel.agentPool.runAgent(prompt, chatJid, {
         timeoutMs,

@@ -14,7 +14,7 @@
  */
 import { Type } from "@sinclair/typebox";
 import { killTrackedProcesses } from "../utils/process-tracker.js";
-import { requestGracefulShutdown } from "../runtime/shutdown-registry.js";
+import { markPendingShutdown } from "../runtime/shutdown-registry.js";
 const ExitProcessSchema = Type.Object({
     reason: Type.Optional(Type.String({ description: "Human-readable reason for the exit (logged, not required)." })),
 });
@@ -36,13 +36,12 @@ export const exitProcess = (pi) => {
         parameters: ExitProcessSchema,
         async execute(_toolCallId, params) {
             const reason = params.reason?.trim() || "Agent-initiated restart";
-            console.log(`[exit-process] Killing tracked subprocesses and requesting graceful shutdown — reason: ${reason}`);
+            console.log(`[exit-process] Killing tracked subprocesses and marking pending shutdown — reason: ${reason}`);
             const killed = killTrackedProcesses();
-            // Schedule the shutdown slightly in the future so the tool result can
-            // propagate back through the agent turn and get persisted to the DB.
-            setTimeout(() => {
-                requestGracefulShutdown(reason);
-            }, 500);
+            // Mark the shutdown as pending. The actual exit happens after
+            // finalizeSuccessfulRun persists the agent's response to the DB
+            // and broadcasts it to connected clients.
+            markPendingShutdown(reason);
             return {
                 content: [{ type: "text", text: `Graceful shutdown scheduled. ${killed} subprocess${killed === 1 ? "" : 'es'} killed. Supervisor will restart piclaw. Reason: ${reason}` }],
                 details: {
