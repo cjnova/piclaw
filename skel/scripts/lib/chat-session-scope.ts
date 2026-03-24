@@ -27,7 +27,6 @@ interface ScopeRow {
   branch_id: string | null;
   parent_branch_id: string | null;
   agent_name: string | null;
-  display_name: string | null;
   created_at: string | null;
   updated_at: string | null;
   archived_at: string | null;
@@ -70,7 +69,6 @@ export function resolveSessionScope(db: Database, requestedChatJid: string): Ses
             cb.branch_id AS branch_id,
             cb.parent_branch_id AS parent_branch_id,
             cb.agent_name AS agent_name,
-            cb.display_name AS display_name,
             cb.created_at AS created_at,
             cb.updated_at AS updated_at,
             cb.archived_at AS archived_at,
@@ -92,7 +90,7 @@ export function resolveSessionScope(db: Database, requestedChatJid: string): Ses
     branchId: row.branch_id,
     parentBranchId: row.parent_branch_id,
     agentName: row.agent_name,
-    displayName: row.display_name,
+    displayName: null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
