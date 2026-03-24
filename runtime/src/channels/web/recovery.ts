@@ -69,8 +69,9 @@ const defaultStore: WebRecoveryStore = {
 /**
  * Maximum age (ms) at which we log inflight markers as stale.
  *
- * We still replay stale markers (rollback + resume) to preserve user turns,
- * but emit a warning so operators can spot pathological restart loops.
+ * We replay all interrupted no-output markers to preserve pending user turns,
+ * but emit a stronger warning for very old markers so operators can spot
+ * pathological restart loops.
  */
 const MAX_INFLIGHT_AGE_MS = 30 * 60 * 1000;
 
@@ -125,21 +126,12 @@ export function recoverInflightRuns(
           continue;
         }
 
-        // Very recent inflight with no output: almost certainly a deliberate
-        // restart (e.g. reload command) rather than a crash. The cursor was
-        // already advanced by beginChatRun; rolling it back would cause the
-        // same message to be re-fed to the agent, creating a duplicate
-        // response and potentially a restart loop if the agent's response
-        // triggers another reload.
-        //
-        // Clear the inflight marker and leave the cursor advanced. The user's
-        // message was "consumed" — the agent just didn't get to respond.
         console.log(
           `[web] Inflight run for ${inflight.chatJid} (started ${inflight.startedAt}) ` +
             `has no agent output yet (${Math.round(inflightAge / 1000)}s old) — ` +
-            "clearing marker without rollback to avoid duplicate processing"
+            "rolling back and replaying to preserve the pending user turn"
         );
-        store.clearInflightMarker(inflight.chatJid);
+        store.rollbackInflightRun(inflight.chatJid, inflight.prevTs);
       }
     });
   } catch (err) {
@@ -147,22 +139,16 @@ export function recoverInflightRuns(
     return;
   }
 
-  // Collect the set of chats that were actually rolled back (stale inflight
-  // with no output). Only these need a recovery processChat enqueue.
+  // Collect the set of chats that were actually rolled back (all no-output
+  // inflight runs). Only these need a recovery processChat enqueue.
   const rolledBack = new Set<string>();
   for (const { inflight, replyState } of decisions) {
     if (replyState === "none") {
-      const inflightAge = (typeof ctx.now === "function" ? ctx.now() : now) - new Date(inflight.startedAt).getTime();
-      if (inflightAge > MAX_INFLIGHT_AGE_MS) {
-        rolledBack.add(inflight.chatJid);
-      }
+      rolledBack.add(inflight.chatJid);
     }
   }
 
   for (const { inflight, replyState } of decisions) {
-    // Re-enqueue a processChat task only for runs that were rolled back
-    // (stale inflight with no output). Fresh inflights were cleared without
-    // rollback to avoid duplicate processing / restart loops.
     if (replyState === "none" && rolledBack.has(inflight.chatJid)) {
       console.log(`[web] Recovering interrupted run for ${inflight.chatJid} (started ${inflight.startedAt})`);
       // Reuse the same stable resume key used by resume_pending IPC so
