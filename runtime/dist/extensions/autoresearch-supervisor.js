@@ -170,7 +170,7 @@ function buildStatusCardBlock(experimentId, summary, status, tmuxSession) {
         { type: "FactSet", facts },
     ];
     if (tmuxSession && status === "running") {
-        body.push({ type: "TextBlock", text: `\`tmux attach -t ${tmuxSession}\``, spacing: "Small", isSubtle: true });
+        body.push({ type: "TextBlock", text: `tmux attach -t ${tmuxSession}`, spacing: "Small", fontType: "Monospace", size: "Small" });
     }
     const actions = [];
     if (status === "running") {
