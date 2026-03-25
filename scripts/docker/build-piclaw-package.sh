@@ -52,7 +52,7 @@ GLOBAL_LOCK="$BUN_INSTALL/install/global/bun.lock"
 PI_AGENT_VERSION="$(jq -r '.dependencies["@mariozechner/pi-coding-agent"] // "0.58.3"' package.json)"
 printf '{"dependencies":{"@mariozechner/pi-coding-agent":"%s","piclaw":"%s"}}\n' "$PI_AGENT_VERSION" "$TARBALL" | sudo tee "$GLOBAL_PKG" >/dev/null
 sudo rm -f "$GLOBAL_LOCK"
-sudo BUN_INSTALL="$BUN_INSTALL" "$BUN_INSTALL/bin/bun" install -g "$TARBALL" --registry https://registry.npmjs.org
+sudo BUN_INSTALL="$BUN_INSTALL" "$BUN_INSTALL/bin/bun" install -g "$TARBALL" --registry https://registry.npmjs.org --ignore-scripts
 
 rm -f "$TARBALL"
 rm -rf "$PACK_DIR"
