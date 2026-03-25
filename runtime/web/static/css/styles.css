@@ -3158,24 +3158,44 @@ body {
 }
 
 .compose-current-agent-label {
+    appearance: none;
+    border: 1px solid transparent;
+    background: transparent;
     font-family: var(--font-mono, monospace);
     font-size: 11px;
+    font-weight: 600;
     line-height: 1;
     color: var(--text-secondary);
     cursor: pointer;
-    padding: 2px 0;
+    padding: 5px 10px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: min(28vw, 180px);
-    opacity: 0.85;
-    transition: color var(--ui-transition-fast), opacity var(--ui-transition-fast);
+    border-radius: var(--radius-full);
+    box-shadow: none;
+    opacity: 0.95;
+    transition: background-color var(--ui-transition-fast), color var(--ui-transition-fast), border-color var(--ui-transition-fast), opacity var(--ui-transition-fast), transform var(--ui-transition-fast);
 }
 
-.compose-current-agent-label.active,
-.compose-current-agent-label:hover {
-    color: var(--accent-color);
+.compose-current-agent-label.active {
+    color: var(--accent-contrast-text, #0f1419);
+    background: var(--accent-color);
+    border-color: var(--accent-color);
     opacity: 1;
+}
+
+.compose-current-agent-label:hover,
+.compose-current-agent-label:focus-visible {
+    opacity: 1;
+    outline: none;
+}
+
+.compose-current-agent-label.active:hover,
+.compose-current-agent-label.active:focus-visible {
+    color: var(--accent-contrast-text, #0f1419);
+    background: color-mix(in srgb, var(--accent-color) 90%, var(--bg-hover));
+    border-color: color-mix(in srgb, var(--accent-color) 92%, black 8%);
 }
 
 .compose-mention-btn {
