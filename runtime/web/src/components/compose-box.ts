@@ -3,8 +3,7 @@ import { html, useRef, useState, useEffect, useCallback, useMemo } from '../vend
 import { findPopupTypeaheadMatch, isPopupTypeaheadKey, resolvePopupTypeaheadMatch, updatePopupTypeaheadBuffer } from '../ui/popup-typeahead.js';
 import { getAgentModels, sendAgentMessage, uploadMedia } from '../api.js';
 import { getLocalStorageItem, setLocalStorageItem } from '../utils/storage.js';
-import { buildMentionValue, filterMentionAgents, getVisibleMentionAgents, parseMentionAutocompleteQuery } from '../ui/agent-mentions.js';
-import { shouldShowComposeAgentAffordance } from '../ui/compose-layout.js';
+import { buildMentionValue, filterMentionAgents, parseMentionAutocompleteQuery } from '../ui/agent-mentions.js';
 import { shouldOpenSessionSwitcherFromBlankCompose } from '../ui/compose-session-switcher.js';
 import { formatBranchPickerLabel, formatCurrentBranchLabel } from '../ui/branch-lifecycle.js';
 import { FilePill } from './file-pill.js';
@@ -255,12 +254,6 @@ export function ComposeBox({
 
     const mentionAgents = (Array.isArray(activeChatAgents) ? activeChatAgents : [])
         .filter((chat) => !chat?.archived_at);
-    const visibleMentionAgents = getVisibleMentionAgents(mentionAgents, { currentChatJid, limit: 4 });
-    const showAgentAffordance = !searchMode && shouldShowComposeAgentAffordance({
-        footerWidth,
-        visibleAgentCount: visibleMentionAgents.length,
-        hasContextIndicator: Boolean(contextUsage && contextUsage.percent != null),
-    });
     const currentSessionAgent = (() => {
         for (const chat of Array.isArray(activeChatAgents) ? activeChatAgents : []) {
             const chatJid = typeof chat?.chat_jid === 'string' ? chat.chat_jid.trim() : '';
@@ -544,15 +537,6 @@ export function ComposeBox({
             console.warn('Failed to restore session:', error);
             requestAnimationFrame(() => textareaRef.current?.focus());
         }
-    };
-
-    const handleAgentChipClick = (agent) => {
-        const nextChatJid = typeof agent?.chat_jid === 'string' ? agent.chat_jid.trim() : '';
-        if (nextChatJid && typeof onSwitchChat === 'function') {
-            onSwitchChat(nextChatJid);
-            return;
-        }
-        acceptMention(agent);
     };
 
     const findFirstEnabledPopupIndex = (items) => {
@@ -1371,7 +1355,7 @@ export function ComposeBox({
                 window.removeEventListener('resize', scheduleFooterResize);
             }
         };
-    }, [searchMode, activeModel, visibleMentionAgents.length, contextUsage?.percent]);
+    }, [searchMode, activeModel, currentSessionAgent?.agent_name, showSessionSwitcherButton, contextUsage?.percent]);
 
     // Auto-resize textarea
     const handleInput = (e) => {
@@ -1751,30 +1735,15 @@ export function ComposeBox({
                     </div>
                     `}
                     <div class="compose-actions ${searchMode ? 'search-mode' : ''}">
-                    ${showAgentAffordance && html`
-                        <div class="compose-agent-hints compose-agent-hints-inline" title="Active chat agents you can mention with @name">
-                            ${visibleMentionAgents.map((agent) => {
-                                const isCurrentAgent = Boolean(agent?.chat_jid && agent.chat_jid === currentChatJid);
-                                return html`
-                                <button
-                                    key=${agent.chat_jid || agent.agent_name}
-                                    type="button"
-                                    class=${`compose-agent-chip${isCurrentAgent ? ' active' : ''}`}
-                                    onClick=${() => handleAgentChipClick(agent)}
-                                    title=${`${agent.chat_jid || 'Active agent'} — switch to @${agent.agent_name}`}
-                                >
-                                    <span class="compose-agent-chip-handle">@${agent.agent_name}</span>
-                                </button>
-                            `;})}
-                        </div>
-                    `}
                     ${showSessionSwitcherButton && html`
                         ${currentSessionAgent?.agent_name && html`
-                            <span
+                            <button
+                                type="button"
                                 class="compose-current-agent-label active"
                                 title=${currentSessionAgent.chat_jid || currentChatJid}
+                                aria-label=${`Manage sessions for @${currentSessionAgent.agent_name}`}
                                 onClick=${toggleSessionPopup}
-                            >@${currentSessionAgent.agent_name}</span>
+                            >@${currentSessionAgent.agent_name}</button>
                         `}
                         <button
                             ref=${sessionButtonRef}
