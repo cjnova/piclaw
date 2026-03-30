@@ -1,4 +1,4 @@
-# Reverse proxy and Cloudflare Tunnel setup
+# Reverse proxy and tunnel setup
 
 This page documents how to run piclaw's web UI behind a reverse proxy or tunnel.
 

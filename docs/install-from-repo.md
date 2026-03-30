@@ -1,4 +1,4 @@
-# Install PiClaw directly from the GitHub repository
+# Install from the GitHub repository
 
 > Experimental: this Bun repo-install path works, but it is not yet the main recommended production install route.
 

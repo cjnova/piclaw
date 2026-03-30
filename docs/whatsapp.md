@@ -1,4 +1,4 @@
-# WhatsApp integration (optional)
+# WhatsApp integration
 
 The primary interface is the web UI. WhatsApp is a secondary, opt‑in channel for chat‑style access.
 

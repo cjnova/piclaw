@@ -1,4 +1,4 @@
-# `piclaw` architecture
+# Architecture
 
 This document outlines the main components, how they fit together, and where the code lives.
 

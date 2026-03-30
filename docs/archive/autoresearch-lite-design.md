@@ -1,4 +1,4 @@
-# Piclaw-native autoresearch-lite design
+# PiClaw-native autoresearch-lite design
 
 ## Goal
 

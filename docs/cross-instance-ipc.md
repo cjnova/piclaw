@@ -1,4 +1,4 @@
-# Cross-Instance IPC (Experimental)
+# Cross-instance IPC (experimental)
 
 > **Status:** Experimental. Implemented behind `PICLAW_REMOTE_INTEROP_ENABLED` (default off).
 >

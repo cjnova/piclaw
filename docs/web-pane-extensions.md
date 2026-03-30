@@ -1,4 +1,4 @@
-# Custom WebPaneExtension Guide
+# Web pane extensions
 
 This document explains how to create a custom pane extension for the piclaw
 web UI. Pane extensions provide content-area UI components — editors, viewers,
