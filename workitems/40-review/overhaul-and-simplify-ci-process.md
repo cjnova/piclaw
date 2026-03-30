@@ -1,7 +1,7 @@
 ---
 id: overhaul-and-simplify-ci-process
 title: Overhaul and simplify the CI process
-status: doing
+status: review
 priority: high
 created: 2026-03-30
 updated: 2026-03-30
@@ -74,6 +74,21 @@ Why Path B is weaker:
 - [ ] Follow-up complexity is tracked explicitly instead of left implicit.
 
 ## Updates
+
+### 2026-03-30
+- Lane change: `20-doing` → `40-review` during board cleanup because the first CI simplification tranche is now implemented on `main`.
+- Tranche delivered for review:
+  - added canonical repo-owned CI entry points: `bun run ci:fast`, `make ci-fast`, `bun run ci:publish-smoke`, `make publish-smoke`
+  - simplified `.github/workflows/ci.yml` to install dependencies and call `make ci-fast`
+  - simplified `.github/workflows/publish.yml` so both AMD64 and ARM64 smoke checks call `make publish-smoke` instead of duplicating the shell-script wrapper block inline
+  - updated `docs/development.md` and `docs/release.md` so local/release guidance references the same repo-owned commands
+- Validation evidence for this tranche:
+  - `bun run ci:fast` → exit `0`
+  - YAML syntax parsed successfully for `.github/workflows/ci.yml` and `.github/workflows/publish.yml`
+  - `make -n publish-smoke IMAGE_REF=test PLATFORM=linux/amd64 EXPECTED_BUN_VERSION=1 EXPECTED_RESTIC_VERSION=1` expands to the canonical repo-owned smoke command as intended
+  - full local `make publish-smoke ...` execution remains environment-limited in this container because `docker` is not available here, so runtime coverage for the smoke itself remains delegated to GitHub runners / Docker-capable environments
+- Remaining publish-specific scope has been split into follow-up ticket `workitems/20-doing/refine-publish-workflow-boundaries-and-cleanup.md` so this ticket can be reviewed as a completed simplification tranche rather than stay open-ended.
+- Quality: ★★★★☆ 8/10 (problem: 2, scope: 2, test: 2, deps: 1, risk: 1)
 
 ### 2026-03-30
 - First CI simplification tranche landed on branch `feature/ci-process-simplification` and was later recovered onto `main` during branch cleanup.

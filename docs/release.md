@@ -26,6 +26,11 @@ EXPECTED_RESTIC_VERSION=$(tr -d '[:space:]' < RESTIC_VERSION) \
 make publish-smoke
 ```
 
+Boundary note:
+- publish smoke is intentionally repo-owned (`make publish-smoke`)
+- release/tag/workflow/package pruning remains GitHub-native in `.github/workflows/publish.yml`
+  because it depends directly on Actions context and GitHub APIs
+
 ## Release naming
 
 Each release gets a cult/classic movie name. See the [cut-release skill](/workspace/.pi/skills/cut-release/SKILL.md) for the full convention and workflow.

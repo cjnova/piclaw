@@ -15,6 +15,9 @@ env:
   BUN_PREFER_BASELINE: "always"
 
 jobs:
+  # Repo-owned boundary: publish smoke already routes through `make publish-smoke`.
+  # Workflow-native boundary: reading pinned runtime versions from repo files stays here
+  # because the values are consumed immediately as job outputs inside GitHub Actions.
   resolve-runtime-versions:
     name: Read pinned runtime versions
     runs-on: ubuntu-latest
@@ -45,6 +48,7 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+  # Build/push remains workflow-native because it is GitHub-runner-specific Docker orchestration.
   # Build AMD64 image on native Intel runner
   build-amd64:
     name: Build AMD64 image
@@ -198,6 +202,9 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
 
+  # GitHub-native cleanup boundary: release/tag pruning stays in workflow-local
+  # `github-script` blocks because it depends directly on GitHub Actions context and
+  # GitHub REST APIs, with little benefit from repo-local wrapper scripts.
   prune-releases:
     name: Prune old releases
     runs-on: ubuntu-latest
@@ -254,6 +261,8 @@ jobs:
               }
             }
 
+  # GitHub-native cleanup boundary: workflow-run pruning remains in YAML for the
+  # same reason as release/tag pruning — it is only meaningful inside Actions.
   cleanup:
     name: Cleanup old runs and tags
     runs-on: ubuntu-latest
@@ -334,6 +343,9 @@ jobs:
 
             core.info('Cleanup completed');
 
+  # GitHub-native cleanup boundary: GHCR package pruning remains in `github-script`
+  # because it uses GitHub package APIs directly and is not meaningfully reusable
+  # as a local repo command.
   prune-docker-images:
     name: Prune old Docker images
     runs-on: ubuntu-latest

@@ -1,7 +1,7 @@
 ---
 id: repair-clean-worktree-tooling-and-reload-contract
 title: Repair clean-worktree tooling and reload contract
-status: doing
+status: review
 priority: high
 created: 2026-03-29
 updated: 2026-03-30
@@ -92,6 +92,26 @@ Why this is weaker:
 - [ ] Evidence and commands are recorded in `## Updates`.
 
 ## Updates
+
+### 2026-03-30
+- Lane change: `20-doing` → `40-review` during board cleanup because the implementation evidence now covers the ticket’s intended Path A scope.
+- Review focus from here: confirm the recorded evidence is sufficient for closeout rather than continue treating this as an active implementation ticket.
+- Existing evidence carried forward into review:
+  - `runtime/scripts/repo-dev-command.ts` now runs repo-owned `build`, `lint`, and `typecheck` through deterministic repo-local tool paths instead of cwd-sensitive bare `tsc` / `eslint`
+  - root `package.json` scripts were updated to call that helper
+  - `Makefile` `local-install` now supports `PICLAW_SKIP_RESTART=1`
+  - focused coverage landed in `runtime/test/scripts/repo-dev-command.test.ts`
+  - `cd runtime && bun test test/scripts/vendor-workflow.test.ts test/scripts/repo-dev-command.test.ts` → `5 pass, 0 fail`
+  - repo checkout: `bun run lint` and `bun run typecheck` → exit `0`
+  - fresh detached worktree with `node_modules/` removed each time:
+    - `bun run lint` → exit `0`
+    - `bun run typecheck` → exit `0`
+    - `bun run build:web` → exit `0`
+  - non-destructive reload-contract smoke in the authoritative container environment:
+    - `cd /workspace/piclaw && PICLAW_SKIP_RESTART=1 make local-install` → exit `0`
+    - install completed at `/usr/local/lib/bun/install/global/node_modules/piclaw`
+    - restart was explicitly skipped and logged as `[local-install] Skipping restart (PICLAW_SKIP_RESTART=1)`
+- Quality: ★★★★☆ 8/10 (problem: 2, scope: 2, test: 2, deps: 1, risk: 1)
 
 ### 2026-03-30
 - Continued active implementation on branch `feature/repair-clean-worktree-tooling-and-reload-contract`.
