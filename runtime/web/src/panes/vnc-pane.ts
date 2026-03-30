@@ -30,6 +30,14 @@ export function buildVncTabPath(targetId?: string | null): string {
     return target ? `${VNC_TAB_PREFIX}/${encodeURIComponent(target)}` : VNC_TAB_PREFIX;
 }
 
+export function createVncPopoutTransferPayload(targetId?: string | null): Record<string, string> | null {
+    const target = String(targetId || '').trim();
+    if (!target) return null;
+    return {
+        pane_path: buildVncTabPath(target),
+    };
+}
+
 function parseVncTargetFromPath(path?: string): string | null {
     const raw = String(path || '');
     if (raw === VNC_TAB_PREFIX) return null;
@@ -57,19 +65,6 @@ async function fetchVncSession(targetId = null) {
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body?.error || `HTTP ${response.status}`);
     return body;
-}
-
-async function createVncHandoff(targetId) {
-    const url = `/vnc/handoff?target=${encodeURIComponent(String(targetId || '').trim())}`;
-    const response = await fetch(url, {
-        method: 'POST',
-        credentials: 'same-origin',
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-        throw new Error(body?.error || `HTTP ${response.status}`);
-    }
-    return body?.handoff || null;
 }
 
 function isPanePopoutMode() {
@@ -993,16 +988,7 @@ class VncPaneInstance implements PaneInstance {
     }
 
     async preparePopoutTransfer() {
-        if (!this.targetId) return null;
-        const handoff = await createVncHandoff(this.targetId);
-        const token = typeof handoff?.token === 'string' ? handoff.token.trim() : '';
-        if (!token) {
-            throw new Error('No live VNC session is available to transfer.');
-        }
-        return {
-            pane_path: buildVncTabPath(this.targetId),
-            vnc_handoff: token,
-        };
+        return createVncPopoutTransferPayload(this.targetId);
     }
 
     getContent() { return undefined; }

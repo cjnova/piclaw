@@ -1,10 +1,15 @@
 import { expect, test } from 'bun:test';
 
-import { buildVncTabPath, shouldRetryVncPopoutWithoutHandoff } from '../../web/src/panes/vnc-pane.js';
+import { buildVncTabPath, createVncPopoutTransferPayload, shouldRetryVncPopoutWithoutHandoff } from '../../web/src/panes/vnc-pane.js';
 
 test('buildVncTabPath encodes target ids when present', () => {
   expect(buildVncTabPath()).toBe('piclaw://vnc');
   expect(buildVncTabPath('host:5901')).toBe('piclaw://vnc/host%3A5901');
+});
+
+test('createVncPopoutTransferPayload serializes only the target-specific pane identity', () => {
+  expect(createVncPopoutTransferPayload()).toBeNull();
+  expect(createVncPopoutTransferPayload('lab')).toEqual({ pane_path: 'piclaw://vnc/lab' });
 });
 
 test('shouldRetryVncPopoutWithoutHandoff only retries pristine failed handoffs', () => {

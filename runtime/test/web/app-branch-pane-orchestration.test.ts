@@ -56,7 +56,7 @@ test('resolvePanePopoutTransfer uses active editor transfer first, then dock ter
 test('resolvePanePopoutTransfer activates an inactive tab before requesting transfer state', async () => {
   let activeTabId = '/workspace/readme.md';
   const staleTransfer = async () => ({ stale: '1' });
-  const nextTransfer = async () => ({ pane_path: 'piclaw://vnc/lab', vnc_handoff: 'token-1' });
+  const nextTransfer = async () => ({ pane_path: 'piclaw://vnc/lab' });
   const editorInstanceRef = { current: { preparePopoutTransfer: staleTransfer } };
   const activateCalls: string[] = [];
 
@@ -76,7 +76,7 @@ test('resolvePanePopoutTransfer activates an inactive tab before requesting tran
     getActiveTabId: () => activeTabId,
   });
 
-  await expect(resultPromise).resolves.toEqual({ pane_path: 'piclaw://vnc/lab', vnc_handoff: 'token-1' });
+  await expect(resultPromise).resolves.toEqual({ pane_path: 'piclaw://vnc/lab' });
   expect(activateCalls).toEqual(['piclaw://vnc/lab']);
 });
 

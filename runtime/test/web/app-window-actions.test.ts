@@ -112,14 +112,13 @@ test('popOutPane allows transfer params to replace the pane path', async () => {
     baseHref: 'https://example.test/?chat_jid=web%3Abranch',
     resolveSourceTransfer: async () => ({
       pane_path: 'piclaw://vnc/lab',
-      vnc_handoff: 'token-1',
     }),
     closeSourcePaneIfTransferred: () => undefined,
   });
 
   expect(result).toBe(true);
   expect(openedWindow.lastUrl).toContain('pane_path=piclaw%3A%2F%2Fvnc%2Flab');
-  expect(openedWindow.lastUrl).toContain('vnc_handoff=token-1');
+  expect(openedWindow.lastUrl).not.toContain('vnc_handoff=');
 });
 
 test('popOutPane keeps the source pane open when no transferable session state exists', async () => {
