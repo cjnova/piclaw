@@ -50,9 +50,14 @@ export function refreshQueueStateForChat<TItem extends FollowupQueueItemLike = F
       if (activeChatJidRef.current !== targetChatJid) return;
 
       const dismissed = dismissedQueueRowIdsRef.current;
-      const items = normalizeFollowupQueueItems(payload?.items, dismissed);
+      const rawItems = Array.isArray(payload?.items) ? payload.items : [];
+      const items = normalizeFollowupQueueItems(rawItems, dismissed);
       if (items.length) {
         setFollowupQueueItems((prev) => (haveSameFollowupQueueRows(prev, items) ? prev : items));
+        return;
+      }
+
+      if (rawItems.length > 0) {
         return;
       }
 

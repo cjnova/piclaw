@@ -1,11 +1,10 @@
 ---
 id: queued-messages-do-not-immediately-appear-at-bottom-of-queue
 title: Queued messages do not immediately appear at the bottom of the queue
-status: done
+status: doing
 priority: medium
 created: 2026-03-17
 updated: 2026-03-30
-completed: 2026-03-30
 estimate: M
 risk: medium
 tags:
@@ -42,6 +41,13 @@ bug.
 - A regression test exists for the observed append/visibility case.
 
 ## Updates
+
+### 2026-03-30
+- Lane change: `50-done` → `20-doing` after a fresh live repro showed the ticket was closed prematurely.
+- Root-cause hypothesis: deferred queued followups can reuse negative synthetic `row_id` values after removal, which collides with client-side dismissed-row filtering and can hide a newly queued item until a later refresh.
+- Implementation in progress: updating deferred queue id allocation plus queue-refresh reconciliation so a dismissed synthetic row id cannot immediately suppress a newly queued follow-up.
+- Planned verification: `bun test runtime/test/web/app-status-refresh-orchestration.test.ts runtime/test/web/app-followup-queue.test.ts runtime/test/channels/web/queued-followup-lifecycle-service.test.ts` plus a live web repro in the compose queue UI.
+- Quality: ★★★★☆ 8/10 (problem: 2, scope: 2, test: 2, deps: 1, risk: 1)
 
 ### 2026-03-30
 - Lane change: `10-next` → `50-done` per explicit user instruction to close the ticket.

@@ -8,7 +8,7 @@ import {
   refreshQueueStateForChat,
 } from '../../web/src/ui/app-status-refresh-orchestration.js';
 
-type QueueRow = { row_id: string; content?: string };
+type QueueRow = { row_id: string | number; content?: string };
 
 test('refreshQueueStateForChat keeps only newest non-dismissed queue rows', async () => {
   const queueRefreshGenRef = { current: 0 };
@@ -93,6 +93,34 @@ test('refreshQueueStateForChat drops stale refresh generations and clears queue 
   expect(queueRows).toEqual([]);
   expect(dismissedQueueRowIdsRef.current.size).toBe(0);
   expect(clearCounts[clearCounts.length - 1]).toBe(0);
+});
+
+test('refreshQueueStateForChat preserves optimistic rows when the backend only returns dismissed ids', async () => {
+  const queueRefreshGenRef = { current: 0 };
+  const activeChatJidRef = { current: 'chat:alpha' };
+  const dismissedQueueRowIdsRef = { current: new Set<string | number>([-1]) };
+  const clearCounts: number[] = [];
+  let queueRows: QueueRow[] = [{ row_id: -1, content: 'queued now' }];
+
+  refreshQueueStateForChat<any>({
+    currentChatJid: 'chat:alpha',
+    queueRefreshGenRef,
+    activeChatJidRef,
+    dismissedQueueRowIdsRef,
+    getAgentQueueState: async () => ({ items: [{ row_id: -1, content: 'queued now' }] }),
+    setFollowupQueueItems: (next) => {
+      queueRows = typeof next === 'function' ? next(queueRows) : next;
+    },
+    clearQueuedSteerStateIfStale: (remainingQueueCount) => {
+      clearCounts.push(remainingQueueCount);
+    },
+  });
+
+  await Promise.resolve();
+
+  expect(queueRows).toEqual([{ row_id: -1, content: 'queued now' }]);
+  expect(Array.from(dismissedQueueRowIdsRef.current)).toEqual([-1]);
+  expect(clearCounts).toEqual([]);
 });
 
 test('refreshContextUsageForChat ignores stale chat responses', async () => {

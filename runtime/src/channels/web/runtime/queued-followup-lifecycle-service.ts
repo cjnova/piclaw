@@ -60,6 +60,7 @@ function toDeferredQueuedFollowupRecord(item: QueuedFollowupItem): DeferredQueue
 
 export class QueuedFollowupLifecycleService {
   private readonly placeholderStore: FollowupPlaceholderStore;
+  private readonly nextDeferredRowIdByChat = new Map<string, number>();
 
   constructor(placeholderStore = new FollowupPlaceholderStore()) {
     this.placeholderStore = placeholderStore;
@@ -208,7 +209,10 @@ export class QueuedFollowupLifecycleService {
 
   private allocateDeferredQueuedRowId(chatJid: string): number {
     const queued = this.getDeferredQueuedFollowupItems(chatJid);
-    const minRowId = queued.reduce((min, item) => (item.rowId < min ? item.rowId : min), 0);
-    return minRowId <= -1 ? minRowId - 1 : -1;
+    const minQueuedRowId = queued.reduce((min, item) => (item.rowId < min ? item.rowId : min), 0);
+    const previousSeed = this.nextDeferredRowIdByChat.get(chatJid) ?? 0;
+    const nextRowId = Math.min(minQueuedRowId - 1, previousSeed - 1, -1);
+    this.nextDeferredRowIdByChat.set(chatJid, nextRowId);
+    return nextRowId;
   }
 }
