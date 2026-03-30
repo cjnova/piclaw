@@ -135,6 +135,14 @@ function consumePanePopoutTransferToken(paramName) {
     }
 }
 
+export function shouldRetryVncPopoutWithoutHandoff(options) {
+    const handoffToken = String(options?.handoffToken || '').trim();
+    if (!handoffToken) return false;
+    return Number(options?.bytesIn || 0) <= 0
+        && !Boolean(options?.hasRenderedFrame)
+        && Number(options?.reconnectAttempts || 0) <= 0;
+}
+
 class VncPaneInstance implements PaneInstance {
     private container;
     private root;
@@ -233,10 +241,11 @@ class VncPaneInstance implements PaneInstance {
         }
     }
 
-    private scheduleReconnect() {
+    private scheduleReconnect(delayOverrideMs = null) {
         if (this.disposed || !this.targetId) return;
         this.clearReconnectTimer();
-        const delayMs = Math.min(8000, 1500 + (this.reconnectAttempts * 1000));
+        const computedDelayMs = Math.min(8000, 1500 + (this.reconnectAttempts * 1000));
+        const delayMs = Number.isFinite(delayOverrideMs) ? Math.max(0, Number(delayOverrideMs)) : computedDelayMs;
         this.reconnectAttempts += 1;
         this.reconnectTimerId = setTimeout(() => {
             this.reconnectTimerId = null;
@@ -890,6 +899,19 @@ class VncPaneInstance implements PaneInstance {
                     this.frameTimeoutId = null;
                 }
                 if (this.disposed) return;
+                if (shouldRetryVncPopoutWithoutHandoff({
+                    handoffToken,
+                    bytesIn: this.bytesIn,
+                    hasRenderedFrame: this.hasRenderedFrame,
+                    reconnectAttempts: this.reconnectAttempts,
+                })) {
+                    this.pendingHandoffToken = null;
+                    this.setStatus('Transferred VNC session was not ready yet. Retrying…');
+                    this.updateDisplayInfo('Transferred VNC session was not ready yet. Retrying without handoff…');
+                    this.updateDisplayMeta('handoff-retrying');
+                    this.scheduleReconnect(150);
+                    return;
+                }
                 const shouldReconnect = this.bytesIn > 0 || this.hasRenderedFrame || this.reconnectAttempts > 0;
                 if (shouldReconnect) {
                     this.setStatus('Remote display connection lost. Reconnecting…');
@@ -908,6 +930,19 @@ class VncPaneInstance implements PaneInstance {
             },
             onError: () => {
                 this.setSessionChromeVisible(true);
+                if (shouldRetryVncPopoutWithoutHandoff({
+                    handoffToken,
+                    bytesIn: this.bytesIn,
+                    hasRenderedFrame: this.hasRenderedFrame,
+                    reconnectAttempts: this.reconnectAttempts,
+                })) {
+                    this.pendingHandoffToken = null;
+                    this.setStatus('Transferred VNC session was not ready yet. Retrying…');
+                    this.updateDisplayInfo('Transferred VNC session was not ready yet. Retrying without handoff…');
+                    this.updateDisplayMeta('handoff-retrying');
+                    this.scheduleReconnect(150);
+                    return;
+                }
                 const shouldReconnect = this.bytesIn > 0 || this.hasRenderedFrame || this.reconnectAttempts > 0;
                 if (shouldReconnect) {
                     this.setStatus('WebSocket proxy connection failed. Reconnecting…');
