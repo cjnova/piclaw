@@ -256,27 +256,6 @@ The implementation lives under `runtime/`, so direct Bun test runs should target
 cd runtime && bun test --max-concurrency=1
 ```
 
-## Release
-
-Pushing a version tag triggers `.github/workflows/publish.yml` and publishes multi-arch GHCR images:
-
-- `ghcr.io/rcarmo/piclaw:<tag>`
-- `ghcr.io/rcarmo/piclaw:latest`
-
-```bash
-make bump-patch
-make bump-minor
-make push
-```
-
-## Container runtime
-
-PiClaw works with any OCI-compliant runtime.
-
-- **Preferred image source:** `ghcr.io/rcarmo/piclaw`
-- **Primary target:** Docker / Docker Desktop
-- Also works with Apple Containers, Podman, nerdctl, and similar runtimes
-
 ## Documentation
 
 - [Configuration](docs/configuration.md)
@@ -290,6 +269,7 @@ PiClaw works with any OCI-compliant runtime.
 - [Keychain](docs/keychain.md)
 - [WhatsApp](docs/whatsapp.md)
 - [Cross-instance interop](docs/cross-instance-ipc.md)
+- [Release process](docs/release.md)
 
 ## Credits
 
