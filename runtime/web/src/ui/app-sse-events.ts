@@ -226,6 +226,7 @@ export function handleAppSseEvent(
         const payload = response.data;
         const activeTurn = readAgentTurnId(payload);
         if (activeTurn) setActiveTurn(activeTurn);
+        setAgentStatus(payload);
         noteAgentActivity({ clearSilence: true });
         showLastActivity(payload);
 

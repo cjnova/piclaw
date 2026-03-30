@@ -16,6 +16,7 @@ function createDeps() {
   const toastCalls: Array<[string, string | null | undefined, string | undefined, number | undefined]> = [];
   const clearQueueCalls: number[] = [];
   let refreshQueueCalls = 0;
+  let agentStatus: any = null;
 
   const deps: HandleAppSseEventDependencies = {
     currentChatJid: 'chat:alpha',
@@ -46,7 +47,9 @@ function createDeps() {
     setFloatingWidget: () => undefined,
     clearLastActivityFlag: () => undefined,
     handleUiVersionDrift: () => false,
-    setAgentStatus: () => undefined,
+    setAgentStatus: (next) => {
+      agentStatus = applyUpdate(agentStatus, next);
+    },
     setAgentDraft: () => undefined,
     setAgentPlan: () => undefined,
     setAgentThought: () => undefined,
@@ -98,6 +101,7 @@ function createDeps() {
     getToastCalls: () => toastCalls,
     getClearQueueCalls: () => clearQueueCalls,
     getRefreshQueueCalls: () => refreshQueueCalls,
+    getAgentStatusState: () => agentStatus,
   };
 }
 
@@ -127,6 +131,35 @@ test('handleAppSseEvent removes followup rows on removal events and schedules qu
   expect(state.getFollowupQueueItems().map((item) => item.row_id)).toEqual(['row-2']);
   expect(state.getClearQueueCalls()).toEqual([1]);
   expect(state.getRefreshQueueCalls()).toBe(1);
+});
+
+test('handleAppSseEvent restores active agent status on reconnect', async () => {
+  const state = createDeps();
+  state.deps.getAgentStatus = async () => ({
+    status: 'active',
+    data: {
+      chat_jid: 'chat:alpha',
+      type: 'intent',
+      title: 'Compacting context',
+      intent_key: 'compaction',
+      turn_id: 'turn-42',
+      started_at: '2026-03-30T21:00:00.000Z',
+    },
+    thought: { text: 'thought preview', totalLines: 2 },
+    draft: { text: 'draft preview', totalLines: 3 },
+  });
+
+  handleAppSseEvent('connected', { app_asset_version: 'test' }, state.deps);
+  await Promise.resolve();
+
+  expect(state.getAgentStatusState()).toEqual({
+    chat_jid: 'chat:alpha',
+    type: 'intent',
+    title: 'Compacting context',
+    intent_key: 'compaction',
+    turn_id: 'turn-42',
+    started_at: '2026-03-30T21:00:00.000Z',
+  });
 });
 
 test('handleAppSseEvent maps extension notify events into intent toasts', () => {
