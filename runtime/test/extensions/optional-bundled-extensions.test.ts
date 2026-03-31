@@ -63,6 +63,16 @@ function withRouteCapture<T>(state: FakeState, fn: () => Promise<T>): Promise<T>
 }
 
 describe("bundled optional extensions", () => {
+  test("bun-runner registers the bun_run tool", async () => {
+    const { default: registerBunRunner } = await import("../../extensions/integrations/bun-runner/index.ts");
+    const fake = createFakeApi();
+
+    registerBunRunner(fake.api);
+
+    expect(fake.state.tools.has("bun_run")).toBe(true);
+    expect(fake.state.tools.get("bun_run")?.description).toContain("workspace Bun script");
+  });
+
   test("cdp-browser registers the cdp_browser tool and cdp-tabs command", async () => {
     const { default: registerCdpBrowser } = await import("../../extensions/browser/cdp-browser/index.ts");
     const fake = createFakeApi();

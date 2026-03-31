@@ -5,7 +5,7 @@ import { join } from "path";
 
 import { WORKSPACE_DIR } from "../../src/core/config.js";
 import { getToolOutput } from "../../src/tool-output.js";
-import { bunRunner } from "../../src/extensions/bun-runner.js";
+import bunRunnerExtension from "../../extensions/integrations/bun-runner/index.ts";
 import { createFakeExtensionApi } from "./fake-extension-api.js";
 
 const cleanupPaths: string[] = [];
@@ -28,14 +28,14 @@ afterEach(() => {
 describe("bun-runner extension", () => {
   test("registers bun_run and advertises its hint", async () => {
     const fake = createFakeExtensionApi();
-    bunRunner(fake.api);
+    bunRunnerExtension(fake.api);
 
     expect(fake.tools.has("bun_run")).toBe(true);
   });
 
   test("runs a workspace Bun script directly and discards stdout by default", async () => {
     const fake = createFakeExtensionApi();
-    bunRunner(fake.api);
+    bunRunnerExtension(fake.api);
     const tool = fake.tools.get("bun_run");
     if (!tool) throw new Error("bun_run not registered");
 
@@ -69,7 +69,7 @@ describe("bun-runner extension", () => {
 
   test("captures stdout when requested", async () => {
     const fake = createFakeExtensionApi();
-    bunRunner(fake.api);
+    bunRunnerExtension(fake.api);
     const tool = fake.tools.get("bun_run");
     if (!tool) throw new Error("bun_run not registered");
 
@@ -99,7 +99,7 @@ describe("bun-runner extension", () => {
     db.initDatabase();
 
     const fake = createFakeExtensionApi();
-    bunRunner(fake.api);
+    bunRunnerExtension(fake.api);
     const tool = fake.tools.get("bun_run");
     if (!tool) throw new Error("bun_run not registered");
 
@@ -126,7 +126,7 @@ describe("bun-runner extension", () => {
 
   test("rejects scripts outside the workspace", async () => {
     const fake = createFakeExtensionApi();
-    bunRunner(fake.api);
+    bunRunnerExtension(fake.api);
     const tool = fake.tools.get("bun_run");
     if (!tool) throw new Error("bun_run not registered");
 

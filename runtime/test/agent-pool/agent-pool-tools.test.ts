@@ -3,7 +3,8 @@
  *
  * Verifies that builtinExtensionFactories register the expected tools
  * (attach_file, messages, model control, tool discovery, keychain, SQL introspection, workspace search,
- * adaptive cards, dashboard widget posting, graceful exit, and autoresearch controls)
+ * adaptive cards, dashboard widget posting, graceful exit, and autoresearch controls).
+ * bun_run is now provided by a packaged runtime extension rather than a builtin factory.
  * and slash commands (/tasks, /scheduled, /theme, /tint) on a mock ExtensionAPI.
  */
 
