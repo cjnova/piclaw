@@ -1,7 +1,7 @@
 ---
 id: live-pane-detach-reattach-migration
 title: Add live detach/reattach pane migration across standalone web windows
-status: next
+status: doing
 priority: high
 created: 2026-03-31
 updated: 2026-03-31
@@ -180,6 +180,29 @@ Core ideas:
 - [ ] `bun run build:web`
 - [ ] `bun run lint`
 - [ ] `bun run typecheck`
+
+## Updates
+
+### 2026-03-31
+- Lane change: `10-next` → `20-doing`.
+- Started **Slice 1 — ownership model and placeholders**.
+- Implemented the first host-layer detach scaffolding in the web UI:
+  - opaque `pane_instance_id` / `pane_window_id` transfer params for standalone pane windows
+  - detached-tab and detached-dock placeholder states in the main shell
+  - explicit `Reattach` actions in the main shell and pane pop-out shell
+  - detach-aware tab-strip affordances and context-menu reattach action
+  - opener-based reattach messaging plus basic closed-window recovery polling
+  - compatibility fallback retained in `popOutPane(...)` when detach-aware registration is not used
+- Added focused regression coverage in:
+  - `runtime/test/web/pane-detach-transfer.test.ts`
+  - `runtime/test/web/app-window-actions.test.ts`
+  - `runtime/test/web/app-pane-mode-render.test.ts`
+- Validation completed:
+  - `bun test runtime/test/web/pane-detach-transfer.test.ts runtime/test/web/app-window-actions.test.ts runtime/test/web/app-pane-mode-render.test.ts runtime/test/web/app-main-shell-render.test.ts`
+  - `bun run build:web`
+  - `bun run lint`
+  - `bun run typecheck`
+- Remaining gap for later slices: this is still host-level ownership UI and reopen-backed orchestration, not full live pane instance migration.
 
 ## Definition of Done
 

@@ -160,6 +160,8 @@ interface ComposeBranchPaneActionOptionsInput {
   dockInstanceRef: RefBox<any>;
   terminalTabPath: string;
   tabPaneOverrides: Map<string, string> | null;
+  buildPaneDetachTransfer: (path: string) => { params: Record<string, string>; paneInstanceId: string; paneWindowId: string } | null;
+  registerDetachedPaneWindow: (path: string, label?: string | null, handle?: any, params?: Record<string, string> | null) => void;
   dockVisible: boolean;
   resolveTab: (path: string) => { dirty?: boolean } | null | undefined;
   closeTab: (path: string) => void;
@@ -210,6 +212,8 @@ export function composeBranchPaneActionOptions(input: ComposeBranchPaneActionOpt
     dockInstanceRef: input.dockInstanceRef,
     terminalTabPath: input.terminalTabPath,
     tabPaneOverrides: input.tabPaneOverrides,
+    buildPaneDetachTransfer: input.buildPaneDetachTransfer,
+    registerDetachedPaneWindow: input.registerDetachedPaneWindow,
     dockVisible: input.dockVisible,
     resolveTab: input.resolveTab,
     closeTab: input.closeTab,

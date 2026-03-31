@@ -285,6 +285,8 @@ export function useMainAppOrchestrationComposition(options: UseMainAppOrchestrat
     dockInstanceRef: paneRuntime.dockInstanceRef,
     terminalTabPath: services.terminalTabPath,
     tabPaneOverrides: services.tabPaneOverrides,
+    buildPaneDetachTransfer: paneRuntime.buildPaneDetachTransfer,
+    registerDetachedPaneWindow: paneRuntime.registerDetachedPaneWindow,
     dockVisible: paneRuntime.dockVisible,
     resolveTab: services.resolveTab,
     closeTab: services.closeTab,

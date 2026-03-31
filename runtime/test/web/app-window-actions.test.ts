@@ -155,6 +155,55 @@ test('popOutPane keeps the source pane open when no transferable session state e
   expect(openedWindow.lastUrl).toContain('pane_popout=1');
 });
 
+test('popOutPane reports the opened window to detach-aware callers instead of closing the source pane', async () => {
+  const closed: string[] = [];
+  const openedCalls: Array<{ panePath: string; params: Record<string, string> | null }> = [];
+  const openedWindow = {
+    document: { title: '', body: { innerHTML: '' } },
+    location: {
+      replace: (url: string) => {
+        openedWindow.lastUrl = url;
+      },
+    },
+    lastUrl: '',
+  } as any;
+
+  globalThis.window = {
+    open: () => openedWindow,
+    matchMedia: () => ({ matches: false }),
+    navigator: { userAgent: 'Desktop', maxTouchPoints: 0 },
+  } as any;
+
+  const result = await popOutPane({
+    hasWindow: true,
+    isWebAppMode: false,
+    path: '/workspace/file.md',
+    label: 'Notes',
+    currentChatJid: 'web:branch',
+    baseHref: 'https://example.test/?chat_jid=web%3Abranch',
+    resolveSourceTransfer: async () => ({
+      pane_instance_id: 'pane-inst-1',
+      pane_window_id: 'pane-win-2',
+    }),
+    closeSourcePaneIfTransferred: (panePath: string) => closed.push(panePath),
+    onPaneWindowOpened: (panePath: string, _handle: any, params: Record<string, string> | null) => {
+      openedCalls.push({ panePath, params });
+    },
+  });
+
+  expect(result).toBe(true);
+  expect(closed).toEqual([]);
+  expect(openedCalls).toEqual([
+    {
+      panePath: '/workspace/file.md',
+      params: {
+        pane_instance_id: 'pane-inst-1',
+        pane_window_id: 'pane-win-2',
+      },
+    },
+  ]);
+});
+
 test('popOutChat opens a loader tab on mobile-like window mode', async () => {
   const openCalls: Array<[string, string | undefined]> = [];
   globalThis.window = {

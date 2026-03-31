@@ -276,6 +276,8 @@ export interface PopOutPaneActionOptions {
   dockInstanceRef: RefBox<PaneTransferInstanceLike | null>;
   terminalTabPath: string;
   tabPaneOverrides?: Map<string, string> | null;
+  buildPaneDetachTransfer?: (path: string) => { params: Record<string, string>; paneInstanceId: string; paneWindowId: string } | null;
+  registerDetachedPaneWindow?: (path: string, label?: string | null, handle?: any, params?: Record<string, string> | null) => void;
   dockVisible: boolean;
   resolveTab: (path: string) => { dirty?: boolean } | null | undefined;
   closeTab: (path: string) => void;
@@ -297,6 +299,8 @@ export async function popOutPaneAction(options: PopOutPaneActionOptions): Promis
     dockInstanceRef,
     terminalTabPath,
     tabPaneOverrides,
+    buildPaneDetachTransfer,
+    registerDetachedPaneWindow,
     dockVisible,
     resolveTab,
     closeTab,
@@ -304,6 +308,8 @@ export async function popOutPaneAction(options: PopOutPaneActionOptions): Promis
     hasWindow = typeof window !== 'undefined',
     baseHref = hasWindow ? window.location.href : 'http://localhost/',
   } = options;
+
+  const detachTransfer = buildPaneDetachTransfer?.(path) || null;
 
   await popOutPane({
     hasWindow,
@@ -313,39 +319,55 @@ export async function popOutPaneAction(options: PopOutPaneActionOptions): Promis
     showIntentToast,
     currentChatJid,
     baseHref,
-    resolveSourceTransfer: (panePath: string) => resolvePanePopoutTransfer({
-      panePath,
-      activateTab,
-      getActiveTabId: () => tabStore.getActiveId(),
-      tabStripActiveId,
-      editorInstanceRef,
-      dockInstanceRef,
-      terminalTabPath,
-      buildEditorPopoutTransfer: (panePath: string) => {
-        if (!panePath || panePath === terminalTabPath) return null;
-        const instance = editorInstanceRef.current;
-        const content = typeof instance?.getContent === 'function' ? instance.getContent() : undefined;
-        const isDirty = typeof instance?.isDirty === 'function' ? instance.isDirty() : false;
-        const paneOverrideId = tabPaneOverrides instanceof Map ? (tabPaneOverrides.get(panePath) || null) : null;
-        const viewState = tabStore.getViewState(panePath) || null;
-        return createEditorPopoutTransferPayload({
-          path: panePath,
-          content: isDirty ? content : undefined,
-          paneOverrideId,
-          viewState,
+    resolveSourceTransfer: async (panePath: string) => {
+      const sourceTransfer = await resolvePanePopoutTransfer({
+        panePath,
+        activateTab,
+        getActiveTabId: () => tabStore.getActiveId(),
+        tabStripActiveId,
+        editorInstanceRef,
+        dockInstanceRef,
+        terminalTabPath,
+        buildEditorPopoutTransfer: (panePath: string) => {
+          if (!panePath || panePath === terminalTabPath) return null;
+          const instance = editorInstanceRef.current;
+          const content = typeof instance?.getContent === 'function' ? instance.getContent() : undefined;
+          const isDirty = typeof instance?.isDirty === 'function' ? instance.isDirty() : false;
+          const paneOverrideId = tabPaneOverrides instanceof Map ? (tabPaneOverrides.get(panePath) || null) : null;
+          const viewState = tabStore.getViewState(panePath) || null;
+          return createEditorPopoutTransferPayload({
+            path: panePath,
+            content: isDirty ? content : undefined,
+            paneOverrideId,
+            viewState,
+          });
+        },
+      });
+      if (!detachTransfer?.params) {
+        return sourceTransfer;
+      }
+      return {
+        ...(sourceTransfer || {}),
+        ...detachTransfer.params,
+      };
+    },
+    onPaneWindowOpened: registerDetachedPaneWindow
+      ? (panePath: string, handle: any, params: Record<string, string> | null) => {
+        registerDetachedPaneWindow(panePath, label, handle, params);
+      }
+      : undefined,
+    closeSourcePaneIfTransferred: registerDetachedPaneWindow
+      ? undefined
+      : (panePath: string) => {
+        closeTransferredPaneSource({
+          panePath,
+          terminalTabPath,
+          dockVisible,
+          resolveTab,
+          closeTab,
+          setDockVisible,
         });
       },
-    }),
-    closeSourcePaneIfTransferred: (panePath: string) => {
-      closeTransferredPaneSource({
-        panePath,
-        terminalTabPath,
-        dockVisible,
-        resolveTab,
-        closeTab,
-        setDockVisible,
-      });
-    },
   });
 }
 
@@ -463,6 +485,8 @@ export interface UseBranchPaneLifecycleOptions {
   dockInstanceRef: RefBox<PaneTransferInstanceLike | null>;
   terminalTabPath: string;
   tabPaneOverrides: Map<string, string> | null;
+  buildPaneDetachTransfer: (path: string) => { params: Record<string, string>; paneInstanceId: string; paneWindowId: string } | null;
+  registerDetachedPaneWindow: (path: string, label?: string | null, handle?: any, params?: Record<string, string> | null) => void;
   dockVisible: boolean;
   resolveTab: (path: string) => { dirty?: boolean } | null | undefined;
   closeTab: (path: string) => void;
@@ -514,6 +538,8 @@ export function useBranchPaneLifecycle(options: UseBranchPaneLifecycleOptions) {
     dockInstanceRef,
     terminalTabPath,
     tabPaneOverrides,
+    buildPaneDetachTransfer,
+    registerDetachedPaneWindow,
     dockVisible,
     resolveTab,
     closeTab,
@@ -636,12 +662,14 @@ export function useBranchPaneLifecycle(options: UseBranchPaneLifecycleOptions) {
       dockInstanceRef,
       terminalTabPath,
       tabPaneOverrides,
+      buildPaneDetachTransfer,
+      registerDetachedPaneWindow,
       dockVisible,
       resolveTab,
       closeTab,
       setDockVisible,
     });
-  }, [activateTab, closeTab, currentChatJid, dockInstanceRef, dockVisible, editorInstanceRef, isWebAppMode, resolveTab, setDockVisible, showIntentToast, tabPaneOverrides, tabStripActiveId, terminalTabPath]);
+  }, [activateTab, buildPaneDetachTransfer, closeTab, currentChatJid, dockInstanceRef, dockVisible, editorInstanceRef, isWebAppMode, registerDetachedPaneWindow, resolveTab, setDockVisible, showIntentToast, tabPaneOverrides, tabStripActiveId, terminalTabPath]);
 
   useEffect(() => watchPaneOpenEventBridge({
     openEditor,

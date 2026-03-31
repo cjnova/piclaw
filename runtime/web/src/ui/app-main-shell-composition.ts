@@ -45,6 +45,8 @@ export function composeMainAppShellOptions(input: ComposeMainAppShellOptionsInpu
     editorContainerRef: paneRuntime.editorContainerRef,
     getPaneContent: () => paneRuntime.editorInstanceRef?.current?.getContent?.(),
     panePopoutPath: shellState.panePopoutPath,
+    canReattachPane: paneRuntime.canReattachPanePopout,
+    handleReattachPane: paneRuntime.requestPanePopoutReattach,
   };
 
   const mainShellOptions = {
@@ -70,6 +72,9 @@ export function composeMainAppShellOptions(input: ComposeMainAppShellOptionsInpu
     editorContainerRef: paneRuntime.editorContainerRef,
     editorInstanceRef: paneRuntime.editorInstanceRef,
     dockContainerRef: paneRuntime.dockContainerRef,
+    detachedTabs: paneRuntime.detachedTabs,
+    activeDetachedTab: paneRuntime.activeDetachedTab,
+    detachedDockPane: paneRuntime.detachedDockPane,
     TERMINAL_TAB_PATH: shellState.TERMINAL_TAB_PATH,
     isIOSDevice: shellState.isIOSDevice,
     currentBranchRecord: shellState.currentBranchRecord,
@@ -106,6 +111,7 @@ export function composeMainAppShellOptions(input: ComposeMainAppShellOptionsInpu
     handleTabCloseAll: shellState.handleTabCloseAll,
     handleTabTogglePin: shellState.handleTabTogglePin,
     handleTabEditSource: shellState.handleTabEditSource,
+    handleReattachPane: paneRuntime.reattachPane,
     openEditor: shellState.openEditor,
     openTerminalTab: shellState.openTerminalTab,
     openVncTab: shellState.openVncTab,

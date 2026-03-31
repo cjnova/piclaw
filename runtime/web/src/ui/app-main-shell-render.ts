@@ -57,6 +57,7 @@ export function renderMainShell(options: MainShellRenderOptions): any {
     handleTabTogglePin,
     handleTabTogglePreview,
     handleTabEditSource,
+    handleReattachPane,
     previewTabs,
     tabPaneOverrides,
     toggleZenMode,
@@ -64,6 +65,9 @@ export function renderMainShell(options: MainShellRenderOptions): any {
     isWebAppMode,
     editorContainerRef,
     editorInstanceRef,
+    detachedTabs,
+    activeDetachedTab,
+    detachedDockPane,
     handleDockSplitterMouseDown,
     handleDockSplitterTouchStart,
     TERMINAL_TAB_PATH,
@@ -254,6 +258,8 @@ export function renderMainShell(options: MainShellRenderOptions): any {
               onEditSource=${handleTabEditSource}
               previewTabs=${previewTabs}
               paneOverrides=${tabPaneOverrides}
+              detachedTabs=${detachedTabs}
+              onReattachTab=${handleReattachPane}
               onToggleDock=${hasDockPanes ? toggleDock : undefined}
               dockVisible=${hasDockPanes && dockVisible}
               onToggleZen=${toggleZenMode}
@@ -261,8 +267,21 @@ export function renderMainShell(options: MainShellRenderOptions): any {
               onPopOutTab=${isWebAppMode ? undefined : handlePopOutPane}
             />
           `}
-          ${editorOpen && html`<div class="editor-pane-host" ref=${editorContainerRef}></div>`}
-          ${editorOpen && tabStripActiveId && previewTabs.has(tabStripActiveId) && html`
+          ${editorOpen && activeDetachedTab && html`
+            <div class="card" style=${{ margin: '24px', padding: '24px', maxWidth: '640px' }}>
+              <h1 style=${{ margin: '0 0 12px', fontSize: '1.1rem' }}>Pane detached</h1>
+              <p style=${{ margin: '0 0 16px', lineHeight: 1.6 }}>
+                ${activeDetachedTab.label || activeDetachedTab.panePath} is open in a separate window.
+              </p>
+              <div style=${{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                <button type="button" class="compose-model-popup-btn primary" onClick=${() => handleReattachPane(activeDetachedTab.panePath)}>
+                  Reattach here
+                </button>
+              </div>
+            </div>
+          `}
+          ${editorOpen && !activeDetachedTab && html`<div class="editor-pane-host" ref=${editorContainerRef}></div>`}
+          ${editorOpen && !activeDetachedTab && tabStripActiveId && previewTabs.has(tabStripActiveId) && html`
             <${MarkdownPreview}
               getContent=${() => editorInstanceRef.current?.getContent?.()}
               path=${tabStripActiveId}
@@ -291,7 +310,21 @@ export function renderMainShell(options: MainShellRenderOptions): any {
                 </button>
               </div>
             </div>
-            <div class="dock-panel-body" ref=${dockContainerRef}></div>
+            ${detachedDockPane
+              ? html`
+                <div class="dock-panel-body">
+                  <div class="card" style=${{ margin: '16px', padding: '16px' }}>
+                    <h1 style=${{ margin: '0 0 8px', fontSize: '1rem' }}>Terminal detached</h1>
+                    <p style=${{ margin: '0 0 12px', lineHeight: 1.5 }}>
+                      ${detachedDockPane.label || 'Terminal'} is open in a separate window.
+                    </p>
+                    <button type="button" class="compose-model-popup-btn primary" onClick=${() => handleReattachPane(TERMINAL_TAB_PATH)}>
+                      Reattach here
+                    </button>
+                  </div>
+                </div>
+              `
+              : html`<div class="dock-panel-body" ref=${dockContainerRef}></div>`}
           </div>`}
         </div>
         <div class="editor-splitter" onMouseDown=${handleEditorSplitterMouseDown} onTouchStart=${handleEditorSplitterTouchStart}></div>

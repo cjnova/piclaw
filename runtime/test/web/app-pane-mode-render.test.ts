@@ -44,3 +44,25 @@ test('renderPanePopoutMode renders fallback copy when no pane is mounted', () =>
 
   expect(JSON.stringify(vnode)).toContain('No pane path provided.');
 });
+
+test('renderPanePopoutMode includes a reattach action when the popout can hand control back', () => {
+  const vnode = renderPanePopoutMode({
+    appShellRef: { current: null },
+    editorOpen: true,
+    hidePanePopoutControls: false,
+    panePopoutHasMenuActions: false,
+    panePopoutTitle: 'Terminal',
+    tabStripTabs: [{ id: 'piclaw://terminal', label: 'Terminal' }],
+    tabStripActiveId: 'piclaw://terminal',
+    handleTabActivate: () => undefined,
+    previewTabs: new Set(),
+    handleTabTogglePreview: () => undefined,
+    editorContainerRef: { current: null },
+    getPaneContent: () => '',
+    panePopoutPath: 'piclaw://terminal',
+    canReattachPane: true,
+    handleReattachPane: () => undefined,
+  });
+
+  expect(JSON.stringify(vnode)).toContain('Reattach');
+});

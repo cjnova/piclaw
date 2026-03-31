@@ -57,6 +57,8 @@ export interface RenderPanePopoutModeOptions {
   editorContainerRef: { current: any };
   getPaneContent: () => string | null | undefined;
   panePopoutPath: string | null;
+  canReattachPane?: boolean;
+  handleReattachPane?: () => void;
 }
 
 export function renderPanePopoutMode(options: RenderPanePopoutModeOptions): any {
@@ -74,6 +76,8 @@ export function renderPanePopoutMode(options: RenderPanePopoutModeOptions): any 
     editorContainerRef,
     getPaneContent,
     panePopoutPath,
+    canReattachPane,
+    handleReattachPane,
   } = options;
 
   return html`
@@ -110,6 +114,18 @@ export function renderPanePopoutMode(options: RenderPanePopoutModeOptions): any 
                         </div>
                       </div>
                     `}
+                    ${canReattachPane && handleReattachPane && html`
+                      <button
+                        type="button"
+                        class="pane-popout-controls-action"
+                        onClick=${(event: any) => {
+                          handleReattachPane();
+                          event.currentTarget.closest('details')?.removeAttribute('open');
+                        }}
+                      >
+                        Reattach to main window
+                      </button>
+                    `}
                     ${tabStripActiveId && previewTabs.has(tabStripActiveId) && html`
                       <button
                         type="button"
@@ -127,6 +143,15 @@ export function renderPanePopoutMode(options: RenderPanePopoutModeOptions): any 
               `
               : html`
                 <div class="pane-popout-controls-label" aria-label=${panePopoutTitle}>${panePopoutTitle}</div>
+                ${canReattachPane && handleReattachPane && html`
+                  <button
+                    type="button"
+                    class="pane-popout-controls-action"
+                    onClick=${handleReattachPane}
+                  >
+                    Reattach
+                  </button>
+                `}
               `}
           </div>
         `}

@@ -30,6 +30,8 @@ import { canTabEditSource } from '../ui/tab-source-editor.js';
  * @param {(id: string) => void} [props.onEditSource] - Replace a specialized editor tab with the generic source editor.
  * @param {Set<string>} [props.previewTabs] - Set of tab ids with preview open.
  * @param {Map<string, string>} [props.paneOverrides] - Per-tab pane override ids.
+ * @param {Map<string, unknown>} [props.detachedTabs] - Tabs currently detached into standalone windows.
+ * @param {(id: string) => void} [props.onReattachTab] - Reattach a detached tab to the main window.
  * @param {() => void} [props.onToggleDock] - Toggle terminal dock visibility.
  * @param {boolean} [props.dockVisible] - Whether the terminal dock is currently visible.
  * @param {(id: string, label?: string) => void} [props.onPopOutTab] - Open a tab in a standalone window.
@@ -40,7 +42,7 @@ const PDF_EXTENSIONS = /\.pdf$/i;
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|ico|svg)$/i;
 const DRAWIO_EXTENSIONS = /\.drawio(\.xml|\.svg|\.png)?$/i;
 
-export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, onCloseAll, onTogglePin, onTogglePreview, onEditSource, previewTabs, paneOverrides, onToggleDock, dockVisible, onToggleZen, zenMode, onPopOutTab }) {
+export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, onCloseAll, onTogglePin, onTogglePreview, onEditSource, previewTabs, paneOverrides, detachedTabs, onReattachTab, onToggleDock, dockVisible, onToggleZen, zenMode, onPopOutTab }) {
     const [contextMenu, setContextMenu] = useState(null);
     const stripRef = useRef(null);
 
@@ -145,6 +147,11 @@ export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, o
         if (!tabId) return false;
         return canTabEditSource(tabId, getPaneOverride(tabId), (context) => paneRegistry.resolve(context));
     }, [contextMenu?.id, getPaneOverride]);
+    const isContextMenuTabDetached = useMemo(() => {
+        const tabId = contextMenu?.id;
+        if (!tabId || !(detachedTabs instanceof Map)) return false;
+        return detachedTabs.has(tabId);
+    }, [contextMenu?.id, detachedTabs]);
 
     if (!tabs.length) return null;
 
@@ -168,6 +175,9 @@ export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, o
                         </span>
                     `}
                     <span class="tab-label">${tab.label}</span>
+                    ${detachedTabs instanceof Map && detachedTabs.has(tab.id) && html`
+                        <span class="tab-detached-badge" aria-label="Detached" title="Open in separate window">↗</span>
+                    `}
                     <button
                         type="button"
                         class="tab-close"
@@ -234,7 +244,13 @@ export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, o
                         setContextMenu(null);
                     }}>Edit Source</button>
                 `}
-                ${onPopOutTab && html`
+                ${isContextMenuTabDetached && onReattachTab && html`
+                    <button onClick=${() => {
+                        onReattachTab(contextMenu.id);
+                        setContextMenu(null);
+                    }}>Reattach Here</button>
+                `}
+                ${onPopOutTab && !isContextMenuTabDetached && html`
                     <button onClick=${() => {
                         const tab = tabs.find(t => t.id === contextMenu.id);
                         onPopOutTab(contextMenu.id, tab?.label);

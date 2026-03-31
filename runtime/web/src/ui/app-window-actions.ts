@@ -76,6 +76,7 @@ export interface PopOutPaneOptions {
   showIntentToast?: ToastFn;
   resolveSourceTransfer?: (panePath: string) => Promise<Record<string, string> | null> | Record<string, string> | null;
   closeSourcePaneIfTransferred?: (panePath: string) => void;
+  onPaneWindowOpened?: (panePath: string, handle: any, params: Record<string, string> | null) => void;
   currentChatJid: string;
   baseHref: string;
 }
@@ -90,6 +91,7 @@ export async function popOutPane(options: PopOutPaneOptions): Promise<boolean> {
     showIntentToast,
     resolveSourceTransfer,
     closeSourcePaneIfTransferred,
+    onPaneWindowOpened,
     currentChatJid,
     baseHref,
   } = options;
@@ -124,7 +126,8 @@ export async function popOutPane(options: PopOutPaneOptions): Promise<boolean> {
       params: popoutParams,
     });
     navigateProvisionalChatWindow(provisionalWindow, popoutUrl);
-    if (hasTransferPayload) {
+    onPaneWindowOpened?.(panePath, provisionalWindow, popoutParams || null);
+    if (hasTransferPayload && !onPaneWindowOpened) {
       closeSourcePaneIfTransferred?.(panePath);
     }
     return true;
