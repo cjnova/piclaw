@@ -237,6 +237,17 @@ export function shouldRetryVncPopoutWithoutHandoff(options) {
         && Number(options?.reconnectAttempts || 0) <= 0;
 }
 
+export function relocateVncPaneRoot(root, container) {
+    if (!root || !container || typeof container.appendChild !== 'function') return false;
+    try {
+        container.innerHTML = '';
+    } catch {
+        /* expected: fake hosts/tests may not implement innerHTML writes. */
+    }
+    container.appendChild(root);
+    return true;
+}
+
 class VncPaneInstance implements PaneInstance {
     private container;
     private root;
@@ -1107,6 +1118,30 @@ class VncPaneInstance implements PaneInstance {
             `;
             this.setStatus(`Session load failed: ${error?.message || 'Unknown error'}`);
         }
+    }
+
+    beforeDetachFromHost() {
+        this.releasePressedKeys();
+        this.setStatus('Moving VNC session…');
+        this.updateDisplayInfo('Moving VNC session to a new window…');
+        this.updateDisplayMeta('moving');
+    }
+
+    afterAttachToHost() {
+        this.attachDisplayResizeObserver();
+        this.updateCanvasScale();
+        requestAnimationFrame(() => this.focus());
+    }
+
+    moveHost(container) {
+        if (this.disposed || !this.root) return false;
+        this.releasePressedKeys();
+        this.container = container;
+        if (!relocateVncPaneRoot(this.root, container)) {
+            return false;
+        }
+        this.afterAttachToHost();
+        return true;
     }
 
     async preparePopoutTransfer() {

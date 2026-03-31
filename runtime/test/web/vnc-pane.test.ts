@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { buildVncTabPath, consumeVncPopoutPassword, createVncPopoutTransferPayload, shouldRetryVncPopoutWithoutHandoff, stashVncPopoutPassword } from '../../web/src/panes/vnc-pane.js';
+import { buildVncTabPath, consumeVncPopoutPassword, createVncPopoutTransferPayload, relocateVncPaneRoot, shouldRetryVncPopoutWithoutHandoff, stashVncPopoutPassword } from '../../web/src/panes/vnc-pane.js';
 
 test('buildVncTabPath encodes target ids when present', () => {
   expect(buildVncTabPath()).toBe('piclaw://vnc');
@@ -41,6 +41,20 @@ test('createVncPopoutTransferPayload serializes target identity and optional pas
   expect(typeof token).toBe('string');
   expect(consumeVncPopoutPassword(token, runtime, 1001)).toBe('secret');
   expect(consumeVncPopoutPassword(token, runtime, 1002)).toBeNull();
+});
+
+test('relocateVncPaneRoot moves the existing VNC shell into a new host container', () => {
+  const root = { id: 'root' } as any;
+  const hostBChildren: any[] = [];
+  const hostB: any = {
+    innerHTML: 'occupied',
+    appendChild: (node: any) => hostBChildren.push(node),
+  };
+
+  expect(relocateVncPaneRoot(root, hostB)).toBe(true);
+  expect(hostB.innerHTML).toBe('');
+  expect(hostBChildren).toEqual([root]);
+  expect(relocateVncPaneRoot(root, null)).toBe(false);
 });
 
 test('shouldRetryVncPopoutWithoutHandoff only retries pristine failed handoffs', () => {

@@ -220,6 +220,9 @@ Core ideas:
   - same-origin source windows can register live-transfer-capable pane instances behind the opaque detach ids
   - pop-out boot now attempts to claim and move a live pane instance before falling back to normal remount
   - editor is the first adopter of `moveHost(...)`, reusing the same pane instance object while rebuilding its host DOM in the target window
+- Added the first runtime-heavy second adopter:
+  - VNC now implements the detach/attach lifecycle hooks plus `moveHost(...)`
+  - the existing VNC shell/root DOM is relocated into the target host container instead of remounting a fresh pane instance when live move succeeds
 - Remaining gap for later slices: this is now a real transfer-capable pane-instance path for supported panes, but not yet universal same-runtime migration across all pane types.
 
 ## Definition of Done
