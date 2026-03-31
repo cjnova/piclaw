@@ -4,7 +4,7 @@ title: Add workspace FTS indexing status and feedback in the UI
 status: next
 priority: medium
 created: 2026-03-12
-updated: 2026-03-28
+updated: 2026-03-31
 estimate: M
 risk: medium
 tags:
@@ -26,11 +26,15 @@ search results are fresh, incomplete, or still being indexed.
 
 ## Current Behavior
 
-- There is no dedicated UI for workspace FTS search yet beyond the `/fts` command path.
+- There is no dedicated UI for workspace FTS search yet beyond the `/fts` / `/search` command path and the `search_workspace` tool.
 - The search icon in chat is for SQLite/chat search, not workspace FTS search.
-- Workspace search can depend on FTS indexing state that is not obvious in the UI.
-- Users may not know whether indexing is in progress, stale, failed, or complete.
-- Missing or partial search results can look like search failure rather than indexing lag.
+- Workspace FTS indexing is currently **search-triggered**, not background-driven:
+  - `searchWorkspace()` defaults `refresh=true`
+  - indexing runs synchronously as part of the search request
+  - no web-facing status endpoint currently exposes indexing progress, freshness, or failure state
+- Indexed content currently comes from `notes/` and `.pi/skills/` by default (`scope: notes | skills | all`).
+- Incremental refresh skips unchanged files by `mtime_ms` + `size_bytes`, drops oversized files, and removes deleted files within scanned roots.
+- Missing or partial search results can look like search failure rather than indexing lag because the UI has no explicit indexing/freshness surface.
 
 ## Desired Behavior
 
@@ -51,24 +55,27 @@ search results are fresh, incomplete, or still being indexed.
 
 - [ ] Workspace explorer header exposes a clear indexing state.
 - [ ] Supported states include: never indexed, indexing, ready, stale, and failed.
-- [ ] Search surfaces show a small inline warning when results may be incomplete due to indexing state.
+- [ ] The backend exposes a small status snapshot for workspace FTS indexing (at minimum current state, last successful index time, and scope/root coverage).
 - [ ] A visible refresh/reindex action exists and shows visible state changes while running.
 - [ ] Failure/stale states are distinguishable from "no matches found".
+- [ ] Search surfaces show a small inline warning when results may be incomplete due to indexing state. *(May ship after the initial status endpoint if dedicated workspace-search UI is still absent.)*
 - [ ] Status text stays plain and user-facing.
 - [ ] No regressions in existing workspace search behavior.
 
 ## Relevant Areas
 
-- `piclaw/web/src/components/workspace-explorer.ts`
-- `piclaw/web/src/app.ts`
-- `piclaw/web/src/api.ts`
-- `piclaw/piclaw/src/channels/web/workspace/*`
+- `runtime/src/workspace-search.ts`
+- `runtime/src/db/connection.ts`
+- `runtime/src/channels/web/workspace/service.ts`
+- `runtime/src/channels/web/handlers/workspace.ts`
+- `runtime/web/src/components/workspace-explorer.ts`
+- `runtime/web/src/api.ts`
 - any workspace search / indexing / tree-cache status surfaces already available
 
 ## Notes
 
 - This is primarily a state-visibility and feedback task, not a search-algorithm rewrite.
-- There is currently no dedicated workspace FTS UI beyond the `/fts` command, so part of this ticket is defining the user-facing search/status UX rather than just adding a badge to an existing screen.
+- There is currently no dedicated workspace FTS UI beyond the `/fts` / `/search` command path, so part of this ticket is defining the user-facing search/status UX rather than just adding a badge to an existing screen.
 - The chat search icon currently maps to SQLite/chat search and should not be treated as the workspace FTS entry point.
 - Status belongs in the workspace explorer header.
 - Search-result incompleteness should use a small inline warning, not a large status treatment.
@@ -76,7 +83,166 @@ search results are fresh, incomplete, or still being indexed.
 - Prefer plain user-facing copy such as "Indexing workspace…" over operator-oriented phrasing.
 - If indexing internals do not currently expose enough state, add the smallest reliable status surface first.
 
+## Refinement notes — 2026-03-31
+
+### Actual current FTS lifecycle
+- Indexing currently lives in `runtime/src/workspace-search.ts` and is invoked from:
+  - the `search_workspace` tool
+  - the `/search` workspace command handler
+- There is **no background index worker** and no startup preload pass.
+- The default search path is:
+  1. user/tool issues a workspace search
+  2. `refresh !== false` triggers `indexWorkspace(...)`
+  3. roots are scanned (`notes/`, `.pi/skills/`, or both)
+  4. unchanged files are skipped using `mtime_ms` + `size_bytes`
+  5. changed files are re-read and reinserted into `workspace_fts`
+  6. deleted files inside scanned roots are removed from `workspace_files` + `workspace_fts`
+  7. the FTS query runs; if FTS parsing fails, a weaker `LIKE` fallback is attempted
+- Persisted metadata exists only at the file level today:
+  - `workspace_files(path, mtime_ms, size_bytes, indexed_at)`
+  - `workspace_fts(content, path, mtime_ms, size_bytes)`
+- There is currently **no persisted run-level status** such as:
+  - indexing in progress
+  - last failure
+  - stale file count
+  - last full-scope scan summary
+
+### Implication for this ticket
+The requested states (`never indexed`, `indexing`, `ready`, `stale`, `failed`) are **not all derivable today** from the existing backend alone. To implement the UI honestly, Piclaw first needs a minimal backend status model / endpoint rather than only front-end copy changes.
+
+### Recommended MVP shape
+1. Add a backend workspace-search status snapshot endpoint/service.
+2. Track a minimal lifecycle record per scope (`notes`, `skills`, `all`):
+   - `state`
+   - `last_indexed_at`
+   - `last_error`
+   - indexed file count / scanned root count
+3. Mark `indexing` only while an active refresh is running.
+4. Treat `never indexed` as no recorded successful index for the requested scope.
+5. Treat `stale` conservatively at first (for example explicit invalidation or known tree mutations) rather than pretending we can cheaply know perfect freshness for all files.
+6. Expose the snapshot in the workspace explorer header first; keep richer search-result warnings as a second slice if needed.
+
+### Tighter implementation plan (MVP)
+
+#### Slice 1 — backend status seam
+Add a small status model next to `workspace-search.ts` rather than trying to infer everything in the UI.
+
+Target output shape:
+
+```ts
+{
+  scope: "notes" | "skills" | "all",
+  state: "never_indexed" | "indexing" | "ready" | "stale" | "failed",
+  last_indexed_at: string | null,
+  last_error: string | null,
+  indexed_file_count: number,
+  roots: string[],
+}
+```
+
+Planned behavior:
+- `never_indexed`: no successful index has been recorded for the requested scope
+- `indexing`: an active refresh for that scope is currently running
+- `ready`: last refresh succeeded and the scope is not currently marked stale
+- `failed`: most recent refresh ended with an error
+- `stale`: explicit invalidation after workspace mutations or known path changes
+
+Implementation notes:
+- prefer a tiny persisted table (or similarly durable DB-backed state) over ephemeral process memory so status survives restart
+- do **not** introduce a background worker in v1
+- update status only around existing search-triggered indexing calls
+
+#### Slice 2 — endpoint + API helper
+Add a read endpoint and a refresh action surface for the web client.
+
+Proposed endpoints:
+- `GET /workspace/index-status?scope=all|notes|skills`
+- `POST /workspace/reindex` with `{ scope }`
+
+Rules:
+- `GET` returns the snapshot only
+- `POST` triggers the same existing indexing path intentionally, then returns the updated snapshot
+- keep search behavior unchanged; this is a status/control seam, not a search rewrite
+
+#### Slice 3 — workspace explorer header UI
+Add a compact status chip + refresh control in `workspace-explorer.ts`.
+
+V1 UI behavior:
+- show one compact status row in the explorer header
+- user-facing copy examples:
+  - `Workspace index not built yet`
+  - `Indexing workspace…`
+  - `Workspace index ready`
+  - `Workspace index may be stale`
+  - `Workspace index failed`
+- show a refresh/reindex action beside the status
+- avoid large panels, timestamps everywhere, or operator jargon in v1
+
+#### Slice 4 — explicit stale invalidation
+Mark status stale on obvious workspace mutations handled by the explorer/API layer:
+- create file
+- rename file
+- move entry
+- upload file
+- delete file
+- write/update file
+
+V1 rule:
+- stale is a conservative flag meaning "the last successful index may no longer reflect current workspace contents"
+- a successful reindex clears stale back to ready
+
+#### Slice 5 — search warning follow-up (optional second pass)
+If a dedicated workspace-search UI lands later, add a small inline warning there when status is stale/indexing/failed.
+
+This should **not** block the header-status MVP.
+
+### Suggested implementation order
+1. backend status record + helpers
+2. `GET /workspace/index-status`
+3. `POST /workspace/reindex`
+4. web API helpers
+5. workspace explorer header status chip
+6. stale invalidation wiring on known workspace mutations
+7. optional search-result warning follow-up
+
+### Test plan refinement
+
+#### Backend
+- [ ] `never_indexed` is returned before any successful refresh
+- [ ] `indexing` is visible while refresh is in progress
+- [ ] successful refresh records `ready` + `last_indexed_at`
+- [ ] failed refresh records `failed` + `last_error`
+- [ ] workspace mutations mark affected scope/status as stale
+- [ ] reindex clears stale back to ready on success
+
+#### Web/API
+- [ ] API helper returns the status snapshot cleanly
+- [ ] refresh action triggers reindex and updates status state in the UI
+- [ ] explorer header copy changes correctly across all v1 states
+- [ ] no regression in existing workspace tree/file flows
+
+### Out of scope for v1
+- background indexing daemon
+- perfect freshness detection across every workspace path without an explicit invalidation signal
+- dedicated workspace-search page/pane redesign
+- per-directory or per-file progress bars
+- broad search UX overhaul beyond the header status + manual reindex control
+
 ## Updates
+
+### 2026-03-31
+- Refined against the actual current implementation rather than the original desired UX alone.
+- Verified current lifecycle in `runtime/src/workspace-search.ts`:
+  - indexing is synchronous and search-triggered (`refresh=true` by default)
+  - default roots are `notes/` and `.pi/skills/`
+  - file freshness is tracked only via `workspace_files(mtime_ms, size_bytes, indexed_at)`
+  - there is no background worker, no web status endpoint, and no persisted run-level failure/progress model yet
+- Tightened the ticket into a concrete MVP plan:
+  - add a small backend status snapshot / lifecycle seam
+  - expose `GET /workspace/index-status` and `POST /workspace/reindex`
+  - show a compact status chip + refresh control in the workspace explorer header
+  - treat stale as explicit conservative invalidation rather than pretending perfect freshness detection
+- Kept richer search-result warnings and broader workspace-search UX redesign out of the first slice.
 
 ### 2026-03-28
 - Lane retained: `10-next` via web next-card decision.
