@@ -4,7 +4,7 @@ title: Allow opening the terminal or a given tab in a pop-out window
 status: done
 priority: medium
 created: 2026-03-15
-updated: 2026-03-23
+updated: 2026-03-31
 target_release: next
 estimate: M
 risk: medium
@@ -89,6 +89,11 @@ Why it is not preferred for v1:
 - [ ] Update history records implementation and validation evidence.
 
 ## Updates
+
+### 2026-03-31
+- The stricter follow-up requirement — **any editor tab can open in a standalone pop-out window with preserved working state** — is now tracked and closed separately in `workitems/50-done/allow-any-editor-tab-to-open-in-a-standalone-pop-out-window.md`.
+- This keeps the architecture/history honest: the generic pane pop-out ticket delivered the shared shell/action model, while the editor-specific continuity contract shipped as a later bounded slice instead of being retroactively implied.
+- Evidence for the follow-up implementation lives in commit `8371d7f7` (`feat(web): preserve editor state in popout tabs`).
 
 ### 2026-03-22
 - Lane change: `10-next` → `20-doing`.
