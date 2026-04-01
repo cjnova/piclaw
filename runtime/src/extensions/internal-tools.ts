@@ -6,6 +6,7 @@ import type {
   ExtensionAPI,
   ExtensionFactory,
 } from "@mariozechner/pi-coding-agent";
+import { getToolsetsForTool } from "./tool-activation.js";
 
 const InternalToolsSchema = Type.Object({
   query: Type.Optional(Type.String({ description: "Filter by tool name/description substring." })),
@@ -49,11 +50,17 @@ export const internalTools: ExtensionFactory = (pi: ExtensionAPI) => {
       const limit = clampLimit(params.limit, 100);
       const includeParameters = Boolean(params.include_parameters);
 
-      const all = pi.getAllTools()
+      const activeSet = new Set(pi.getActiveTools());
+      const visibleTools = process.platform === "win32" && pi.getAllTools().some((tool) => tool.name === "powershell")
+        ? pi.getAllTools().filter((tool) => tool.name !== "bash")
+        : pi.getAllTools();
+      const all = visibleTools
         .map((tool) => ({
           name: tool.name,
           description: summarizeDescription(tool.description),
           parameters: includeParameters ? tool.parameters : undefined,
+          active: activeSet.has(tool.name),
+          toolsets: getToolsetsForTool(tool.name),
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -72,10 +79,15 @@ export const internalTools: ExtensionFactory = (pi: ExtensionAPI) => {
         };
       }
 
+      const activeCount = filtered.filter((tool) => tool.active).length;
       const header = query
-        ? `Available tools (filtered): ${tools.length} of ${filtered.length}.`
-        : `Available tools: ${tools.length} of ${filtered.length}.`;
-      const lines = tools.map((tool) => `• ${tool.name} — ${tool.description}`);
+        ? `Available tools (filtered): ${tools.length} of ${filtered.length}. Active in this view: ${activeCount}.`
+        : `Available tools: ${tools.length} of ${filtered.length}. Active: ${activeCount}.`;
+      const lines = tools.map((tool) => {
+        const active = tool.active ? " [active]" : "";
+        const toolsets = tool.toolsets.length > 0 ? ` {${tool.toolsets.join(", ")}}` : "";
+        return `• ${tool.name} — ${tool.description}${active}${toolsets}`;
+      });
 
       return {
         content: [{ type: "text", text: `${header}\n${lines.join("\n")}` }],

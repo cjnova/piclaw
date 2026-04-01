@@ -45,7 +45,7 @@ test('renderPanePopoutMode renders fallback copy when no pane is mounted', () =>
   expect(JSON.stringify(vnode)).toContain('No pane path provided.');
 });
 
-test('renderPanePopoutMode includes a reattach action when the popout can hand control back', () => {
+test('renderPanePopoutMode hides controls entirely when the only action would be manual reattach', () => {
   const vnode = renderPanePopoutMode({
     appShellRef: { current: null },
     editorOpen: true,
@@ -64,5 +64,39 @@ test('renderPanePopoutMode includes a reattach action when the popout can hand c
     handleReattachPane: () => undefined,
   });
 
-  expect(JSON.stringify(vnode)).toContain('Reattach');
+  const serialized = JSON.stringify(vnode);
+  expect(serialized).not.toContain('pane-popout-hover-zone');
+  expect(serialized).not.toContain('pane-popout-controls-icon-button');
+  expect(serialized).not.toContain('Reattach Terminal to the main window');
+});
+
+test('renderPanePopoutMode keeps pane actions inside the overflow menu when multiple controls exist', () => {
+  const vnode = renderPanePopoutMode({
+    appShellRef: { current: null },
+    editorOpen: true,
+    hidePanePopoutControls: false,
+    panePopoutHasMenuActions: true,
+    panePopoutTitle: 'Diagram',
+    tabStripTabs: [
+      { id: '/workspace/foo.drawio', label: 'foo.drawio' },
+      { id: '/workspace/bar.drawio', label: 'bar.drawio' },
+    ],
+    tabStripActiveId: '/workspace/foo.drawio',
+    handleTabActivate: () => undefined,
+    previewTabs: new Set(['/workspace/foo.drawio']),
+    handleTabTogglePreview: () => undefined,
+    editorContainerRef: { current: null },
+    getPaneContent: () => '',
+    panePopoutPath: '/workspace/foo.drawio',
+    canReattachPane: true,
+    handleReattachPane: () => undefined,
+  });
+
+  const serialized = JSON.stringify(vnode);
+  expect(serialized).toContain('pane-popout-controls-menu');
+  expect(serialized).toContain('pane-popout-controls-icon-button');
+  expect(serialized).toContain('Open panes');
+  expect(serialized).toContain('Hide preview');
+  expect(serialized).not.toContain('Reattach to main window');
+  expect(serialized).not.toContain('>Diagram<');
 });

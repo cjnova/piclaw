@@ -42,6 +42,29 @@ const PDF_EXTENSIONS = /\.pdf$/i;
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|ico|svg)$/i;
 const DRAWIO_EXTENSIONS = /\.drawio(\.xml|\.svg|\.png)?$/i;
 
+export function getStandaloneTabUrl(path, { hasPopOutTab = false } = {}) {
+    const normalizedPath = typeof path === 'string' ? path.trim() : '';
+    if (!normalizedPath) return null;
+    if (OFFICE_EXTENSIONS.test(normalizedPath)) {
+        const rawUrl = '/workspace/raw?path=' + encodeURIComponent(normalizedPath);
+        const name = normalizedPath.split('/').pop() || 'document';
+        return '/office-viewer/?url=' + encodeURIComponent(rawUrl) + '&name=' + encodeURIComponent(name);
+    }
+    if (CSV_EXTENSIONS.test(normalizedPath)) {
+        return '/csv-viewer/?path=' + encodeURIComponent(normalizedPath);
+    }
+    if (PDF_EXTENSIONS.test(normalizedPath)) {
+        return '/workspace/raw?path=' + encodeURIComponent(normalizedPath);
+    }
+    if (IMAGE_EXTENSIONS.test(normalizedPath) && !DRAWIO_EXTENSIONS.test(normalizedPath)) {
+        return '/image-viewer/?path=' + encodeURIComponent(normalizedPath);
+    }
+    if (DRAWIO_EXTENSIONS.test(normalizedPath) && !hasPopOutTab) {
+        return '/drawio/edit?path=' + encodeURIComponent(normalizedPath);
+    }
+    return null;
+}
+
 export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, onCloseAll, onTogglePin, onTogglePreview, onEditSource, previewTabs, paneOverrides, detachedTabs, onReattachTab, onToggleDock, dockVisible, onToggleZen, zenMode, onPopOutTab }) {
     const [contextMenu, setContextMenu] = useState(null);
     const stripRef = useRef(null);
@@ -244,12 +267,6 @@ export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, o
                         setContextMenu(null);
                     }}>Edit Source</button>
                 `}
-                ${isContextMenuTabDetached && onReattachTab && html`
-                    <button onClick=${() => {
-                        onReattachTab(contextMenu.id);
-                        setContextMenu(null);
-                    }}>Reattach Here</button>
-                `}
                 ${onPopOutTab && !isContextMenuTabDetached && html`
                     <button onClick=${() => {
                         const tab = tabs.find(t => t.id === contextMenu.id);
@@ -263,48 +280,19 @@ export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, o
                         ${previewTabs?.has(contextMenu.id) ? 'Hide Preview' : 'Preview'}
                     </button>
                 `}
-                ${OFFICE_EXTENSIONS.test(contextMenu.id) && html`
-                    <hr />
-                    <button onClick=${() => {
-                        const rawUrl = '/workspace/raw?path=' + encodeURIComponent(contextMenu.id);
-                        const name = contextMenu.id.split('/').pop() || 'document';
-                        const viewerUrl = '/office-viewer/?url=' + encodeURIComponent(rawUrl) + '&name=' + encodeURIComponent(name);
-                        window.open(viewerUrl, '_blank', 'noopener');
-                        setContextMenu(null);
-                    }}>Open in New Tab</button>
-                `}
-                ${CSV_EXTENSIONS.test(contextMenu.id) && html`
-                    <hr />
-                    <button onClick=${() => {
-                        const viewerUrl = '/csv-viewer/?path=' + encodeURIComponent(contextMenu.id);
-                        window.open(viewerUrl, '_blank', 'noopener');
-                        setContextMenu(null);
-                    }}>Open in New Tab</button>
-                `}
-                ${PDF_EXTENSIONS.test(contextMenu.id) && html`
-                    <hr />
-                    <button onClick=${() => {
-                        const rawUrl = '/workspace/raw?path=' + encodeURIComponent(contextMenu.id);
-                        window.open(rawUrl, '_blank', 'noopener');
-                        setContextMenu(null);
-                    }}>Open in New Tab</button>
-                `}
-                ${IMAGE_EXTENSIONS.test(contextMenu.id) && !DRAWIO_EXTENSIONS.test(contextMenu.id) && html`
-                    <hr />
-                    <button onClick=${() => {
-                        const viewerUrl = '/image-viewer/?path=' + encodeURIComponent(contextMenu.id);
-                        window.open(viewerUrl, '_blank', 'noopener');
-                        setContextMenu(null);
-                    }}>Open in New Tab</button>
-                `}
-                ${DRAWIO_EXTENSIONS.test(contextMenu.id) && html`
-                    <hr />
-                    <button onClick=${() => {
-                        const editorUrl = '/drawio/edit?path=' + encodeURIComponent(contextMenu.id);
-                        window.open(editorUrl, '_blank', 'noopener');
-                        setContextMenu(null);
-                    }}>Open in New Tab</button>
-                `}
+                ${(() => {
+                    const standaloneUrl = getStandaloneTabUrl(contextMenu.id, {
+                        hasPopOutTab: typeof onPopOutTab === 'function',
+                    });
+                    if (!standaloneUrl) return null;
+                    return html`
+                        <hr />
+                        <button onClick=${() => {
+                            window.open(standaloneUrl, '_blank', 'noopener');
+                            setContextMenu(null);
+                        }}>Open in New Tab</button>
+                    `;
+                })()}
             </div>
         `}
     `;

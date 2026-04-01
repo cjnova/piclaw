@@ -43,6 +43,41 @@ interface UsePaneRuntimeOrchestrationOptions {
   getWorkspaceFile: (path: string, maxBytes: number, mode: string) => Promise<any>;
 }
 
+export function shouldRetainPaneDetachState(options: {
+  panePath: string;
+  openTabIds: Set<string>;
+  pendingDetachedTabPaths?: Set<string>;
+  detachedTabPaths?: Set<string>;
+  terminalTabPath: string;
+  hasPendingDetachedDockPane?: boolean;
+  hasDetachedDockPane?: boolean;
+}): boolean {
+  const panePath = typeof options?.panePath === 'string' ? options.panePath.trim() : '';
+  if (!panePath) return false;
+  if (options.openTabIds?.has(panePath)) return true;
+  if (options.pendingDetachedTabPaths?.has?.(panePath)) return true;
+  if (options.detachedTabPaths?.has?.(panePath)) return true;
+  if (panePath === options.terminalTabPath) {
+    return Boolean(options.hasPendingDetachedDockPane || options.hasDetachedDockPane);
+  }
+  return false;
+}
+
+export function removeSourcePaneAfterDetachClaim(options: {
+  panePath: string;
+  terminalTabPath: string;
+  closeTab?: (panePath: string) => void;
+  setDockVisible?: (visible: boolean) => void;
+}): void {
+  const panePath = typeof options?.panePath === 'string' ? options.panePath.trim() : '';
+  if (!panePath) return;
+  if (panePath === options.terminalTabPath) {
+    options.setDockVisible?.(false);
+    return;
+  }
+  options.closeTab?.(panePath);
+}
+
 interface DetachedPaneState {
   panePath: string;
   paneInstanceId: string;
@@ -290,7 +325,11 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
       if (!nextState) return false;
       setPendingDetachedDockPane(null);
       setDetachedDockPane(nextState);
-      setDockVisible(true);
+      removeSourcePaneAfterDetachClaim({
+        panePath,
+        terminalTabPath,
+        setDockVisible,
+      });
       return true;
     }
 
@@ -311,9 +350,13 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
       next.set(panePath, nextState);
       return next;
     });
-    tabStore.activate(panePath);
+    removeSourcePaneAfterDetachClaim({
+      panePath,
+      terminalTabPath,
+      closeTab: (path) => tabStore.close(path),
+    });
     return true;
-  }, [terminalTabPath]);
+  }, [setDockVisible, terminalTabPath]);
 
   const requestPanePopoutReattach = useCallback(() => {
     if (!panePopoutMode) return false;
@@ -412,36 +455,22 @@ export function usePaneRuntimeOrchestration(options: UsePaneRuntimeOrchestration
 
   useEffect(() => {
     const openTabIds = new Set(tabStripTabs.map((tab) => tab.id));
+    const pendingDetachedTabPaths = new Set(pendingDetachedTabsRef.current.keys());
+    const detachedTabPaths = new Set(detachedTabsRef.current.keys());
     for (const path of Array.from(tabPaneInstanceIdsRef.current.keys())) {
-      if (!openTabIds.has(path)) {
+      if (!shouldRetainPaneDetachState({
+        panePath: path,
+        openTabIds,
+        pendingDetachedTabPaths,
+        detachedTabPaths,
+        terminalTabPath,
+        hasPendingDetachedDockPane: Boolean(pendingDetachedDockPaneRef.current),
+        hasDetachedDockPane: Boolean(detachedDockPaneRef.current),
+      })) {
         tabPaneInstanceIdsRef.current.delete(path);
       }
     }
-    setPendingDetachedTabs((current) => {
-      let changed = false;
-      const next = new Map(current);
-      for (const path of Array.from(next.keys())) {
-        if (!openTabIds.has(path)) {
-          next.delete(path);
-          detachedWindowHandlesRef.current.delete(path);
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-    setDetachedTabs((current) => {
-      let changed = false;
-      const next = new Map(current);
-      for (const path of Array.from(next.keys())) {
-        if (!openTabIds.has(path)) {
-          next.delete(path);
-          detachedWindowHandlesRef.current.delete(path);
-          changed = true;
-        }
-      }
-      return changed ? next : current;
-    });
-  }, [tabStripTabs]);
+  }, [tabStripTabs, terminalTabPath]);
 
   useEffect(() => {
     if (panePopoutMode || typeof window === 'undefined') return undefined;

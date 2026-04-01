@@ -40,6 +40,16 @@ export function getPanePopoutTitle(
   return panePopoutLabel || activePaneTab?.label || panePopoutPath || 'Pane';
 }
 
+/** Build the document title used for standalone pane windows/tabs. */
+export function getPanePopoutDocumentTitle(
+  panePopoutLabel: string | null | undefined,
+  activePaneTab: PaneTabLike | null | undefined,
+  panePopoutPath: string | null | undefined,
+): string {
+  const title = getPanePopoutTitle(panePopoutLabel, activePaneTab, panePopoutPath);
+  return `${title} · PiClaw`;
+}
+
 /** Determine whether the pane-popout chrome needs menu actions. */
 export function hasPanePopoutMenuActions(
   tabStripTabs: PaneTabLike[] | null | undefined,

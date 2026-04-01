@@ -10,6 +10,7 @@
  *   - messages: unified messages tool for searching, retrieving, adding, and deleting chat messages.
  *   - modelControl: get_model_state, list_models, switch_model, switch_thinking.
  *   - internalTools: list_internal_tools for tool discovery.
+ *   - toolActivation: activate_tools/activate_toolset/reset_active_tools for lazy tool activation.
  *   - keychainTools: keychain for listing/retrieving keychain entries.
  *   - sqlIntrospect: introspect_sql for read-only DB introspection.
  *   - scheduledTasks: /tasks and /scheduled commands for task listing.
@@ -29,6 +30,7 @@ import { fileAttachments } from "./file-attachments.js";
 import { messagesCrud } from "./messages-crud.js";
 import { modelControl } from "./model-control.js";
 import { internalTools } from "./internal-tools.js";
+import { toolActivation } from "./tool-activation.js";
 import { keychainTools } from "./keychain-tools.js";
 import { sqlIntrospect } from "./sql-introspect.js";
 import { scheduledTasks } from "./scheduled-tasks.js";
@@ -46,6 +48,7 @@ export const builtinExtensionFactories: ExtensionFactory[] = [
   messagesCrud,
   modelControl,
   internalTools,
+  toolActivation,
   keychainTools,
   sqlIntrospect,
   scheduledTasks,

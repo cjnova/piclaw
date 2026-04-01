@@ -63,13 +63,12 @@ export function resolveShellCandidates(options = {}) {
     pushUniqueShell(candidates, { shell: "bash", args: POSIX_ARGS, family: "posix" });
     return candidates;
 }
-/** Create host-shell tool operations with child process tracking and keychain resolution. */
-export function createTrackedBashOperations() {
+function createTrackedShellOperations(resolveCandidates) {
     return {
         exec: (command, cwd, { onData, signal, timeout, env }) => {
             return new Promise((resolve, reject) => {
                 (async () => {
-                    const shellCandidates = resolveShellCandidates();
+                    const shellCandidates = resolveCandidates();
                     if (!existsSync(cwd)) {
                         reject(new Error(`Working directory does not exist: ${cwd}\nCannot execute shell commands.`));
                         return;
@@ -193,4 +192,12 @@ export function createTrackedBashOperations() {
             });
         },
     };
+}
+/** Create host-shell tool operations with child process tracking and keychain resolution. */
+export function createTrackedBashOperations() {
+    return createTrackedShellOperations(() => resolveShellCandidates());
+}
+/** Create Windows PowerShell-only tool operations. */
+export function createTrackedPowerShellOperations() {
+    return createTrackedShellOperations(() => resolveShellCandidates().filter((entry) => entry.family === "powershell"));
 }

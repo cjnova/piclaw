@@ -106,10 +106,13 @@ function generateImageViewerPage(): string {
     return;
   }
 
+  var fileName = path.split('/').pop() || 'image';
+  document.title = fileName + ' · Image Viewer';
+
   var rawUrl = '/workspace/raw?path=' + encodeURIComponent(path);
   var scale = 1;
   var img = document.createElement('img');
-  img.alt = path.split('/').pop() || 'image';
+  img.alt = fileName;
   img.src = rawUrl;
 
   var zoomLabel = document.getElementById('zoomLabel');

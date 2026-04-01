@@ -84,13 +84,12 @@ export function resolveShellCandidates(options: ResolveShellConfigOptions = {}):
   return candidates;
 }
 
-/** Create host-shell tool operations with child process tracking and keychain resolution. */
-export function createTrackedBashOperations(): BashOperations {
+function createTrackedShellOperations(resolveCandidates: () => ShellConfig[]): BashOperations {
   return {
     exec: (command, cwd, { onData, signal, timeout, env }) => {
       return new Promise((resolve, reject) => {
         (async () => {
-          const shellCandidates = resolveShellCandidates();
+          const shellCandidates = resolveCandidates();
 
           if (!existsSync(cwd)) {
             reject(new Error(`Working directory does not exist: ${cwd}\nCannot execute shell commands.`));
@@ -221,4 +220,14 @@ export function createTrackedBashOperations(): BashOperations {
       });
     },
   };
+}
+
+/** Create host-shell tool operations with child process tracking and keychain resolution. */
+export function createTrackedBashOperations(): BashOperations {
+  return createTrackedShellOperations(() => resolveShellCandidates());
+}
+
+/** Create Windows PowerShell-only tool operations. */
+export function createTrackedPowerShellOperations(): BashOperations {
+  return createTrackedShellOperations(() => resolveShellCandidates().filter((entry) => entry.family === "powershell"));
 }

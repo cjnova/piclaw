@@ -14,19 +14,23 @@ export type AgentBashOperations = NonNullable<Parameters<typeof createBashTool>[
 export interface AgentToolFactoryOptions {
   workspaceDir: string;
   bashOperations?: AgentBashOperations;
+  platform?: NodeJS.Platform;
 }
 
 /**
- * Creates the default built-in read/bash/edit/write tool set for agent sessions.
+ * Creates the default built-in tool set for agent sessions.
+ * On Windows, bash is omitted so the PowerShell extension can provide the active shell tool.
  */
 export class AgentToolFactory {
   constructor(private readonly options: AgentToolFactoryOptions) {}
 
   createDefaultTools() {
-    const { workspaceDir, bashOperations } = this.options;
+    const { workspaceDir, bashOperations, platform = process.platform } = this.options;
     return [
       createReadTool(workspaceDir),
-      createBashTool(workspaceDir, bashOperations ? { operations: bashOperations } : undefined),
+      ...(platform === "win32"
+        ? []
+        : [createBashTool(workspaceDir, bashOperations ? { operations: bashOperations } : undefined)]),
       createEditTool(workspaceDir),
       createWriteTool(workspaceDir),
     ];

@@ -267,19 +267,7 @@ export function renderMainShell(options: MainShellRenderOptions): any {
               onPopOutTab=${isWebAppMode ? undefined : handlePopOutPane}
             />
           `}
-          ${editorOpen && activeDetachedTab && html`
-            <div class="card" style=${{ margin: '24px', padding: '24px', maxWidth: '640px' }}>
-              <h1 style=${{ margin: '0 0 12px', fontSize: '1.1rem' }}>Pane detached</h1>
-              <p style=${{ margin: '0 0 16px', lineHeight: 1.6 }}>
-                ${activeDetachedTab.label || activeDetachedTab.panePath} is open in a separate window.
-              </p>
-              <div style=${{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-                <button type="button" class="compose-model-popup-btn primary" onClick=${() => handleReattachPane(activeDetachedTab.panePath)}>
-                  Reattach here
-                </button>
-              </div>
-            </div>
-          `}
+          ${editorOpen && activeDetachedTab && html`<div class="editor-pane-host editor-pane-detached-host"></div>`}
           ${editorOpen && !activeDetachedTab && html`<div class="editor-pane-host" ref=${editorContainerRef}></div>`}
           ${editorOpen && !activeDetachedTab && tabStripActiveId && previewTabs.has(tabStripActiveId) && html`
             <${MarkdownPreview}
@@ -293,7 +281,7 @@ export function renderMainShell(options: MainShellRenderOptions): any {
             <div class="dock-panel-header">
               <span class="dock-panel-title">Terminal</span>
               <div class="dock-panel-actions">
-                ${!isWebAppMode && html`
+                ${!isWebAppMode && !detachedDockPane && html`
                   <button class="dock-panel-action" onClick=${() => handlePopOutPane(TERMINAL_TAB_PATH, 'Terminal')} title="Open terminal in window" aria-label="Open terminal in window">
                     <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                       <rect x="2.25" y="2.25" width="8.5" height="8.5" rx="1.5"/>
@@ -311,19 +299,7 @@ export function renderMainShell(options: MainShellRenderOptions): any {
               </div>
             </div>
             ${detachedDockPane
-              ? html`
-                <div class="dock-panel-body">
-                  <div class="card" style=${{ margin: '16px', padding: '16px' }}>
-                    <h1 style=${{ margin: '0 0 8px', fontSize: '1rem' }}>Terminal detached</h1>
-                    <p style=${{ margin: '0 0 12px', lineHeight: 1.5 }}>
-                      ${detachedDockPane.label || 'Terminal'} is open in a separate window.
-                    </p>
-                    <button type="button" class="compose-model-popup-btn primary" onClick=${() => handleReattachPane(TERMINAL_TAB_PATH)}>
-                      Reattach here
-                    </button>
-                  </div>
-                </div>
-              `
+              ? html`<div class="dock-panel-body dock-panel-body-detached"></div>`
               : html`<div class="dock-panel-body" ref=${dockContainerRef}></div>`}
           </div>`}
         </div>

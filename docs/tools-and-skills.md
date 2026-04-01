@@ -11,6 +11,31 @@ Core tools (from `pi`):
 - `edit` — replace exact text
 - `write` — write files
 
+Piclaw keeps a small always-active baseline and lazily enables other tools on demand.
+Default always-active set:
+
+- `read`
+- `edit`
+- `write`
+- `bash` on Linux/macOS, or `powershell` on Windows
+- `list_internal_tools`
+- `activate_tools`
+- `activate_toolset`
+- `reset_active_tools`
+- `attach_file`
+- `messages`
+- `keychain`
+
+You can extend that baseline with `.piclaw/config.json`:
+
+```json
+{
+  "tools": {
+    "additionalDefaultTools": ["search_workspace"]
+  }
+}
+```
+
 `piclaw` extensions:
 
 - `attach_file` — attach a workspace file for download in the web UI (cards appear automatically; use `attachment:<filename>` only for inline embeds)
@@ -27,12 +52,16 @@ Core tools (from `pi`):
 - `keychain` — list, get, set, and delete encrypted keychain entries
 - `schedule_task` — schedule agent prompts or shell commands (cron, interval, or one-shot)
 - `introspect_sql` — run read-only SQL queries against the messages database
-- `list_internal_tools` — list available tools with descriptions
+- `list_internal_tools` — list available tools with descriptions, active-state markers, and toolset membership
+- `activate_tools` — activate one or more available tools for the current session
+- `activate_toolset` — activate a named toolset (for example `data`, `workspace`, `automation`, `browser`)
+- `reset_active_tools` — restore the configured default active-tool set for the current session
 - `open_office_viewer` — open an Office document (`.docx`, `.xlsx`, `.pptx`, `.odt`, `.ods`, `.odp`) in the built-in JS Office viewer (`/office-viewer/*`)
 - `open_drawio_editor` — open a `.drawio` diagram file in the self-hosted draw.io editor (creates the file if it doesn't exist)
 - `send_adaptive_card` — post an agent-owned Adaptive Card message in the web UI timeline
 - `send_dashboard_widget` — post the built-in host-backed live dashboard widget to the web UI timeline
 - `exec_batch` — run multiple shell commands and return concise summaries for each
+- `powershell` — Windows-only replacement for the default shell tool; active instead of `bash` on Windows hosts
 
 `messages` `search` accepts `query`, `chat_jid` (or `*`/`all`), `role`, `after`, `before`, `since`, `limit`, `offset`, and `details_max_chars` for controlling detail payloads.
 `messages` `get` accepts `row_ids`, optional `chat_jid`, `role`, `context_before`, `context_after`, and `details_max_chars`.

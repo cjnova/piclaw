@@ -27,6 +27,9 @@ import {
     readAppLocationModes,
 } from './ui/app-shell-state.js';
 import {
+    getPanePopoutDocumentTitle,
+} from './ui/app-pane-state.js';
+import {
     appApi,
     initializeAppShellRuntime,
 } from './ui/app-shell-bootstrap.js';
@@ -442,6 +445,15 @@ function MainApp({ locationParams, navigate }) {
             readStoredNumber: getLocalStorageNumber,
         },
     });
+
+    useEffect(() => {
+        if (!panePopoutMode || typeof document === 'undefined') return;
+        document.title = getPanePopoutDocumentTitle(
+            panePopoutLabel,
+            pane.paneRuntime.activePaneTab,
+            panePopoutPath,
+        );
+    }, [pane.paneRuntime.activePaneTab, panePopoutLabel, panePopoutMode, panePopoutPath]);
 
     return renderResolvedAppShell(composeRenderedMainAppOptions({
         routeState: {

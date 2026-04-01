@@ -19,21 +19,25 @@ describe("internal-tools extension", () => {
 
   test("lists tools with brief descriptions and query filter", async () => {
     const { internalTools } = await import("../../src/extensions/internal-tools.js");
-    const fake = createFakeExtensionApi({ allTools: [
-      { name: "bash", description: "Run a shell command and return output." },
-      { name: "messages", description: "Search, retrieve, add, or delete messages." },
-      { name: "list_internal_tools", description: "List available internal tools." },
-    ] });
+    const fake = createFakeExtensionApi({
+      allTools: [
+        { name: "bash", description: "Run a shell command and return output." },
+        { name: "messages", description: "Search, retrieve, add, or delete messages." },
+        { name: "list_internal_tools", description: "List available internal tools." },
+      ],
+      activeTools: ["bash", "list_internal_tools"],
+    });
     internalTools(fake.api);
 
     const tool = fake.tools.get("list_internal_tools");
     const all = await tool.execute("t1", {});
     expect(all.content[0].text).toContain("Available tools:");
-    expect(all.content[0].text).toContain("• bash — Run a shell command and return output.");
+    expect(all.content[0].text).toContain("• bash — Run a shell command and return output. [active] {core}");
 
     const filtered = await tool.execute("t2", { query: "search" });
     expect(filtered.content[0].text).toContain("filtered");
     expect(filtered.content[0].text).toContain("messages");
+    expect(filtered.content[0].text).toContain("{data}");
     expect(filtered.content[0].text).not.toContain("• bash —");
   });
 
@@ -52,5 +56,7 @@ describe("internal-tools extension", () => {
     const result = await tool.execute("t3", { include_parameters: true });
     expect(result.details.count).toBe(1);
     expect(result.details.tools[0].parameters).toBeDefined();
+    expect(result.details.tools[0].toolsets).toEqual(["core"]);
+    expect(result.details.tools[0].active).toBe(false);
   });
 });

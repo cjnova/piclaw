@@ -2,6 +2,7 @@
  * internal-tools – registers list_internal_tools for quick tool discovery.
  */
 import { Type } from "@sinclair/typebox";
+import { getToolsetsForTool } from "./tool-activation.js";
 const InternalToolsSchema = Type.Object({
     query: Type.Optional(Type.String({ description: "Filter by tool name/description substring." })),
     limit: Type.Optional(Type.Integer({ description: "Max tools to return (1-200).", minimum: 1, maximum: 200 })),
@@ -42,11 +43,17 @@ export const internalTools = (pi) => {
             const query = params.query?.trim().toLowerCase() || "";
             const limit = clampLimit(params.limit, 100);
             const includeParameters = Boolean(params.include_parameters);
-            const all = pi.getAllTools()
+            const activeSet = new Set(pi.getActiveTools());
+            const visibleTools = process.platform === "win32" && pi.getAllTools().some((tool) => tool.name === "powershell")
+                ? pi.getAllTools().filter((tool) => tool.name !== "bash")
+                : pi.getAllTools();
+            const all = visibleTools
                 .map((tool) => ({
                 name: tool.name,
                 description: summarizeDescription(tool.description),
                 parameters: includeParameters ? tool.parameters : undefined,
+                active: activeSet.has(tool.name),
+                toolsets: getToolsetsForTool(tool.name),
             }))
                 .sort((a, b) => a.name.localeCompare(b.name));
             const filtered = query
@@ -60,10 +67,15 @@ export const internalTools = (pi) => {
                     details: { total: filtered.length, count: 0, query: params.query?.trim(), tools: [] },
                 };
             }
+            const activeCount = filtered.filter((tool) => tool.active).length;
             const header = query
-                ? `Available tools (filtered): ${tools.length} of ${filtered.length}.`
-                : `Available tools: ${tools.length} of ${filtered.length}.`;
-            const lines = tools.map((tool) => `• ${tool.name} — ${tool.description}`);
+                ? `Available tools (filtered): ${tools.length} of ${filtered.length}. Active in this view: ${activeCount}.`
+                : `Available tools: ${tools.length} of ${filtered.length}. Active: ${activeCount}.`;
+            const lines = tools.map((tool) => {
+                const active = tool.active ? " [active]" : "";
+                const toolsets = tool.toolsets.length > 0 ? ` {${tool.toolsets.join(", ")}}` : "";
+                return `• ${tool.name} — ${tool.description}${active}${toolsets}`;
+            });
             return {
                 content: [{ type: "text", text: `${header}\n${lines.join("\n")}` }],
                 details: {

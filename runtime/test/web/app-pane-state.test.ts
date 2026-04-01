@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import {
+  getPanePopoutDocumentTitle,
   getPanePopoutTitle,
   hasPanePopoutMenuActions,
   isVncPanePopoutPath,
@@ -33,6 +34,7 @@ test('pane popout helpers compute title, menu actions, and VNC control visibilit
   const previewTabs = new Set(['pane-1']);
 
   expect(getPanePopoutTitle('', activePaneTab, '/tmp/file.md')).toBe('Editor');
+  expect(getPanePopoutDocumentTitle('', activePaneTab, '/tmp/file.md')).toBe('Editor · PiClaw');
   expect(hasPanePopoutMenuActions([{ id: 'pane-1' }], previewTabs, 'pane-1')).toBe(true);
   expect(isVncPanePopoutPath('/tabs/vnc/session', '/tabs/vnc')).toBe(true);
   expect(shouldHidePanePopoutControls('/tabs/terminal', '/tabs/terminal', false, false)).toBe(true);

@@ -76,83 +76,63 @@ export function renderPanePopoutMode(options: RenderPanePopoutModeOptions): any 
     editorContainerRef,
     getPaneContent,
     panePopoutPath,
-    canReattachPane,
-    handleReattachPane,
   } = options;
+
+  const showControls = editorOpen && !hidePanePopoutControls && panePopoutHasMenuActions;
+  const controlsLabel = panePopoutTitle ? `Pane window controls for ${panePopoutTitle}` : 'Pane window controls';
 
   return html`
     <div class=${`app-shell pane-popout${editorOpen ? ' editor-open' : ''}`} ref=${appShellRef}>
       <div class="editor-pane-container pane-popout-container">
-        ${editorOpen && !hidePanePopoutControls && html`
-          <div class="pane-popout-controls" role="toolbar" aria-label="Pane window controls">
-            ${panePopoutHasMenuActions
-              ? html`
-                <details class="pane-popout-controls-menu">
-                  <summary class="pane-popout-controls-trigger" aria-label="Pane window controls">
-                    <span class="pane-popout-controls-title">${panePopoutTitle}</span>
-                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                      <polyline points="4.5 6.5 8 10 11.5 6.5" />
-                    </svg>
-                  </summary>
-                  <div class="pane-popout-controls-panel">
-                    ${tabStripTabs.length > 1 && html`
-                      <div class="pane-popout-controls-section">
-                        <div class="pane-popout-controls-section-title">Open panes</div>
-                        <div class="pane-popout-controls-list">
-                          ${tabStripTabs.map((tab) => html`
-                            <button
-                              type="button"
-                              class=${`pane-popout-controls-item${tab.id === tabStripActiveId ? ' active' : ''}`}
-                              onClick=${(event: any) => {
-                                handleTabActivate(tab.id);
-                                event.currentTarget.closest('details')?.removeAttribute('open');
-                              }}
-                            >
-                              ${tab.label}
-                            </button>
-                          `)}
-                        </div>
-                      </div>
-                    `}
-                    ${canReattachPane && handleReattachPane && html`
-                      <button
-                        type="button"
-                        class="pane-popout-controls-action"
-                        onClick=${(event: any) => {
-                          handleReattachPane();
-                          event.currentTarget.closest('details')?.removeAttribute('open');
-                        }}
-                      >
-                        Reattach to main window
-                      </button>
-                    `}
-                    ${tabStripActiveId && previewTabs.has(tabStripActiveId) && html`
-                      <button
-                        type="button"
-                        class="pane-popout-controls-action"
-                        onClick=${(event: any) => {
-                          handleTabTogglePreview(tabStripActiveId);
-                          event.currentTarget.closest('details')?.removeAttribute('open');
-                        }}
-                      >
-                        Hide preview
-                      </button>
-                    `}
+        ${showControls && html`
+          <div class="pane-popout-hover-zone" aria-hidden="true"></div>
+          <div class="pane-popout-controls" role="toolbar" aria-label=${controlsLabel}>
+            <details class="pane-popout-controls-menu">
+              <summary
+                class="pane-popout-controls-trigger pane-popout-controls-icon-button"
+                aria-label=${controlsLabel}
+                title=${controlsLabel}
+              >
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 4.75h10" />
+                  <path d="M5 8h8" />
+                  <path d="M7 11.25h6" />
+                </svg>
+              </summary>
+              <div class="pane-popout-controls-panel">
+                ${tabStripTabs.length > 1 && html`
+                  <div class="pane-popout-controls-section">
+                    <div class="pane-popout-controls-section-title">Open panes</div>
+                    <div class="pane-popout-controls-list">
+                      ${tabStripTabs.map((tab) => html`
+                        <button
+                          type="button"
+                          class=${`pane-popout-controls-item${tab.id === tabStripActiveId ? ' active' : ''}`}
+                          onClick=${(event: any) => {
+                            handleTabActivate(tab.id);
+                            event.currentTarget.closest('details')?.removeAttribute('open');
+                          }}
+                        >
+                          ${tab.label}
+                        </button>
+                      `)}
+                    </div>
                   </div>
-                </details>
-              `
-              : html`
-                <div class="pane-popout-controls-label" aria-label=${panePopoutTitle}>${panePopoutTitle}</div>
-                ${canReattachPane && handleReattachPane && html`
+                `}
+                ${tabStripActiveId && previewTabs.has(tabStripActiveId) && html`
                   <button
                     type="button"
                     class="pane-popout-controls-action"
-                    onClick=${handleReattachPane}
+                    onClick=${(event: any) => {
+                      handleTabTogglePreview(tabStripActiveId);
+                      event.currentTarget.closest('details')?.removeAttribute('open');
+                    }}
                   >
-                    Reattach
+                    Hide preview
                   </button>
                 `}
-              `}
+              </div>
+            </details>
           </div>
         `}
         ${editorOpen

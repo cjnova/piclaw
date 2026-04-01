@@ -165,6 +165,9 @@ function generateCsvViewerPage(): string {
 
   if(!path){gridEl.innerHTML='<div class="empty">Missing <code>?path=...</code></div>';return;}
 
+  var fileName = path.split('/').pop() || 'table.csv';
+  document.title = fileName + ' · CSV Viewer';
+
   fetch('/workspace/raw?path='+encodeURIComponent(path))
     .then(function(res){if(!res.ok)throw new Error('HTTP '+res.status);return res.text();})
     .then(function(text){

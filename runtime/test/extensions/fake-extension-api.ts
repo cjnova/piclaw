@@ -8,6 +8,7 @@ interface ListedTool {
 
 interface CreateFakeExtensionApiOptions {
   allTools?: ListedTool[];
+  activeTools?: string[];
 }
 
 /**
@@ -15,10 +16,12 @@ interface CreateFakeExtensionApiOptions {
  */
 export function createFakeExtensionApi(options: CreateFakeExtensionApiOptions = {}) {
   const tools = new Map<string, any>();
+  const handlers: Array<{ event: string; handler: (...args: any[]) => any }> = [];
   let allTools = [...(options.allTools ?? [])];
+  let activeTools = [...(options.activeTools ?? [])];
 
   const api = {
-    on() {},
+    on(event: string, handler: (...args: any[]) => any) { handlers.push({ event, handler }); },
     registerTool(tool: any) { tools.set(tool.name, tool); },
     registerCommand() {},
     registerShortcut() {},
@@ -32,9 +35,9 @@ export function createFakeExtensionApi(options: CreateFakeExtensionApiOptions = 
     getSessionName() { return undefined; },
     setLabel() {},
     exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
-    getActiveTools: () => [],
+    getActiveTools: () => activeTools,
     getAllTools: () => allTools,
-    setActiveTools() {},
+    setActiveTools(next: string[]) { activeTools = [...next]; },
     getCommands: () => [],
     setModel: async () => true,
     getThinkingLevel: () => "off" as any,
@@ -46,8 +49,12 @@ export function createFakeExtensionApi(options: CreateFakeExtensionApiOptions = 
   return {
     api,
     tools,
+    handlers,
     setAllTools(next: ListedTool[]) {
       allTools = [...next];
+    },
+    setActiveTools(next: string[]) {
+      activeTools = [...next];
     },
   };
 }

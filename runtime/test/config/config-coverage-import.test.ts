@@ -132,6 +132,10 @@ test("plain import covers config module init branches with isolated argv and env
           cleanupIntervalMs: 60000,
         });
         expect(cfg.getToolOutputConfig()).toBe(cfg.TOOL_OUTPUT_CONFIG);
+        expect(cfg.TOOL_ACTIVATION_CONFIG).toEqual({
+          additionalDefaultTools: [],
+        });
+        expect(cfg.getToolActivationConfig()).toBe(cfg.TOOL_ACTIVATION_CONFIG);
         expect(cfg.PUSHOVER_CONFIG).toEqual({
           appToken: "push-app",
           userKey: "push-user",

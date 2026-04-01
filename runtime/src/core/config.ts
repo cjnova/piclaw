@@ -112,6 +112,28 @@ function pickBoolean(config: Record<string, unknown>, keys: string[]): boolean |
   return undefined;
 }
 
+/** Return the first string-list value found under the given keys. */
+function pickStringArray(config: Record<string, unknown>, keys: string[]): string[] | undefined {
+  for (const key of keys) {
+    const value = config[key];
+    if (Array.isArray(value)) {
+      const items = value
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter(Boolean);
+      if (items.length > 0) return items;
+      continue;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const items = value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      if (items.length > 0) return items;
+    }
+  }
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Timing constants used by the runtime message loop and scheduler.
 // ---------------------------------------------------------------------------
@@ -182,6 +204,10 @@ const userConfig =
 const webConfig =
   piclawConfig.web && typeof piclawConfig.web === "object"
     ? (piclawConfig.web as Record<string, unknown>)
+    : piclawConfig;
+const toolsConfig =
+  piclawConfig.tools && typeof piclawConfig.tools === "object"
+    ? (piclawConfig.tools as Record<string, unknown>)
     : piclawConfig;
 
 // Extract individual settings from the JSON config, trying multiple key aliases.
@@ -607,6 +633,11 @@ const configSessionAutoRotate = pickBoolean(piclawConfig, [
   "session_auto_rotate",
   "PICLAW_SESSION_AUTO_ROTATE",
 ]);
+const configAdditionalDefaultTools = pickStringArray(toolsConfig, [
+  "additionalDefaultTools",
+  "additional_default_tools",
+  "PICLAW_ADDITIONAL_DEFAULT_TOOLS",
+]);
 
 /** Typed session-file safeguards grouped for runtime/session wiring. */
 export interface SessionStorageConfig {
@@ -633,6 +664,25 @@ export const SESSION_STORAGE_CONFIG = Object.freeze<SessionStorageConfig>({
 /** Return grouped session-file safeguards for runtime wiring and tests. */
 export function getSessionStorageConfig(): Readonly<SessionStorageConfig> {
   return SESSION_STORAGE_CONFIG;
+}
+
+// ---------------------------------------------------------------------------
+// Tool activation defaults – used by lazy tool activation.
+// ---------------------------------------------------------------------------
+
+/** Typed tool-activation config grouped for default active-tool selection. */
+export interface ToolActivationConfig {
+  additionalDefaultTools: string[];
+}
+
+/** Grouped tool-activation config loaded from `.piclaw/config.json`. */
+export const TOOL_ACTIVATION_CONFIG = Object.freeze<ToolActivationConfig>({
+  additionalDefaultTools: configAdditionalDefaultTools ?? [],
+});
+
+/** Return grouped tool-activation config for runtime wiring and tests. */
+export function getToolActivationConfig(): Readonly<ToolActivationConfig> {
+  return TOOL_ACTIVATION_CONFIG;
 }
 
 // ---------------------------------------------------------------------------

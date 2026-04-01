@@ -112,6 +112,29 @@ function pickBoolean(config, keys) {
     }
     return undefined;
 }
+/** Return the first string-list value found under the given keys. */
+function pickStringArray(config, keys) {
+    for (const key of keys) {
+        const value = config[key];
+        if (Array.isArray(value)) {
+            const items = value
+                .map((item) => (typeof item === "string" ? item.trim() : ""))
+                .filter(Boolean);
+            if (items.length > 0)
+                return items;
+            continue;
+        }
+        if (typeof value === "string" && value.trim()) {
+            const items = value
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean);
+            if (items.length > 0)
+                return items;
+        }
+    }
+    return undefined;
+}
 /** Grouped runtime timing settings. */
 export const RUNTIME_TIMING_CONFIG = Object.freeze({
     pollIntervalMs: 2000,
@@ -158,6 +181,9 @@ const userConfig = piclawConfig.user && typeof piclawConfig.user === "object"
     : piclawConfig;
 const webConfig = piclawConfig.web && typeof piclawConfig.web === "object"
     ? piclawConfig.web
+    : piclawConfig;
+const toolsConfig = piclawConfig.tools && typeof piclawConfig.tools === "object"
+    ? piclawConfig.tools
     : piclawConfig;
 // Extract individual settings from the JSON config, trying multiple key aliases.
 const configAppToken = pickString(pushoverConfig, ["appToken", "app_token", "PUSHOVER_APP_TOKEN"]);
@@ -460,6 +486,11 @@ const configSessionAutoRotate = pickBoolean(piclawConfig, [
     "session_auto_rotate",
     "PICLAW_SESSION_AUTO_ROTATE",
 ]);
+const configAdditionalDefaultTools = pickStringArray(toolsConfig, [
+    "additionalDefaultTools",
+    "additional_default_tools",
+    "PICLAW_ADDITIONAL_DEFAULT_TOOLS",
+]);
 const sessionMaxSizeMb = pickNumber({ PICLAW_SESSION_MAX_SIZE_MB: process.env.PICLAW_SESSION_MAX_SIZE_MB ?? envConfig.PICLAW_SESSION_MAX_SIZE_MB }, [
     "PICLAW_SESSION_MAX_SIZE_MB",
 ]) ?? configSessionMaxSizeMb ?? 100;
@@ -474,6 +505,14 @@ export const SESSION_STORAGE_CONFIG = Object.freeze({
 /** Return grouped session-file safeguards for runtime wiring and tests. */
 export function getSessionStorageConfig() {
     return SESSION_STORAGE_CONFIG;
+}
+/** Grouped tool-activation config loaded from `.piclaw/config.json`. */
+export const TOOL_ACTIVATION_CONFIG = Object.freeze({
+    additionalDefaultTools: configAdditionalDefaultTools ?? [],
+});
+/** Return grouped tool-activation config for runtime wiring and tests. */
+export function getToolActivationConfig() {
+    return TOOL_ACTIVATION_CONFIG;
 }
 // ---------------------------------------------------------------------------
 // Trigger pattern – used by router.ts to decide if a message mentions the bot.

@@ -223,6 +223,25 @@ test("config and env fallback chains handle booleans and session settings", () =
   }
 });
 
+test("config-file tool activation settings support additional default tools", () => {
+  const ws = createTempWorkspace("piclaw-config-");
+
+  try {
+    writeWorkspaceConfig(ws.workspace, {
+      tools: {
+        additionalDefaultTools: "search_workspace, introspect_sql",
+      },
+    });
+
+    const snapshot = loadConfigInSubprocess(ws, ["TOOL_ACTIVATION_CONFIG"]);
+    expect(snapshot.TOOL_ACTIVATION_CONFIG).toEqual({
+      additionalDefaultTools: ["search_workspace", "introspect_sql"],
+    });
+  } finally {
+    ws.cleanup();
+  }
+});
+
 test("tool output config getter groups retention env settings", async () => {
   await withTempWorkspaceEnv(
     "piclaw-config-",
@@ -238,6 +257,27 @@ test("tool output config getter groups retention env settings", async () => {
       expect(cfg.TOOL_OUTPUT_CONFIG).toEqual({
         retentionDays: 14,
         cleanupIntervalMs: 60000,
+      });
+    },
+  );
+});
+
+test("tool activation config getter groups additional default tools from config file", async () => {
+  await withTempWorkspaceEnv(
+    "piclaw-config-",
+    {},
+    async (ws) => {
+      writeWorkspaceConfig(ws.workspace, {
+        tools: {
+          additionalDefaultTools: ["search_workspace", "introspect_sql"],
+        },
+      });
+
+      const cfg = await importFresh<typeof import("../../src/core/config.js")>("../src/core/config.js");
+      expect(cfg.getToolActivationConfig()).toBe(cfg.TOOL_ACTIVATION_CONFIG);
+      expect(Object.isFrozen(cfg.TOOL_ACTIVATION_CONFIG)).toBe(true);
+      expect(cfg.TOOL_ACTIVATION_CONFIG).toEqual({
+        additionalDefaultTools: ["search_workspace", "introspect_sql"],
       });
     },
   );

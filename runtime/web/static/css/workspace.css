@@ -792,6 +792,15 @@
     min-height: 0;
 }
 
+.pane-popout-hover-zone {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 6px;
+    z-index: 11;
+}
+
 .pane-popout-controls {
     position: absolute;
     top: 12px;
@@ -803,8 +812,9 @@
     pointer-events: none;
 }
 
-.app-shell.pane-popout .editor-pane-container:hover .pane-popout-controls,
+.app-shell.pane-popout .pane-popout-hover-zone:hover ~ .pane-popout-controls,
 .app-shell.pane-popout .editor-pane-container:focus-within .pane-popout-controls,
+.pane-popout-controls:hover,
 .pane-popout-controls:focus-within {
     opacity: 1;
     transform: translateY(0);
@@ -815,7 +825,6 @@
     position: relative;
 }
 
-.pane-popout-controls-label,
 .pane-popout-controls-trigger {
     list-style: none;
     display: inline-flex;
@@ -837,10 +846,6 @@
 
 .pane-popout-controls-trigger::-webkit-details-marker {
     display: none;
-}
-
-.pane-popout-controls-label {
-    cursor: default;
 }
 
 .pane-popout-controls-title {
@@ -900,6 +905,20 @@
     cursor: pointer;
     font: inherit;
     text-align: left;
+}
+
+.pane-popout-controls-icon-button {
+    justify-content: center;
+    width: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+    border-radius: 999px;
+}
+
+.pane-popout-controls-icon-button > svg,
+.pane-popout-controls-icon-button > svg * {
+    pointer-events: none;
 }
 
 .pane-popout-controls-item:hover,

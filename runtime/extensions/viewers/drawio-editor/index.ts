@@ -209,6 +209,7 @@ if (!filePath && /^\\d+$/.test(mediaId) && Number(mediaId) > 0) {
 
 var sourceName = explicitName || filePath || ('attachment-' + mediaId + '.drawio');
 var fileName = sourceName.split('/').pop() || 'diagram.drawio';
+document.title = fileName + ' · Draw.io';
 var frame = document.getElementById('editor-frame');
 var loading = document.getElementById('loading');
 var readonlyLock = document.getElementById('readonly-lock');

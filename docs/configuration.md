@@ -131,6 +131,55 @@ Set via environment variables (see above) or in `.piclaw/config.json`:
 }
 ```
 
+### Default active tools
+
+Piclaw now keeps the agent's always-active tool list intentionally small and uses
+`list_internal_tools`, `activate_tools`, and `activate_toolset` to enable extra
+capabilities on demand.
+
+Built-in default baseline:
+
+- `read`
+- `edit`
+- `write`
+- `bash` on Linux/macOS, or `powershell` on Windows
+- `list_internal_tools`
+- `activate_tools`
+- `activate_toolset`
+- `reset_active_tools`
+- `attach_file`
+- `messages`
+- `keychain`
+
+Add more always-active tools in `.piclaw/config.json` under `tools.additionalDefaultTools`:
+
+```json
+{
+  "tools": {
+    "additionalDefaultTools": [
+      "search_workspace",
+      "introspect_sql"
+    ]
+  }
+}
+```
+
+A comma-separated string is also accepted:
+
+```json
+{
+  "tools": {
+    "additionalDefaultTools": "search_workspace, introspect_sql"
+  }
+}
+```
+
+Notes:
+
+- `reset_active_tools` restores this configured default set, not just the built-in baseline.
+- Unknown tool names are ignored when the active tool list is applied.
+- On Windows, `bash` is replaced by the `powershell` tool in the default active set.
+
 ## Authentication (TOTP + passkeys)
 
 You can gate the entire web UI behind a 6-digit TOTP challenge and optionally enable WebAuthn passkeys. Static assets needed by iOS/Android webapps (manifest, icons, avatars, `/static/*`) remain public so homescreen shortcuts keep working.

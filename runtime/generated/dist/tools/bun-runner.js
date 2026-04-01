@@ -3,16 +3,22 @@
  *
  * Spawns the Bun runtime with a script path + argv array, keeps cwd/script
  * resolution inside the workspace, tracks the child process for abort/shutdown,
- * discards stdout, and captures stderr only.
+ * optionally captures stdout, always captures stderr, and stores large captured
+ * outputs via tool-output.ts so they can be previewed/searched later.
  */
 import { spawn } from "child_process";
 import { existsSync, statSync } from "fs";
 import path from "path";
+import { StringDecoder } from "string_decoder";
 import { WORKSPACE_DIR } from "../core/config.js";
+import { buildPreview, saveToolOutput } from "../tool-output.js";
 import { killProcessTree, registerProcess, unregisterProcess } from "../utils/process-tracker.js";
 const DEFAULT_TIMEOUT_SEC = 120;
 const MAX_TIMEOUT_SEC = 3600;
-const MAX_CAPTURED_STDERR_BYTES = 64 * 1024;
+const STORE_THRESHOLD_BYTES = parseInt(process.env.PICLAW_TOOL_OUTPUT_STORE_BYTES || "4096", 10);
+const STORE_THRESHOLD_LINES = parseInt(process.env.PICLAW_TOOL_OUTPUT_STORE_LINES || "40", 10);
+const PREVIEW_LINES = parseInt(process.env.PICLAW_TOOL_OUTPUT_PREVIEW_LINES || "8", 10);
+const PREVIEW_LINE_CHARS = parseInt(process.env.PICLAW_TOOL_OUTPUT_PREVIEW_LINE_CHARS || "200", 10);
 function resolveWorkspacePath(input) {
     const raw = String(input || "").trim();
     if (!raw)
@@ -44,6 +50,74 @@ function normalizeArgs(input) {
         }
         return value;
     });
+}
+function createMutableCapturedStream(captured) {
+    return {
+        captured,
+        chunks: [],
+        decoder: new StringDecoder("utf8"),
+        bytes: 0,
+    };
+}
+function appendCapturedStream(stream, chunk) {
+    if (!stream.captured)
+        return;
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    stream.bytes += buffer.length;
+    const text = stream.decoder.write(buffer);
+    if (text)
+        stream.chunks.push(text);
+}
+function finalizeCapturedText(stream) {
+    if (!stream.captured)
+        return "";
+    const tail = stream.decoder.end();
+    if (tail)
+        stream.chunks.push(tail);
+    return stream.chunks.join("");
+}
+function countLines(text) {
+    return text ? text.replace(/\r\n/g, "\n").split("\n").length : 0;
+}
+function shouldStoreOutput(text, lineCount) {
+    const bytes = Buffer.byteLength(text || "", "utf8");
+    return bytes > STORE_THRESHOLD_BYTES || lineCount > STORE_THRESHOLD_LINES;
+}
+function finalizeCapturedStream(label, target, stream) {
+    if (!stream.captured) {
+        return {
+            captured: false,
+            text: "",
+            bytes: 0,
+            lineCount: 0,
+        };
+    }
+    const text = finalizeCapturedText(stream);
+    const lineCount = countLines(text);
+    if (!shouldStoreOutput(text, lineCount)) {
+        return {
+            captured: true,
+            text,
+            bytes: stream.bytes,
+            lineCount,
+        };
+    }
+    const preview = buildPreview(text, PREVIEW_LINES, PREVIEW_LINE_CHARS);
+    const saved = saveToolOutput(text, {
+        source: `bun_run:${label}:${target.scriptDisplayPath}`,
+        summary: preview,
+    });
+    return {
+        captured: true,
+        text: preview,
+        bytes: stream.bytes,
+        lineCount,
+        storedOutputId: saved.id,
+        storedOutputPath: saved.path,
+        storedOutputBytes: saved.sizeBytes,
+        storedOutputLines: saved.lineCount,
+        storedOutputPreview: preview,
+    };
 }
 export function resolveBunScriptTarget(params) {
     const resolvedScript = resolveWorkspacePath(params.script);
@@ -92,6 +166,7 @@ export function resolveBunScriptTarget(params) {
         cwdDisplayPath: displayWorkspacePath(resolvedCwd),
         args: normalizeArgs(params.args),
         timeoutSec,
+        captureStdout: Boolean(params.captureStdout),
     };
 }
 export async function runBunScript(params, signal) {
@@ -102,9 +177,8 @@ export async function runBunScript(params, signal) {
         let child = null;
         let timedOut = false;
         let aborted = false;
-        let stderrBytes = 0;
-        let stderrTruncated = false;
-        const stderrChunks = [];
+        const stdoutCapture = createMutableCapturedStream(target.captureStdout);
+        const stderrCapture = createMutableCapturedStream(true);
         const cleanup = (timeoutHandle) => {
             if (timeoutHandle)
                 clearTimeout(timeoutHandle);
@@ -148,25 +222,15 @@ export async function runBunScript(params, signal) {
             cwd: target.cwd,
             detached: true,
             env: process.env,
-            stdio: ["ignore", "ignore", "pipe"],
+            stdio: ["ignore", target.captureStdout ? "pipe" : "ignore", "pipe"],
         });
         if (child.pid)
             registerProcess(child.pid);
+        child.stdout?.on("data", (chunk) => {
+            appendCapturedStream(stdoutCapture, chunk);
+        });
         child.stderr?.on("data", (chunk) => {
-            const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk);
-            stderrBytes += Buffer.byteLength(text, "utf8");
-            const currentBytes = stderrChunks.reduce((sum, entry) => sum + Buffer.byteLength(entry, "utf8"), 0);
-            const remaining = MAX_CAPTURED_STDERR_BYTES - currentBytes;
-            if (remaining <= 0) {
-                stderrTruncated = true;
-                return;
-            }
-            if (Buffer.byteLength(text, "utf8") > remaining) {
-                stderrTruncated = true;
-                stderrChunks.push(Buffer.from(text, "utf8").subarray(0, remaining).toString("utf8"));
-                return;
-            }
-            stderrChunks.push(text);
+            appendCapturedStream(stderrCapture, chunk);
         });
         child.on("error", (error) => {
             fail(error, timeoutHandle);
@@ -185,9 +249,8 @@ export async function runBunScript(params, signal) {
                 ...target,
                 bunPath,
                 exitCode,
-                stderr: stderrChunks.join(""),
-                stderrBytes,
-                stderrTruncated,
+                stdout: finalizeCapturedStream("stdout", target, stdoutCapture),
+                stderr: finalizeCapturedStream("stderr", target, stderrCapture),
             });
         });
     });

@@ -24,6 +24,12 @@
     overflow: hidden;
 }
 
+.editor-pane-detached-host,
+.dock-panel-body-detached {
+    position: relative;
+    background: var(--bg-primary);
+}
+
 .tab-strip {
     display: flex;
     align-items: stretch;
@@ -625,6 +631,10 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
+}
+
+.dock-panel-body-detached {
+    overflow: hidden;
 }
 
 /* Tab strip dock toggle and spacer */
