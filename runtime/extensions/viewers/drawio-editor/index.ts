@@ -79,8 +79,13 @@ const DRAWIO_FRAME_CSP =
   "img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-src 'self'; " +
   "frame-ancestors 'self'; base-uri 'self'; form-action 'self'";
 
-export function buildEmbeddedDrawioAppUrl(isDark: boolean, readOnly = false): string {
-  let editorUrl = `${ROUTE_PREFIX}/index.html?embed=1&proto=json&spin=1&modified=0&saveAndExit=0&ui=dark&dark=${isDark ? "1" : "0"}`;
+export const MINIMAL_DRAWIO_EXPORT_ACTIONS = ["exportPng", "exportJpg", "exportSvg"] as const;
+export const MINIMAL_DRAWIO_FILE_MENU_ACTIONS = ["save", "-"] as const;
+
+// Keep this helper self-contained: we stringify it into the wrapper page below,
+// so it must not capture module-scope names like ROUTE_PREFIX.
+export function buildEmbeddedDrawioAppUrl(isDark: boolean, readOnly = false, routePrefix = "/drawio"): string {
+  let editorUrl = `${routePrefix}/index.html?embed=1&proto=json&spin=1&modified=0&noSaveBtn=1&noExitBtn=1&saveAndExit=0&libraries=0&ui=dark&dark=${isDark ? "1" : "0"}`;
   if (readOnly) {
     editorUrl += '&chrome=0&toolbar=0&layers=0&edit=0';
   }
@@ -248,30 +253,20 @@ function responseToDataUri(response, fallbackMimeType) {
 
 function patchDrawioExportTarget(win) {
   try {
+    // Draw.io does not expose one stable global EditorUi instance in this embed
+    // mode, so we patch the relevant constructors/prototypes instead of trying to
+    // discover a live UI object after startup.
     function postExport(payload) {
       var target = (win && (win.parent || win.opener)) || window;
       target.postMessage(JSON.stringify(Object.assign({ event: 'workspace-export' }, payload)), '*');
       return true;
     }
-    function findEditorUi() {
-      try {
-        var keys = Object.keys(win || {});
-        for (var i = 0; i < keys.length; i++) {
-          var value = win[keys[i]];
-          if (!value || typeof value !== 'object') continue;
-          if (typeof value.saveFile === 'function' && value.actions && value.menus && value.editor) {
-            return value;
-          }
-        }
-      } catch (_) {
-        // ignore transient globals while draw.io is still booting
-      }
-      return null;
-    }
 
     var editorUiCtor = win && win.EditorUi;
     var savePatched = !!(editorUiCtor && editorUiCtor.prototype && editorUiCtor.prototype.__piclawWorkspaceSavePatched);
     if (editorUiCtor && editorUiCtor.prototype && !savePatched) {
+      // Save As still routes through EditorUi.saveData, so intercept that once
+      // and bounce the payload back to the wrapper for workspace persistence.
       var originalSaveData = editorUiCtor.prototype.saveData;
       editorUiCtor.prototype.saveData = function(filename, format, data, mime, base64Encoded, defaultMode) {
         try {
@@ -290,6 +285,7 @@ function patchDrawioExportTarget(win) {
     var appCtor = win && win.App;
     var exportPatched = !!(appCtor && appCtor.prototype && appCtor.prototype.__piclawExportPatched);
     if (appCtor && appCtor.prototype && !exportPatched) {
+      // Non-XML exports (PNG/JPEG/SVG) go through App.exportFile.
       var original = appCtor.prototype.exportFile;
       appCtor.prototype.exportFile = function(data, filename, mimeType, base64Encoded, mode, folderId) {
         try {
@@ -305,91 +301,70 @@ function patchDrawioExportTarget(win) {
       exportPatched = true;
     }
 
-    var ui = findEditorUi();
-    var uiPatched = !!(ui && ui.__piclawMinimalExportMenuPatched);
-    if (ui && !uiPatched) {
-      var saveAsAction = ui.actions && (ui.actions.get('saveAs') || ui.actions.get('saveAs...'));
-      var exportAction = ui.actions && ui.actions.get('export');
-      var exportAsMenu = ui.menus && ui.menus.get('exportAs');
-      var fileMenu = ui.menus && ui.menus.get('file');
-      var diagramMenu = ui.menus && ui.menus.get('diagram');
-      if (!saveAsAction || !exportAction || !exportAsMenu || !fileMenu || !diagramMenu) {
-        return false;
-      }
-
-      saveAsAction.funct = function() {
-        try {
-          var currentPath = String(filePath || 'diagram.drawio');
-          var currentName = currentPath.split('/').pop() || 'diagram.drawio';
-          var input = String((win.prompt && win.prompt('Save as (.drawio):', currentName)) || '').trim();
-          if (!input) return;
-          var nextPath = input.indexOf('/') >= 0
-            ? input
-            : currentPath.replace(/[^/]*$/, '') + input;
-          var lowerNextPath = nextPath.toLowerCase();
-          if (!(lowerNextPath.endsWith('.drawio') || lowerNextPath.endsWith('.drawio.xml') || lowerNextPath.endsWith('.drawio.svg') || lowerNextPath.endsWith('.drawio.png'))) {
-            nextPath += '.drawio';
-          }
-          var xml = typeof ui.getFileData === 'function' ? ui.getFileData(true) : null;
-          if (typeof xml !== 'string' || !xml.trim()) {
-            win.alert && win.alert('Could not read the current diagram XML for Save As.');
-            return;
-          }
-          saveWorkspace({
-            targetPath: nextPath,
-            xml: xml,
-            format: 'xml',
-            mimeType: 'application/xml'
-          }, true).catch(function(err) {
-            console.error('[drawio] save-as error:', err);
-          });
-        } catch (err) {
-          console.warn('[drawio] saveAs intercept failed', err);
-        }
-      };
-
-      exportAction.setEnabled && exportAction.setEnabled(false);
-      exportAction.isEnabled = function() { return false; };
-
-      ['exportWebp', 'exportAnimatedGif', 'exportPdf', 'exportVsdx', 'exportHtml', 'exportXml', 'exportUrl', 'publishLink'].forEach(function(name) {
-        var action = ui.actions && ui.actions.get(name);
-        if (action) {
+    var actionsCtor = win && win.Actions;
+    var actionsPatched = !!(actionsCtor && actionsCtor.prototype && actionsCtor.prototype.__piclawMinimalExportActionsPatched);
+    if (actionsCtor && actionsCtor.prototype && !actionsPatched) {
+      // Hide the unsupported built-in save/export chrome in embedded mode. Keep
+      // the normal Save action enabled so File -> Save still posts the standard
+      // XML save event back through the wrapper.
+      var originalActionGet = actionsCtor.prototype.get;
+      actionsCtor.prototype.get = function(name) {
+        var action = originalActionGet.apply(this, arguments);
+        if (!action) return action;
+        var actionName = String(name || '');
+        if (!action.__piclawMinimalExportActionPatched && ['saveAs', 'saveAs...', 'exit', 'export', 'exportWebp', 'exportAnimatedGif', 'exportPdf', 'exportVsdx', 'exportHtml', 'exportXml', 'exportUrl', 'publishLink'].indexOf(actionName) >= 0) {
           action.setEnabled && action.setEnabled(false);
           action.isEnabled = function() { return false; };
         }
-      });
-
-      var importFromMenu = ui.menus && ui.menus.get('importFrom');
-      if (importFromMenu) {
-        importFromMenu.setEnabled && importFromMenu.setEnabled(false);
-        importFromMenu.isEnabled = function() { return false; };
-      }
-
-      var embedMenu = ui.menus && ui.menus.get('embed');
-      if (embedMenu) {
-        embedMenu.setEnabled && embedMenu.setEnabled(false);
-        embedMenu.isEnabled = function() { return false; };
-      }
-
-      exportAsMenu.funct = function(menu, parent) {
-        ui.menus.addMenuItems(menu, ['exportPng', 'exportJpg', 'exportSvg'], parent);
+        action.__piclawMinimalExportActionPatched = true;
+        return action;
       };
-
-      fileMenu.funct = function(menu, parent) {
-        ui.menus.addMenuItems(menu, ['save', 'saveAs'], parent);
-      };
-
-      diagramMenu.funct = function(menu, parent) {
-        ui.menus.addMenuItems(menu, ['save', 'saveAs', '-'], parent);
-        ui.menus.addSubmenu('exportAs', menu, parent);
-        ui.menus.addMenuItems(menu, ['-', 'exit'], parent);
-      };
-
-      ui.__piclawMinimalExportMenuPatched = true;
-      uiPatched = true;
+      actionsCtor.prototype.__piclawMinimalExportActionsPatched = true;
+      actionsPatched = true;
     }
 
-    return !!(savePatched && exportPatched && uiPatched);
+    var menusCtor = win && win.Menus;
+    var menusPatched = !!(menusCtor && menusCtor.prototype && menusCtor.prototype.__piclawMinimalExportMenusPatched);
+    if (menusCtor && menusCtor.prototype && !menusPatched) {
+      // Patch Menus#get instead of mutating one live menu instance. This survives
+      // Draw.io rebuilding menus and avoids depending on undocumented globals.
+      var originalMenuGet = menusCtor.prototype.get;
+      menusCtor.prototype.get = function(name) {
+        var menu = originalMenuGet.apply(this, arguments);
+        if (!menu) return menu;
+        var menus = this;
+        var menuName = String(name || '');
+        if (menuName === 'importFrom' || menuName === 'embed') {
+          // Disable menu groups that expose flows we do not support in the
+          // packaged workspace editor.
+          menu.setEnabled && menu.setEnabled(false);
+          menu.isEnabled = function() { return false; };
+          return menu;
+        }
+        if (menu.__piclawMinimalExportMenuPatched) return menu;
+        if (menuName === 'exportAs') {
+          // Keep the reduced export menu limited to the formats we can round-trip
+          // safely through the wrapper.
+          menu.funct = function(menuElt, parent) {
+            menus.addMenuItems(menuElt, ${JSON.stringify(Array.from(MINIMAL_DRAWIO_EXPORT_ACTIONS))}, parent);
+          };
+        } else if (menuName === 'file' || menuName === 'diagram') {
+          // Some Draw.io builds expose File, others also expose Diagram. Keep a
+          // plain Save entry, then point the rest of the menu at the reduced
+          // Export As submenu.
+          menu.funct = function(menuElt, parent) {
+            menus.addMenuItems(menuElt, ${JSON.stringify(Array.from(MINIMAL_DRAWIO_FILE_MENU_ACTIONS))}, parent);
+            menus.addSubmenu('exportAs', menuElt, parent);
+          };
+        }
+        menu.__piclawMinimalExportMenuPatched = true;
+        return menu;
+      };
+      menusCtor.prototype.__piclawMinimalExportMenusPatched = true;
+      menusPatched = true;
+    }
+
+    return !!(savePatched && exportPatched && actionsPatched && menusPatched);
   } catch (_) {
     return false;
   }
@@ -469,23 +444,21 @@ function loadFile() {
 }
 
 function startEditor() {
-  // Embed mode URL with dark theme
+  // Embed mode URL with dark theme. Keep using the shared helper so the TS
+  // tests and the stringified browser copy stay in lockstep.
   var isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  var editorUrl = '/drawio/index.html?embed=1&proto=json&spin=1&modified=0&saveAndExit=0&ui=dark&dark=' + (isDark ? '1' : '0');
-  if (readOnly) {
-    editorUrl += '&chrome=0&toolbar=0&layers=0&edit=0';
+  var editorUrl = (${buildEmbeddedDrawioAppUrl.toString()})(!!isDark, !!readOnly);
+  function tryPatch() {
+    if (readOnly || !frame.contentWindow) return;
+    if (patchDrawioExportTarget(frame.contentWindow)) return;
+    setTimeout(tryPatch, 50);
   }
   frame.src = editorUrl;
   frame.style.display = 'block';
   frame.onload = function() {
-    if (readOnly) return;
-    function tryPatch() {
-      if (!frame.contentWindow) return;
-      if (patchDrawioExportTarget(frame.contentWindow)) return;
-      setTimeout(tryPatch, 250);
-    }
     tryPatch();
   };
+  tryPatch();
 }
 
 // Handle postMessage from draw.io iframe
@@ -506,6 +479,8 @@ window.addEventListener('message', function(e) {
         xml: format === 'xml' ? normalizeDrawioXml(xmlData) : xmlData,
         autosave: readOnly ? 0 : 1,
         saveAndExit: '0',
+        noSaveBtn: '1',
+        noExitBtn: '1',
         title: fileName
       }), '*');
       break;

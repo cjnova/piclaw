@@ -8,6 +8,8 @@ import {
   getDrawioVendorDirCandidates,
   isBinaryDrawioSaveTarget,
   isExplicitDrawioExportRequest,
+  MINIMAL_DRAWIO_EXPORT_ACTIONS,
+  MINIMAL_DRAWIO_FILE_MENU_ACTIONS,
   resolveDrawioSavePath,
   resolveDrawioVendorDir,
 } from '../../extensions/viewers/drawio-editor/index.ts';
@@ -43,13 +45,24 @@ test('resolveDrawioVendorDir falls back to workspace source vendor when packaged
   });
 });
 
-test('buildEmbeddedDrawioAppUrl keeps save and exit visible in embedded mode', () => {
-  expect(buildEmbeddedDrawioAppUrl(false)).toBe('/drawio/index.html?embed=1&proto=json&spin=1&modified=0&saveAndExit=0&ui=dark&dark=0');
-  expect(buildEmbeddedDrawioAppUrl(true)).toBe('/drawio/index.html?embed=1&proto=json&spin=1&modified=0&saveAndExit=0&ui=dark&dark=1');
+test('buildEmbeddedDrawioAppUrl hides save and exit chrome in embedded mode', () => {
+  expect(buildEmbeddedDrawioAppUrl(false)).toBe('/drawio/index.html?embed=1&proto=json&spin=1&modified=0&noSaveBtn=1&noExitBtn=1&saveAndExit=0&libraries=0&ui=dark&dark=0');
+  expect(buildEmbeddedDrawioAppUrl(true)).toBe('/drawio/index.html?embed=1&proto=json&spin=1&modified=0&noSaveBtn=1&noExitBtn=1&saveAndExit=0&libraries=0&ui=dark&dark=1');
   expect(buildEmbeddedDrawioAppUrl(true, true)).toContain('chrome=0');
-  expect(buildEmbeddedDrawioAppUrl(true)).not.toContain('noSaveBtn=1');
-  expect(buildEmbeddedDrawioAppUrl(true)).not.toContain('noExitBtn=1');
-  expect(buildEmbeddedDrawioAppUrl(true)).not.toContain('libraries=0');
+  expect(buildEmbeddedDrawioAppUrl(true)).toContain('noSaveBtn=1');
+  expect(buildEmbeddedDrawioAppUrl(true)).toContain('noExitBtn=1');
+  expect(buildEmbeddedDrawioAppUrl(true)).toContain('libraries=0');
+});
+
+test('stringified buildEmbeddedDrawioAppUrl still works in the browser wrapper context', () => {
+  const revived = new Function(`return (${buildEmbeddedDrawioAppUrl.toString()});`)() as typeof buildEmbeddedDrawioAppUrl;
+  expect(revived(false)).toBe('/drawio/index.html?embed=1&proto=json&spin=1&modified=0&noSaveBtn=1&noExitBtn=1&saveAndExit=0&libraries=0&ui=dark&dark=0');
+  expect(revived(true, true)).toContain('chrome=0');
+});
+
+test('minimal drawio menu constants keep Save plus reduced export formats', () => {
+  expect(MINIMAL_DRAWIO_FILE_MENU_ACTIONS).toEqual(['save', '-']);
+  expect(MINIMAL_DRAWIO_EXPORT_ACTIONS).toEqual(['exportPng', 'exportJpg', 'exportSvg']);
 });
 
 test('drawio save helpers preserve normal saves and map explicit image exports', () => {

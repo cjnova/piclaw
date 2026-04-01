@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { extractPackedFiles, findBlockedPackEntries } from "../../scripts/pack-hygiene.ts";
+import { extractPackedFiles, findBlockedPackEntries, findMissingRequiredPackEntries } from "../../scripts/pack-hygiene.ts";
 
 describe("pack-hygiene", () => {
   test("extractPackedFiles parses bun pack output", () => {
@@ -37,5 +37,28 @@ describe("pack-hygiene", () => {
   test("findBlockedPackEntries allows runtime files", () => {
     const files = ["src/index.ts", "web/static/index.html", "docs/architecture.md"];
     expect(findBlockedPackEntries(files)).toEqual([]);
+  });
+
+  test("findMissingRequiredPackEntries flags missing drawio runtime assets", () => {
+    const files = [
+      "runtime/extensions/viewers/drawio-editor/index.ts",
+      "runtime/extensions/viewers/drawio-editor/vendor/index.html",
+    ];
+
+    expect(findMissingRequiredPackEntries(files)).toEqual([
+      "runtime/extensions/viewers/drawio-editor/vendor/js/app.min.js",
+      "runtime/extensions/viewers/drawio-editor/vendor/drawio.meta.json",
+    ]);
+  });
+
+  test("findMissingRequiredPackEntries accepts complete drawio runtime assets", () => {
+    const files = [
+      "runtime/extensions/viewers/drawio-editor/index.ts",
+      "runtime/extensions/viewers/drawio-editor/vendor/index.html",
+      "runtime/extensions/viewers/drawio-editor/vendor/js/app.min.js",
+      "runtime/extensions/viewers/drawio-editor/vendor/drawio.meta.json",
+    ];
+
+    expect(findMissingRequiredPackEntries(files)).toEqual([]);
   });
 });

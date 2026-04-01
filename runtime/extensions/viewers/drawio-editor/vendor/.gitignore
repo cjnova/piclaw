@@ -1,14 +1,7 @@
-# Vendored draw.io webapp — extracted via `bun run build:vendor:drawio`
-# Too large to commit (~35MB). Cached in .cache/vendor/drawio/
-index.html
-favicon.ico
-js/
-styles/
-images/
-img/
-resources/
-mxgraph/
-math4/
-
-# Metadata (generated)
-*.meta.json
+# Vendored draw.io webapp.
+#
+# These files are intentionally committed so repo installs such as
+# `bun add -g github:rcarmo/piclaw` work without a postinstall download,
+# including on Windows.
+#
+# Keep this file as documentation only; do not add ignore patterns here.

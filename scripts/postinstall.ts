@@ -2,21 +2,11 @@
 /**
  * postinstall.ts — Run after `bun add -g github:rcarmo/piclaw`.
  *
- * Ensures vendored assets that are .gitignored (too large to commit)
- * are present. Only uses bun and node:* builtins — no devDependencies
- * required.
+ * Repo installs should already contain the vendored runtime assets, including
+ * Draw.io. This script only acts as a repair fallback for source checkouts or
+ * incomplete package trees.
  *
- * What's already committed to git (available immediately):
- *   - Mermaid, CodeMirror, Preact, Marked, KaTeX (JS/CSS/fonts)
- *   - Ghostty Web (JS + WASM)
- *   - VNC decoder (WASM)
- *   - Office viewer libs
- *   - Terminal fonts
- *   - Adaptive Cards
- *   - Web bundles (app.bundle.js, login.bundle.js, CSS)
- *
- * What this script builds:
- *   - Draw.io viewer (~35 MB, downloaded from GitHub releases)
+ * Only uses bun and node:* builtins — no devDependencies required.
  *
  * Safe to re-run: checks whether output already exists.
  */
@@ -42,10 +32,11 @@ function run(label: string, cmd: string[], cwd = ROOT): boolean {
   return true;
 }
 
-// Draw.io viewer (~35 MB, .gitignored — downloads from GitHub releases)
+// Draw.io should ship inside the repo/package. If it is missing, repair it as a
+// last resort so direct source installs still recover to a working runtime.
 const drawioIndex = resolve(ROOT, "runtime/extensions/viewers/drawio-editor/vendor/index.html");
 if (!existsSync(drawioIndex)) {
-  run("Vendoring draw.io", ["bun", "run", "build:vendor:drawio"]);
+  run("Repairing missing vendored draw.io", ["bun", "run", "build:vendor:drawio"]);
 } else {
   console.log(`${LOG} draw.io vendor already present, skipping`);
 }

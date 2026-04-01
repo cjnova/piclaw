@@ -26,15 +26,17 @@ For maintainer-facing placement rules inside the repo, see
 
 ## What happens at install time
 
-A `postinstall` script runs automatically after `bun add` to download the
-draw.io viewer (~35 MB), which is too large to commit to git.
+Repo installs are expected to include the vendored Draw.io editor and the other
+bundled runtime assets directly in the package tree, so a normal
+`bun add -g github:rcarmo/piclaw` install should not need a Draw.io download at
+install time — including on Windows.
 
-All other vendored assets — Mermaid, CodeMirror, KaTeX, Ghostty, fonts,
-Office viewer, VNC decoder, web bundles, bundled browser automation
-extensions, etc. — are committed to git and available immediately after
-install. No devDependencies or build tools are required for a working runtime.
+A small `postinstall` repair step still runs automatically after `bun add`, but
+it is only a fallback for incomplete source checkouts or damaged package trees.
+No devDependencies or full source rebuild are required for a working runtime.
 
-If `postinstall` was skipped (e.g. `--ignore-scripts`), run manually:
+If Draw.io is missing and `postinstall` was skipped (e.g. `--ignore-scripts`),
+run manually:
 
 ```bash
 bun run build:vendor:drawio
@@ -70,6 +72,7 @@ After install, the goal is that:
 - the CLI runs without a manual build
 - bundled web assets are already present
 - bundled extensions/viewers required by normal runtime behavior are included
+- the vendored Draw.io editor ships in the repo/package and does not rely on a Windows-time download
 - bundled automation extensions such as `cdp_browser` are available after install
 - Windows-only `win_*` desktop automation extensions are included but remain inert on non-Windows hosts
 
