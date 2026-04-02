@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 
-import { persistBtwSession } from '../../web/src/ui/app-shell-environment-effects.js';
+import { persistBtwSession, shouldApplyBrandingDocumentTitle } from '../../web/src/ui/app-shell-environment-effects.js';
 import { BTW_SESSION_KEY } from '../../web/src/ui/app-shell-state.js';
 
 const originalWindow = (globalThis as any).window;
@@ -36,6 +36,12 @@ test('persistBtwSession stores normalized side-session payload', () => {
     error: null,
     status: 'running',
   });
+});
+
+test('shouldApplyBrandingDocumentTitle skips title overrides in pane popouts', () => {
+  expect(shouldApplyBrandingDocumentTitle()).toBe(true);
+  expect(shouldApplyBrandingDocumentTitle({ panePopoutMode: true })).toBe(false);
+  expect(shouldApplyBrandingDocumentTitle({ search: '?pane_popout=1&pane_path=AGENTS.md' })).toBe(false);
 });
 
 test('persistBtwSession clears storage when no session exists', () => {

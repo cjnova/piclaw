@@ -23,6 +23,7 @@ export interface UseAppShellEnvironmentEffectsOptions {
   userProfile: any;
   userProfileRef: RefBox<any>;
   brandingRef: RefBox<{ title: string | null; avatarBase: string | null }>;
+  panePopoutMode?: boolean;
 }
 
 export function persistBtwSession(btwSession: any): void {
@@ -40,6 +41,15 @@ export function persistBtwSession(btwSession: any): void {
   }));
 }
 
+export function shouldApplyBrandingDocumentTitle(options: {
+  panePopoutMode?: boolean;
+  search?: string | null;
+} = {}): boolean {
+  if (options.panePopoutMode) return false;
+  const search = typeof options.search === 'string' ? options.search : '';
+  return !/(?:^|[?&])pane_popout=1(?:&|$)/.test(search);
+}
+
 export function useAppShellEnvironmentEffects(options: UseAppShellEnvironmentEffectsOptions) {
   const {
     isRenameBranchFormOpen,
@@ -54,6 +64,7 @@ export function useAppShellEnvironmentEffects(options: UseAppShellEnvironmentEff
     userProfile,
     userProfileRef,
     brandingRef,
+    panePopoutMode = false,
   } = options;
 
   useTimestampRefresh(30000);
@@ -99,10 +110,15 @@ export function useAppShellEnvironmentEffects(options: UseAppShellEnvironmentEff
 
     const title = (name || '').trim() || 'PiClaw';
     if (brandingRef.current.title !== title) {
-      document.title = title;
-      const titleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
-      if (titleMeta && titleMeta.getAttribute('content') !== title) {
-        titleMeta.setAttribute('content', title);
+      if (shouldApplyBrandingDocumentTitle({
+        panePopoutMode,
+        search: typeof window !== 'undefined' ? window.location.search : '',
+      })) {
+        document.title = title;
+        const titleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+        if (titleMeta && titleMeta.getAttribute('content') !== title) {
+          titleMeta.setAttribute('content', title);
+        }
       }
       brandingRef.current.title = title;
     }

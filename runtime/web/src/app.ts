@@ -159,6 +159,7 @@ function MainApp({ locationParams, navigate }) {
             userProfile: surface.userProfile,
             userProfileRef: surface.userProfileRef,
             brandingRef: surface.brandingRef,
+            panePopoutMode,
         },
         composeReferences: {
             setIntentToast: surface.setIntentToast,
