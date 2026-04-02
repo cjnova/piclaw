@@ -10,6 +10,7 @@ import { getSessionTokenFromRequest } from "../auth/session-auth.js";
 export interface TerminalSessionOwner {
   token: string;
   userId: string;
+  handoffToken?: string | null;
 }
 
 export interface TerminalSocketData extends TerminalSessionOwner {
@@ -40,6 +41,7 @@ interface TerminalProcessLike {
 
 export interface TerminalSessionServiceOptions {
   spawnProcess?: (cwd: string) => TerminalProcessLike;
+  handoffTtlMs?: number;
 }
 
 interface TerminalSessionRecord {
@@ -62,6 +64,20 @@ const FALLBACK_TERMINAL_OWNER: TerminalSessionOwner = {
 };
 
 const IS_LINUX = process.platform === "linux";
+const DEFAULT_TERMINAL_HANDOFF_TTL_MS = 5 * 60 * 1000;
+
+interface TerminalHandoffRecord {
+  owner: TerminalSessionOwner;
+  expiresAt: number;
+}
+
+function createTerminalHandoffToken(): string {
+  try {
+    return crypto.randomUUID();
+  } catch {
+    return `terminal-handoff-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
 
 // ioctl request code for setting terminal window size (Linux)
 const TIOCSWINSZ = 0x5414;
@@ -191,10 +207,15 @@ function defaultSpawnProcess(cwd: string): TerminalProcessLike {
 
 export class TerminalSessionService {
   private readonly sessions = new Map<string, TerminalSessionRecord>();
+  private readonly handoffs = new Map<string, TerminalHandoffRecord>();
   private readonly spawnProcess: (cwd: string) => TerminalProcessLike;
+  private readonly handoffTtlMs: number;
 
   constructor(options: TerminalSessionServiceOptions = {}) {
     this.spawnProcess = options.spawnProcess ?? defaultSpawnProcess;
+    this.handoffTtlMs = Number.isFinite(options.handoffTtlMs)
+      ? Math.max(1, Number(options.handoffTtlMs))
+      : DEFAULT_TERMINAL_HANDOFF_TTL_MS;
   }
 
   resolveOwnerFromRequest(req: Request, allowUnauthenticated = false): TerminalSocketData | null {
@@ -202,10 +223,10 @@ export class TerminalSessionService {
     if (token) {
       const session = getWebSession(token);
       if (session) {
-        return { kind: "terminal", token, userId: session.user_id };
+        return { kind: "terminal", token, userId: session.user_id, handoffToken: null };
       }
     }
-    return allowUnauthenticated ? { kind: "terminal", ...FALLBACK_TERMINAL_OWNER } : null;
+    return allowUnauthenticated ? { kind: "terminal", ...FALLBACK_TERMINAL_OWNER, handoffToken: null } : null;
   }
 
   getSessionInfo(owner: TerminalSessionOwner) {
@@ -225,6 +246,17 @@ export class TerminalSessionService {
   attachClient(ws: ServerWebSocket<TerminalSocketData>): void {
     const owner = ws.data;
     const session = this.ensureSession(owner);
+    if (this.validateHandoff(owner)) {
+      for (const client of Array.from(session.clients)) {
+        if (client === ws) continue;
+        try {
+          client.close(1000, "terminal handoff");
+        } catch {
+          /* expected: old browser websocket may already be closing during handoff. */
+        }
+        session.clients.delete(client);
+      }
+    }
     session.clients.add(ws);
     this.send(ws, {
       type: "session",
@@ -276,6 +308,24 @@ export class TerminalSessionService {
     }
   }
 
+  createHandoffFromRequest(req: Request, allowUnauthenticated = false): { token: string; expires_at: string } | null {
+    const owner = this.resolveOwnerFromRequest(req, allowUnauthenticated);
+    if (!owner) return null;
+    const session = this.sessions.get(owner.token);
+    if (!session || session.clients.size === 0) return null;
+    this.sweepExpiredHandoffs();
+    const token = createTerminalHandoffToken();
+    const expiresAt = Date.now() + this.handoffTtlMs;
+    this.handoffs.set(token, {
+      owner: { token: owner.token, userId: owner.userId, handoffToken: null },
+      expiresAt,
+    });
+    return {
+      token,
+      expires_at: new Date(expiresAt).toISOString(),
+    };
+  }
+
   shutdown(): void {
     for (const session of this.sessions.values()) {
       try {
@@ -285,6 +335,7 @@ export class TerminalSessionService {
       }
     }
     this.sessions.clear();
+    this.handoffs.clear();
   }
 
   /**
@@ -312,6 +363,24 @@ export class TerminalSessionService {
         try { process.kill(cpid, "SIGWINCH"); } catch { /* expected: child may exit between pid scan and signal delivery. */ }
       }
     }
+  }
+
+  private sweepExpiredHandoffs(nowMs = Date.now()): void {
+    for (const [token, record] of this.handoffs.entries()) {
+      if (!record || record.expiresAt <= nowMs) {
+        this.handoffs.delete(token);
+      }
+    }
+  }
+
+  private validateHandoff(owner: TerminalSessionOwner): boolean {
+    const handoffToken = String(owner?.handoffToken || "").trim();
+    if (!handoffToken) return false;
+    this.sweepExpiredHandoffs();
+    const record = this.handoffs.get(handoffToken);
+    if (!record) return false;
+    if (record.owner.token !== owner.token || record.owner.userId !== owner.userId) return false;
+    return true;
   }
 
   private ensureSession(owner: TerminalSessionOwner): TerminalSessionRecord {

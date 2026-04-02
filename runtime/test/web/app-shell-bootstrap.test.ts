@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { configureMarked, resolveAppApiSurface } from '../../web/src/ui/app-shell-bootstrap.js';
+import { configureMarked, installBrowserNoiseFilters, resolveAppApiSurface } from '../../web/src/ui/app-shell-bootstrap.js';
 
 test('configureMarked sets markdown defaults when marked instance is present', () => {
   let captured: Record<string, unknown> | null = null;
@@ -14,6 +14,30 @@ test('configureMarked sets markdown defaults when marked instance is present', (
     breaks: true,
     gfm: true,
   });
+});
+
+test('installBrowserNoiseFilters suppresses ResizeObserver loop browser noise', () => {
+  const listeners: Array<{ type: string; capture: boolean; handler: (event: any) => void }> = [];
+  const runtimeWindow = {
+    addEventListener: (type: string, handler: (event: any) => void, capture?: boolean) => {
+      listeners.push({ type, capture: Boolean(capture), handler });
+    },
+  } as any;
+
+  installBrowserNoiseFilters(runtimeWindow);
+  expect(listeners).toHaveLength(1);
+  expect(listeners[0]).toMatchObject({ type: 'error', capture: true });
+
+  let prevented = false;
+  let stopped = false;
+  listeners[0].handler({
+    message: 'ResizeObserver loop completed with undelivered notifications.',
+    preventDefault: () => { prevented = true; },
+    stopImmediatePropagation: () => { stopped = true; },
+  });
+
+  expect(prevented).toBe(true);
+  expect(stopped).toBe(true);
 });
 
 test('resolveAppApiSurface applies optional fallbacks', async () => {

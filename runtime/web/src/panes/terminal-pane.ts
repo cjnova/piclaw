@@ -7,6 +7,7 @@
  */
 
 import type { WebPaneExtension, PaneContext, PaneInstance, PaneCapability } from './pane-types.js';
+import { consumePanePopoutTransferToken } from './editor-popout-transfer.js';
 
 const GHOSTTY_WEB_MODULE = '/static/js/vendor/ghostty-web.js';
 const GHOSTTY_WASM_MODULE = '/static/js/vendor/ghostty-vt.wasm';
@@ -114,9 +115,27 @@ async function fetchTerminalSession() {
     return body;
 }
 
-function buildTerminalWebSocketUrl(path) {
+async function requestTerminalHandoff() {
+    const response = await fetch('/terminal/handoff', {
+        method: 'POST',
+        credentials: 'same-origin',
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(body?.error || `HTTP ${response.status}`);
+    }
+    return typeof body?.handoff?.token === 'string' && body.handoff.token.trim()
+        ? body.handoff.token.trim()
+        : null;
+}
+
+function buildTerminalWebSocketUrl(path, handoffToken = null) {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.host}${path}`;
+    const url = new URL(`${protocol}//${window.location.host}${path}`);
+    if (handoffToken) {
+        url.searchParams.set('handoff', String(handoffToken));
+    }
+    return url.toString();
 }
 
 function detectDarkTheme(runtimeWindow = typeof window !== 'undefined' ? window : null, runtimeDocument = typeof document !== 'undefined' ? document : null) {
@@ -220,11 +239,19 @@ class TerminalPaneInstance implements PaneInstance {
     private resizeFrame = 0;
     private lastAppliedThemeSignature = null;
     private lastResizeSignature: string | null = null;
+    private pendingHandoffToken: string | null = null;
+    private transferHandoffToken: string | null = null;
 
-    constructor(container: HTMLElement, _context: PaneContext) {
+    constructor(container: HTMLElement, context: PaneContext) {
         this.container = container;
         this.ownerDocument = container.ownerDocument || document;
         this.ownerWindow = (this.ownerDocument.defaultView || window) as Window & typeof globalThis;
+        const transferHandoffToken = typeof context?.transferState?.handoffToken === 'string' && context.transferState.handoffToken.trim()
+            ? context.transferState.handoffToken.trim()
+            : null;
+        const popoutHandoffToken = consumePanePopoutTransferToken('terminal_handoff');
+        this.pendingHandoffToken = transferHandoffToken || popoutHandoffToken || null;
+        this.transferHandoffToken = this.pendingHandoffToken;
 
         this.termEl = this.ownerDocument.createElement('div');
         this.termEl.className = 'terminal-pane-content';
@@ -493,9 +520,10 @@ class TerminalPaneInstance implements PaneInstance {
                 return;
             }
 
-            const socket = new WebSocket(buildTerminalWebSocketUrl(session.ws_path || '/terminal/ws'));
+            const handoffToken = this.pendingHandoffToken || null;
+            const socket = new WebSocket(buildTerminalWebSocketUrl(session.ws_path || '/terminal/ws', handoffToken));
             this.socket = socket;
-            this.setStatus('Connecting…');
+            this.setStatus(handoffToken ? 'Transferring…' : 'Connecting…');
 
             terminal.onData?.((data) => {
                 if (socket.readyState === WebSocket.OPEN) {
@@ -511,6 +539,10 @@ class TerminalPaneInstance implements PaneInstance {
 
             socket.addEventListener('open', () => {
                 if (this.disposed) return;
+                if (handoffToken && this.pendingHandoffToken === handoffToken) {
+                    this.pendingHandoffToken = null;
+                    this.transferHandoffToken = handoffToken;
+                }
                 this.setStatus('Connected');
                 this.scheduleResize();
             });
@@ -610,6 +642,13 @@ class TerminalPaneInstance implements PaneInstance {
     afterAttachToHost(): void {
         this.installThemeSync();
         this.installResizeSync();
+        if (this.socket?.readyState === WebSocket.OPEN) {
+            this.setStatus('Connected');
+        } else if (this.pendingHandoffToken) {
+            this.setStatus('Transferring…');
+        } else if (this.socket?.readyState === WebSocket.CONNECTING) {
+            this.setStatus('Connecting…');
+        }
         this.scheduleResize();
         requestAnimationFrame(() => this.focus());
     }
@@ -625,6 +664,22 @@ class TerminalPaneInstance implements PaneInstance {
         }
         this.afterAttachToHost();
         return true;
+    }
+
+    exportHostTransferState(): Record<string, unknown> | null {
+        return {
+            kind: 'terminal',
+            live: true,
+            handoffToken: this.transferHandoffToken || null,
+        };
+    }
+
+    async preparePopoutTransfer(): Promise<Record<string, string> | null> {
+        const handoffToken = await requestTerminalHandoff();
+        if (!handoffToken) return null;
+        this.pendingHandoffToken = handoffToken;
+        this.transferHandoffToken = handoffToken;
+        return { terminal_handoff: handoffToken };
     }
 
     getContent(): string | undefined {

@@ -303,6 +303,11 @@ export function installWebChannelPrototype(target, defaults) {
             writable: true,
             value: withHttpSurface((service, req) => service.handleTerminalSession(req)),
         },
+        handleTerminalHandoff: {
+            configurable: true,
+            writable: true,
+            value: withHttpSurface((service, req) => service.handleTerminalHandoff(req)),
+        },
         handleVncSession: {
             configurable: true,
             writable: true,

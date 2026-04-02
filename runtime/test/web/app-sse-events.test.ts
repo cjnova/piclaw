@@ -162,6 +162,39 @@ test('handleAppSseEvent restores active agent status on reconnect', async () => 
   });
 });
 
+test('handleAppSseEvent refreshes compaction status metadata even when title stays the same', () => {
+  const state = createDeps();
+
+  handleAppSseEvent('agent_status', {
+    chat_jid: 'chat:alpha',
+    type: 'intent',
+    title: 'Compacting context',
+    intent_key: 'compaction',
+    turn_id: 'turn-1',
+    started_at: '2026-04-02T13:00:00.000Z',
+  }, state.deps);
+
+  handleAppSseEvent('agent_status', {
+    chat_jid: 'chat:alpha',
+    type: 'intent',
+    title: 'Compacting context',
+    intent_key: 'compaction',
+    turn_id: 'turn-2',
+    started_at: '2026-04-02T13:05:00.000Z',
+    detail: 'Shrinking recent context before continuing the turn.',
+  }, state.deps);
+
+  expect(state.getAgentStatusState()).toEqual({
+    chat_jid: 'chat:alpha',
+    type: 'intent',
+    title: 'Compacting context',
+    intent_key: 'compaction',
+    turn_id: 'turn-2',
+    started_at: '2026-04-02T13:05:00.000Z',
+    detail: 'Shrinking recent context before continuing the turn.',
+  });
+});
+
 test('handleAppSseEvent maps extension notify events into intent toasts', () => {
   const state = createDeps();
 

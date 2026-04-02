@@ -270,6 +270,12 @@ export function TabStrip({ tabs, activeId, onActivate, onClose, onCloseOthers, o
                         setContextMenu(null);
                     }}>Edit Source</button>
                 `}
+                ${isContextMenuTabDetached && onReattachTab && html`
+                    <button onClick=${() => {
+                        onReattachTab(contextMenu.id);
+                        setContextMenu(null);
+                    }}>Reattach</button>
+                `}
                 ${onPopOutTab && !isContextMenuTabDetached && html`
                     <button onClick=${() => {
                         const tab = tabs.find(t => t.id === contextMenu.id);

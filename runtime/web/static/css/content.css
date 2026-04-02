@@ -498,10 +498,10 @@
     text-align: left;
 }
 
-.post-content th,
+.post-content th:first-child,
 .post-content td:first-child {
     width: 1%;
-    white-space: normal;
+    white-space: nowrap;
     overflow-wrap: normal;
     word-break: normal;
     hyphens: none;

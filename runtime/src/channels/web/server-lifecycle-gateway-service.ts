@@ -247,6 +247,8 @@ export class WebServerLifecycleGatewayService {
     if (!this.deps.webRuntimeConfig.terminalEnabled) {
       return this.deps.json({ error: "Web terminal is disabled." }, 404);
     }
+    const url = new URL(req.url);
+    const handoffToken = url.searchParams.get("handoff")?.trim() || "";
     const authEnabled = this.deps.authGateway.isAuthEnabled();
     if (authEnabled && !this.deps.authGateway.isAuthenticated(req)) {
       return this.deps.json({ error: "Unauthorized" }, 401);
@@ -258,6 +260,7 @@ export class WebServerLifecycleGatewayService {
     if (!owner) {
       return this.deps.json({ error: "Unauthorized" }, 401);
     }
+    owner.handoffToken = handoffToken || null;
     if (!server?.upgrade(req, { data: owner })) {
       return this.deps.json({ error: "WebSocket upgrade failed" }, 400);
     }

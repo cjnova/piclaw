@@ -34,7 +34,17 @@ export class AgentRuntimeFacade {
         const registry = session.modelRegistry ?? this.options.modelRegistry;
         registry.refresh();
         const available = registry.getAvailable();
-        const models = available.map((model) => `${model.provider}/${model.id}`);
+        const modelOptions = available.map((model) => ({
+            label: `${model.provider}/${model.id}`,
+            provider: model.provider,
+            id: model.id,
+            name: typeof model.name === "string" && model.name.trim() ? model.name.trim() : null,
+            context_window: typeof model.contextWindow === "number" && Number.isFinite(model.contextWindow) && model.contextWindow > 0
+                ? model.contextWindow
+                : null,
+            reasoning: Boolean(model.reasoning),
+        }));
+        const models = modelOptions.map((model) => model.label);
         const currentModel = session.model ? `${session.model.provider}/${session.model.id}` : null;
         const thinkingLevel = session.thinkingLevel ?? null;
         const supportsThinking = typeof session.supportsThinking === "function"
@@ -46,6 +56,7 @@ export class AgentRuntimeFacade {
         return {
             current: currentModel,
             models,
+            model_options: modelOptions,
             thinking_level: thinkingLevel,
             supports_thinking: supportsThinking,
             provider_usage: providerUsage,

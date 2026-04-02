@@ -114,13 +114,27 @@ function estimateContextTokensFromSession(session: AgentSession): number {
   return context.messages.reduce((total: number, message: any) => total + estimateMessageTokens(message), 0);
 }
 
+function getModelContextWindow(session: AgentSession): number | null {
+  const model = session.model as (AgentSession["model"] & { contextLength?: number }) | undefined;
+  const contextWindow = typeof model?.contextWindow === "number"
+    ? model.contextWindow
+    : typeof model?.contextLength === "number"
+      ? model.contextLength
+      : null;
+  if (typeof contextWindow !== "number" || !Number.isFinite(contextWindow) || contextWindow <= 0) {
+    return null;
+  }
+  return contextWindow;
+}
+
 async function maybeAutoCompactSessionBeforePrompt(
   session: AgentSession,
   chatJid: string,
   options: Pick<RunAgentOrchestratorOptions, "onInfo" | "onWarn">,
 ): Promise<void> {
   if (session.isStreaming || session.isCompacting || session.isRetrying) return;
-  if (!session.model?.contextLength) return;
+  const contextWindow = getModelContextWindow(session);
+  if (contextWindow == null) return;
 
   const settingsManager = (session as AgentSession & {
     settingsManager?: { getCompactionSettings?: () => { enabled?: boolean; reserveTokens?: number } };
@@ -132,13 +146,13 @@ async function maybeAutoCompactSessionBeforePrompt(
 
   try {
     const contextTokens = estimateContextTokensFromSession(session);
-    if (!shouldCompact(contextTokens, session.model.contextLength, settings)) return;
+    if (!shouldCompact(contextTokens, contextWindow, settings)) return;
 
     options.onInfo?.("Auto-compacting session before prompt", {
       operation: "maybe_auto_compact_session_before_prompt",
       chatJid,
       contextTokens,
-      contextWindow: session.model.contextLength,
+      contextWindow,
       reserveTokens: settings.reserveTokens ?? null,
     });
     await session.compact();

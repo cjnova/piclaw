@@ -61,7 +61,7 @@ export interface WebChannelHttpSurfaceChannel {
   serverLifecycleGateway: Pick<WebServerLifecycleGatewayService, "handleFetch">;
   terminalVncHttpService: Pick<
     WebTerminalVncHttpService,
-    "handleTerminalSession" | "handleVncSession" | "handleVncHandoff"
+    "handleTerminalSession" | "handleTerminalHandoff" | "handleVncSession" | "handleVncHandoff"
   >;
   sessionBroadcast: Pick<WebSessionBroadcastService, "handleSse">;
   remoteInterop: Pick<RemoteInteropService, "handleRequest">;
@@ -148,6 +148,10 @@ export class WebChannelHttpSurfaceService {
 
   handleTerminalSession(req: Request): Response {
     return this.channel.terminalVncHttpService.handleTerminalSession(req);
+  }
+
+  handleTerminalHandoff(req: Request): Promise<Response> {
+    return this.channel.terminalVncHttpService.handleTerminalHandoff(req);
   }
 
   handleVncSession(req: Request): Response {

@@ -21,10 +21,18 @@ function normalizeText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function isMapLike(value: unknown): value is Map<string, PaneLiveTransferRecord> {
+  return Boolean(value)
+    && typeof (value as Map<string, PaneLiveTransferRecord>).get === 'function'
+    && typeof (value as Map<string, PaneLiveTransferRecord>).set === 'function'
+    && typeof (value as Map<string, PaneLiveTransferRecord>).delete === 'function'
+    && typeof (value as Map<string, PaneLiveTransferRecord>).entries === 'function';
+}
+
 function getRegistry(runtimeWindow: any): Map<string, PaneLiveTransferRecord> | null {
   if (!runtimeWindow) return null;
   const existing = runtimeWindow[REGISTRY_KEY];
-  if (existing instanceof Map) return existing as Map<string, PaneLiveTransferRecord>;
+  if (isMapLike(existing)) return existing as Map<string, PaneLiveTransferRecord>;
   const created = new Map<string, PaneLiveTransferRecord>();
   runtimeWindow[REGISTRY_KEY] = created;
   return created;

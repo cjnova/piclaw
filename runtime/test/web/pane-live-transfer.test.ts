@@ -73,6 +73,44 @@ test('claimPaneLiveTransfer moves the registered pane instance and releases the 
   })).resolves.toBeNull();
 });
 
+test('claimPaneLiveTransfer accepts map-like registries across window realms', async () => {
+  const backingMap = new Map<string, any>();
+  const runtimeWindow = {
+    __piclawPaneLiveTransferRegistry__: {
+      get: (key: string) => backingMap.get(key),
+      set: (key: string, value: any) => {
+        backingMap.set(key, value);
+        return runtimeWindow.__piclawPaneLiveTransferRegistry__;
+      },
+      delete: (key: string) => backingMap.delete(key),
+      entries: () => backingMap.entries(),
+      get size() {
+        return backingMap.size;
+      },
+    },
+  } as any;
+  const instance = {
+    moveHost: async () => true,
+  } as any;
+
+  expect(registerPaneLiveTransfer({
+    panePath: '/workspace/notes.md',
+    paneInstanceId: 'pane-inst-1',
+    paneWindowId: 'pane-win-1',
+    instance,
+  }, runtimeWindow)).toBe(true);
+
+  await expect(claimPaneLiveTransfer(runtimeWindow, {
+    panePath: '/workspace/notes.md',
+    paneInstanceId: 'pane-inst-1',
+    paneWindowId: 'pane-win-1',
+  }, {} as any, {
+    path: '/workspace/notes.md',
+    hostMode: 'popout',
+    transferState: null,
+  })).resolves.toBe(instance);
+});
+
 test('clearPaneLiveTransferForPath removes stale live transfer registrations', async () => {
   const runtimeWindow = createWindowLike();
   registerPaneLiveTransfer({

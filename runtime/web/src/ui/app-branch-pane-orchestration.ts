@@ -49,6 +49,7 @@ export interface ResolvePanePopoutTransferOptions {
   terminalTabPath: string;
   activateTab?: (path: string) => void;
   getActiveTabId?: () => string | null;
+  resolveTab?: (path: string) => { dirty?: boolean } | null | undefined;
   buildEditorPopoutTransfer?: EditorPopoutTransferBuilder;
 }
 
@@ -81,10 +82,12 @@ export async function resolvePanePopoutTransfer(options: ResolvePanePopoutTransf
     terminalTabPath,
     activateTab,
     getActiveTabId,
+    resolveTab,
     buildEditorPopoutTransfer,
   } = options;
 
-  if (panePath === terminalTabPath) {
+  const useTerminalTabSource = panePath === terminalTabPath && Boolean(resolveTab?.(panePath));
+  if (panePath === terminalTabPath && !useTerminalTabSource) {
     const dockInstance = dockInstanceRef.current;
     await invokePaneBeforeDetachFromHost(dockInstance, panePath);
     if (typeof dockInstance?.preparePopoutTransfer !== 'function') {

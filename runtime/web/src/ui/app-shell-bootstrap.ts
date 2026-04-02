@@ -24,6 +24,7 @@ interface AppApiSurface {
 }
 
 let initialized = false;
+let browserNoiseFilterInstalled = false;
 
 export function configureMarked(markedInstance: { setOptions?: (options: Record<string, unknown>) => void } | null | undefined): void {
   if (!markedInstance || typeof markedInstance.setOptions !== 'function') return;
@@ -31,6 +32,18 @@ export function configureMarked(markedInstance: { setOptions?: (options: Record<
     breaks: true,
     gfm: true,
   });
+}
+
+export function installBrowserNoiseFilters(runtimeWindow: (Window & typeof globalThis) | null = typeof window !== 'undefined' ? window : null): void {
+  if (!runtimeWindow || browserNoiseFilterInstalled) return;
+  const handler = (event: ErrorEvent) => {
+    const message = String(event?.message || event?.error?.message || '').trim();
+    if (!/ResizeObserver loop (completed with undelivered notifications|limit exceeded)/i.test(message)) return;
+    event.preventDefault?.();
+    event.stopImmediatePropagation?.();
+  };
+  runtimeWindow.addEventListener('error', handler, true);
+  browserNoiseFilterInstalled = true;
 }
 
 export function registerAppPaneExtensions(): void {
@@ -57,6 +70,7 @@ export function initializeAppShellRuntime(): void {
     ? (window as any)?.marked
     : null;
   configureMarked(markedInstance);
+  installBrowserNoiseFilters(typeof window !== 'undefined' ? window : null);
   registerAppPaneExtensions();
   initialized = true;
 }

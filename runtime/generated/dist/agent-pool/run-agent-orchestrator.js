@@ -1,6 +1,7 @@
 /**
  * agent-pool/run-agent-orchestrator.ts – Main runAgent prompt lifecycle orchestration.
  */
+import { shouldCompact } from "@mariozechner/pi-coding-agent";
 import { getAgentRuntimeConfig, getSessionStorageConfig } from "../core/config.js";
 import { detectChannel } from "../router.js";
 import { pruneOrphanToolResults } from "./orphan-tool-results.js";
@@ -37,6 +38,103 @@ async function maybeAutoRotateSession(session, chatJid, options) {
         reason: result.message,
     });
 }
+function estimateMessageTokens(message) {
+    if (!message || typeof message !== "object")
+        return 0;
+    const countText = (value) => {
+        if (typeof value === "string")
+            return value.length;
+        if (!Array.isArray(value))
+            return 0;
+        let chars = 0;
+        for (const block of value) {
+            if (!block || typeof block !== "object")
+                continue;
+            if (block.type === "text" && typeof block.text === "string")
+                chars += block.text.length;
+            if (block.type === "thinking" && typeof block.thinking === "string")
+                chars += block.thinking.length;
+            if (block.type === "toolCall") {
+                chars += typeof block.name === "string" ? block.name.length : 0;
+                if (block.arguments !== undefined)
+                    chars += JSON.stringify(block.arguments).length;
+            }
+            if (block.type === "image")
+                chars += 4800;
+        }
+        return chars;
+    };
+    switch (message.role) {
+        case "assistant":
+        case "custom":
+        case "toolResult":
+            return Math.ceil(countText(message.content) / 4);
+        case "user":
+            return Math.ceil(countText(message.content) / 4);
+        case "bashExecution": {
+            const chars = (typeof message.command === "string" ? message.command.length : 0)
+                + (typeof message.output === "string" ? message.output.length : 0);
+            return Math.ceil(chars / 4);
+        }
+        case "branchSummary":
+        case "compactionSummary":
+            return Math.ceil(((typeof message.summary === "string" ? message.summary.length : 0)) / 4);
+        default:
+            return 0;
+    }
+}
+function estimateContextTokensFromSession(session) {
+    const usage = session.getContextUsage?.();
+    if (typeof usage?.tokens === "number")
+        return usage.tokens;
+    const context = session.sessionManager.buildSessionContext();
+    return context.messages.reduce((total, message) => total + estimateMessageTokens(message), 0);
+}
+function getModelContextWindow(session) {
+    const model = session.model;
+    const contextWindow = typeof model?.contextWindow === "number"
+        ? model.contextWindow
+        : typeof model?.contextLength === "number"
+            ? model.contextLength
+            : null;
+    if (typeof contextWindow !== "number" || !Number.isFinite(contextWindow) || contextWindow <= 0) {
+        return null;
+    }
+    return contextWindow;
+}
+async function maybeAutoCompactSessionBeforePrompt(session, chatJid, options) {
+    if (session.isStreaming || session.isCompacting || session.isRetrying)
+        return;
+    const contextWindow = getModelContextWindow(session);
+    if (contextWindow == null)
+        return;
+    const settingsManager = session.settingsManager;
+    const settings = typeof settingsManager?.getCompactionSettings === "function"
+        ? settingsManager.getCompactionSettings()
+        : null;
+    if (!settings?.enabled)
+        return;
+    try {
+        const contextTokens = estimateContextTokensFromSession(session);
+        if (!shouldCompact(contextTokens, contextWindow, settings))
+            return;
+        options.onInfo?.("Auto-compacting session before prompt", {
+            operation: "maybe_auto_compact_session_before_prompt",
+            chatJid,
+            contextTokens,
+            contextWindow,
+            reserveTokens: settings.reserveTokens ?? null,
+        });
+        await session.compact();
+    }
+    catch (error) {
+        options.onWarn?.("Pre-prompt auto-compaction skipped", {
+            operation: "maybe_auto_compact_session_before_prompt",
+            chatJid,
+            error,
+        });
+    }
+}
 /** Run a prompt against the persistent session for one chat. */
 export async function runAgentPrompt(prompt, chatJid, runOptions, options) {
     const startTime = Date.now();
@@ -44,6 +142,7 @@ export async function runAgentPrompt(prompt, chatJid, runOptions, options) {
     try {
         const session = await options.getOrCreate(chatJid);
         await maybeAutoRotateSession(session, chatJid, options);
+        await maybeAutoCompactSessionBeforePrompt(session, chatJid, options);
         pruneOrphanToolResults(session, chatJid);
         const forkBaseLeafId = typeof session.sessionManager?.getLeafId === "function"
             ? session.sessionManager.getLeafId()

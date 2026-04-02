@@ -267,7 +267,17 @@ export function renderMainShell(options: MainShellRenderOptions): any {
               onPopOutTab=${isWebAppMode ? undefined : handlePopOutPane}
             />
           `}
-          ${editorOpen && activeDetachedTab && html`<div class="editor-pane-host editor-pane-detached-host"></div>`}
+          ${editorOpen && activeDetachedTab && html`
+            <div class="editor-pane-host editor-pane-detached-host">
+              <div class="editor-empty-state">
+                <div class="editor-empty-state-title">${activeDetachedTab.label || activeDetachedTab.panePath || 'Detached pane'}</div>
+                <div class="editor-empty-state-body">This pane is detached into another window.</div>
+                <div class="editor-empty-state-actions">
+                  <button class="editor-empty-state-button" onClick=${() => handleReattachPane(activeDetachedTab.panePath)}>Reattach here</button>
+                </div>
+              </div>
+            </div>
+          `}
           ${editorOpen && !activeDetachedTab && html`<div class="editor-pane-host" ref=${editorContainerRef}></div>`}
           ${editorOpen && !activeDetachedTab && tabStripActiveId && previewTabs.has(tabStripActiveId) && html`
             <${MarkdownPreview}
@@ -290,6 +300,15 @@ export function renderMainShell(options: MainShellRenderOptions): any {
                     </svg>
                   </button>
                 `}
+                ${detachedDockPane && html`
+                  <button class="dock-panel-action" onClick=${() => handleReattachPane(TERMINAL_TAB_PATH)} title="Reattach terminal" aria-label="Reattach terminal">
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="2.25" y="2.25" width="11.5" height="11.5" rx="1.5"/>
+                      <path d="M5.25 8h5.5"/>
+                      <path d="M8 5.25v5.5"/>
+                    </svg>
+                  </button>
+                `}
                 <button class="dock-panel-close" onClick=${toggleDock} title="Hide terminal (Ctrl+\`)" aria-label="Hide terminal">
                   <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
                     <line x1="4" y1="4" x2="12" y2="12"/>
@@ -299,7 +318,17 @@ export function renderMainShell(options: MainShellRenderOptions): any {
               </div>
             </div>
             ${detachedDockPane
-              ? html`<div class="dock-panel-body dock-panel-body-detached"></div>`
+              ? html`
+                <div class="dock-panel-body dock-panel-body-detached">
+                  <div class="editor-empty-state">
+                    <div class="editor-empty-state-title">Terminal detached</div>
+                    <div class="editor-empty-state-body">The terminal is open in another window.</div>
+                    <div class="editor-empty-state-actions">
+                      <button class="editor-empty-state-button" onClick=${() => handleReattachPane(TERMINAL_TAB_PATH)}>Reattach here</button>
+                    </div>
+                  </div>
+                </div>
+              `
               : html`<div class="dock-panel-body" ref=${dockContainerRef}></div>`}
           </div>`}
         </div>

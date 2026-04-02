@@ -54,6 +54,9 @@ export class WebChannelHttpSurfaceService {
     handleTerminalSession(req) {
         return this.channel.terminalVncHttpService.handleTerminalSession(req);
     }
+    handleTerminalHandoff(req) {
+        return this.channel.terminalVncHttpService.handleTerminalHandoff(req);
+    }
     handleVncSession(req) {
         return this.channel.terminalVncHttpService.handleVncSession(req);
     }

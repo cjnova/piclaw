@@ -59,7 +59,7 @@ test("terminal session service resolves owner from web session cookie", () => {
     headers: { cookie: "piclaw_session=terminal-token" },
   });
 
-  expect(service.resolveOwnerFromRequest(req)).toEqual({ kind: "terminal", token: "terminal-token", userId: "user-1" });
+  expect(service.resolveOwnerFromRequest(req)).toEqual({ kind: "terminal", token: "terminal-token", userId: "user-1", handoffToken: null });
 });
 
 test("terminal session service falls back to the local default owner when allowed", () => {
@@ -72,6 +72,7 @@ test("terminal session service falls back to the local default owner when allowe
     kind: "terminal",
     token: "web-terminal-local-default",
     userId: "default",
+    handoffToken: null,
   });
 });
 
@@ -111,6 +112,38 @@ test("terminal session service spawns one shell per web session and relays IO", 
 
   processes[0].emitExit(0, null);
   expect(service.getSessionInfo(owner).active).toBe(false);
+});
+
+test("terminal session handoff tokens are issued for live sessions and close prior clients on takeover", () => {
+  createWebSession("terminal-handoff", "user-handoff", 3600, "totp");
+  const proc = new FakeProcess();
+  const service = new TerminalSessionService({
+    spawnProcess: () => proc as any,
+  });
+  const closes: string[] = [];
+  const first = {
+    data: { kind: "terminal", token: "terminal-handoff", userId: "user-handoff", handoffToken: null },
+    send: () => {},
+    close: () => closes.push("first"),
+  } as any;
+
+  service.attachClient(first);
+  const req = new Request("https://example.com/terminal/handoff", {
+    method: "POST",
+    headers: { cookie: "piclaw_session=terminal-handoff" },
+  });
+  const handoff = service.createHandoffFromRequest(req);
+  expect(handoff?.token).toBeTruthy();
+
+  const second = {
+    data: { kind: "terminal", token: "terminal-handoff", userId: "user-handoff", handoffToken: handoff?.token || null },
+    send: () => {},
+    close: () => closes.push("second"),
+  } as any;
+
+  service.attachClient(second);
+  expect(closes).toEqual(["first"]);
+  expect(service.getSessionInfo({ token: "terminal-handoff", userId: "user-handoff" }).connected_clients).toBe(1);
 });
 
 test("terminal session shutdown kills live shells", () => {

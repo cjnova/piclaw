@@ -193,10 +193,21 @@ For each editor/viewer surface, the project should answer explicitly:
 - The test also asserts `getStandaloneTabUrl(..., { hasPopOutTab: true })`
   returns `null` for those surfaces, so they keep using the shared pane-popout
   plumbing instead of drifting onto dedicated standalone helpers by accident.
-- Live verification now matches that contract for video, mindmap, and kanban.
-- Terminal remains the exception: the UI contract is correct, but live
-  instrumentation still shows a second `/terminal/ws` socket after `Open in
-  Window`, so the transport/session preservation part is still incomplete.
+- Live verification now matches that contract for video, mindmap, kanban, and
+  terminal.
+- Terminal required an additional live-transfer fix set:
+  - preserve the source tab instance until popup claim succeeds
+  - treat cross-window live-transfer registries as map-like instead of relying
+    on `instanceof Map`
+  - restore the main-shell terminal tab label/status cleanly after reattach
+  - ignore browser-only `ResizeObserver loop ...` noise in the static shell
+    error fallback so successful reattach does not get replaced by a false red
+    error screen
+- Latest instrumentation-confirmed terminal result:
+  - pop-out claims the original live terminal instance
+  - reattach claims the same live instance back into the main shell
+  - websocket counters stay at one created/live `/terminal/ws` transport across
+    the full detach + reattach cycle
 
 ### 2026-04-01
 - Created to track the broader consistency pass requested after the Draw.io

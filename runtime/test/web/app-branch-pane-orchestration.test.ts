@@ -62,7 +62,22 @@ test('resolvePanePopoutTransfer uses active editor transfer first, then dock ter
     editorInstanceRef: { current: { preparePopoutTransfer: editorTransfer } },
     dockInstanceRef: { current: { preparePopoutTransfer: dockTransfer } },
     terminalTabPath: '/__terminal__',
+    resolveTab: () => null,
   })).resolves.toEqual({ cwd: '/workspace' });
+});
+
+test('resolvePanePopoutTransfer prefers the terminal tab instance when the terminal is open as a tab', async () => {
+  const editorTransfer = async () => ({ live: 'terminal-tab' });
+  const dockTransfer = async () => ({ live: 'dock' });
+
+  await expect(resolvePanePopoutTransfer({
+    panePath: '/__terminal__',
+    tabStripActiveId: '/__terminal__',
+    editorInstanceRef: { current: { preparePopoutTransfer: editorTransfer } },
+    dockInstanceRef: { current: { preparePopoutTransfer: dockTransfer } },
+    terminalTabPath: '/__terminal__',
+    resolveTab: () => ({ dirty: false }),
+  })).resolves.toEqual({ live: 'terminal-tab' });
 });
 
 test('resolvePanePopoutTransfer activates an inactive tab before requesting transfer state', async () => {

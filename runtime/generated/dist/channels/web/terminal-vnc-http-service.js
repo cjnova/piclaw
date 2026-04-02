@@ -27,6 +27,23 @@ export class WebTerminalVncHttpService {
         }
         return this.deps.json(this.deps.terminalService.getSessionInfo(owner));
     }
+    async handleTerminalHandoff(req) {
+        if (!this.deps.webRuntimeConfig.terminalEnabled) {
+            return this.deps.json({ error: "Web terminal is disabled." }, 404);
+        }
+        const authEnabled = this.deps.authGateway.isAuthEnabled();
+        if (authEnabled && !this.deps.authGateway.isAuthenticated(req)) {
+            return this.deps.json({ error: "Unauthorized" }, 401);
+        }
+        if (!this.checkCsrfOrigin(req)) {
+            return this.deps.json({ error: "Origin not allowed" }, 403);
+        }
+        const handoff = this.deps.terminalService.createHandoffFromRequest(req, !authEnabled);
+        if (!handoff) {
+            return this.deps.json({ error: "No live terminal session is available to transfer." }, 409);
+        }
+        return this.deps.json({ ok: true, handoff }, 200);
+    }
     handleVncSession(req) {
         const url = new URL(req.url);
         const targetId = url.searchParams.get("target")?.trim() || "";

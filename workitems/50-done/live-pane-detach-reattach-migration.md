@@ -1,10 +1,11 @@
 ---
 id: live-pane-detach-reattach-migration
 title: Add live detach/reattach pane migration across standalone web windows
-status: doing
+status: done
 priority: high
 created: 2026-03-31
-updated: 2026-03-31
+updated: 2026-04-02
+completed: 2026-04-02
 target_release: next
 estimate: XL
 risk: high
@@ -131,17 +132,17 @@ Core ideas:
 
 ## Acceptance Criteria
 
-- [ ] A user can detach multiple panes into separate standalone windows.
-- [ ] Each detached pane has exactly one live owner at a time.
-- [ ] Reattach returns control to the main app without reopening from scratch
+- [x] A user can detach multiple panes into separate standalone windows.
+- [x] Each detached pane has exactly one live owner at a time.
+- [x] Reattach returns control to the main app without reopening from scratch
       when live transfer succeeds.
-- [ ] The main shell shows a clear non-owner/detached state instead of a live
+- [x] The main shell shows a clear non-owner/detached state instead of a live
       duplicate when the pane lives in another window.
-- [ ] Unsupported panes or failed handoff fall back safely to the existing
+- [x] Unsupported panes or failed handoff fall back safely to the existing
       reopen-in-window behavior.
-- [ ] Detached-window close is handled safely and predictably.
-- [ ] Existing pop-out URLs remain backward-compatible.
-- [ ] Safari has a verified v1 path for the supported contract, with any
+- [x] Detached-window close is handled safely and predictably.
+- [x] Existing pop-out URLs remain backward-compatible.
+- [x] Safari has a verified v1 path for the supported contract, with any
       browser-imposed fallbacks explicitly documented.
 
 ## Failure Behavior
@@ -159,29 +160,70 @@ Core ideas:
 ## Test Plan
 
 ### Focused web tests
-- [ ] pane ownership state machine
-- [ ] detach handshake success/failure
-- [ ] reattach handshake success/failure
-- [ ] fallback to reopen model
-- [ ] single-owner enforcement
-- [ ] unexpected pop-out close recovery
-- [ ] tab strip / shell UI state for detached panes
-- [ ] backward compatibility for existing pop-out URLs
+- [x] pane ownership state machine
+- [x] detach handshake success/failure
+- [x] reattach handshake success/failure
+- [x] fallback to reopen model
+- [x] single-owner enforcement
+- [x] unexpected pop-out close recovery
+- [x] tab strip / shell UI state for detached panes
+- [x] backward compatibility for existing pop-out URLs
 
 ### Browser/integration tests
-- [ ] detach two or more panes
-- [ ] reattach in different order
-- [ ] close detached window and verify safe recovery
-- [ ] verify unsupported/failed live detach falls back cleanly
-- [ ] Safari verification pass
+- [x] detach two or more panes
+- [x] reattach in different order
+- [x] close detached window and verify safe recovery
+- [x] verify unsupported/failed live detach falls back cleanly
+- [x] Safari verification pass
 
 ### Validation commands
-- [ ] targeted `bun test ...`
-- [ ] `bun run build:web`
-- [ ] `bun run lint`
-- [ ] `bun run typecheck`
+- [x] targeted `bun test ...`
+- [x] `bun run build:web`
+- [x] `bun run lint`
+- [x] `bun run typecheck`
 
 ## Updates
+
+### 2026-04-02
+- Closed out the terminal live-transfer cleanup slice after the detach/reattach
+  regression fix was proven stable without temporary debug instrumentation.
+- Removed the temporary pane-transfer debug logging from:
+  - `runtime/web/src/panes/pane-live-transfer.ts`
+  - `runtime/web/src/panes/terminal-pane.ts`
+  - `runtime/web/src/ui/app-pane-runtime-orchestration.ts`
+- Re-ran focused regression coverage:
+  - `runtime/test/web/pane-live-transfer.test.ts`
+  - `runtime/test/web/app-shell-bootstrap.test.ts`
+  - `runtime/test/web/app-pane-runtime-orchestration.test.ts`
+  - `runtime/test/web/app-branch-pane-orchestration.test.ts`
+  - `runtime/test/web/app-window-actions.test.ts`
+- Revalidated the shipped slice with:
+  - `bun run lint`
+  - `bun run typecheck`
+  - `bun run build:web`
+  - `bun run check:stale-dist`
+  - `make local-install`
+- Final clean live browser pass confirmed the terminal keeps a single live
+  `/terminal/ws` transport across the full detach + reattach cycle:
+  - before pop-out: `created=1`, `live=1`
+  - after pop-out: `created=1`, `live=1`
+  - after reattach: `created=1`, `live=1`
+- The temporary debug log is now empty in the final artifact, confirming the
+  instrumentation was removed while the live-transfer behavior still passes.
+- Safari follow-up: closing a detached terminal pop-out was still crashing the
+  main PiClaw window before any safe recovery path could complete.
+- Shipped a Safari-specific containment fallback for terminal pop-outs:
+  - disable terminal reattach entirely on Safari-family browsers
+  - skip popup unload reattach messaging for terminal close
+  - skip main-window auto/manual terminal reattach for that browser path
+  - drop detached terminal state after popup close instead of attempting
+    recovery
+- This is an intentional compatibility degradation to preserve main-window
+  stability on Safari while keeping non-Safari terminal detach/reattach
+  behavior unchanged.
+- Follow-on work that is deliberately out of scope for this closed slice is
+  tracked separately, including a future inbox item to restore a proper Safari
+  terminal close/reattach path without the current compatibility fallback.
 
 ### 2026-03-31
 - Lane change: `10-next` → `20-doing`.
@@ -230,13 +272,13 @@ Core ideas:
 
 ## Definition of Done
 
-- [ ] Multi-pane live detach/reattach works for the supported generic host path.
-- [ ] Exactly one owner window controls a live pane instance at a time.
-- [ ] Successful live reattach avoids reopening from scratch.
-- [ ] Detached-pane UI makes ownership state obvious.
-- [ ] Existing reopen-based pop-out behavior still works as fallback.
-- [ ] Targeted tests, `build:web`, `lint`, and `typecheck` pass.
-- [ ] Safari support is verified for the supported contract, or any browser
+- [x] Multi-pane live detach/reattach works for the supported generic host path.
+- [x] Exactly one owner window controls a live pane instance at a time.
+- [x] Successful live reattach avoids reopening from scratch.
+- [x] Detached-pane UI makes ownership state obvious.
+- [x] Existing reopen-based pop-out behavior still works as fallback.
+- [x] Targeted tests, `build:web`, `lint`, and `typecheck` pass.
+- [x] Safari support is verified for the supported contract, or any browser
       limitations are documented as explicit safe fallbacks.
 
 ## Risks

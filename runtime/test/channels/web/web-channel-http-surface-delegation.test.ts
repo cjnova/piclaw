@@ -67,6 +67,10 @@ describe("web channel http surface delegation", () => {
           calls.push("terminal");
           return response("terminal");
         },
+        handleTerminalHandoff: async (_req: Request) => {
+          calls.push("terminal-handoff");
+          return response("terminal-handoff");
+        },
         handleVncSession: (_req: Request) => {
           calls.push("vnc");
           return response("vnc");
@@ -128,6 +132,7 @@ describe("web channel http surface delegation", () => {
     expect(await (await WebChannel.prototype.handleAgentActiveChats.call(stub, getReq)).text()).toBe("active-chats");
     expect(await WebChannel.prototype.handleSse.call(stub, getReq).text()).toBe("sse");
     expect(await WebChannel.prototype.handleTerminalSession.call(stub, getReq).text()).toBe("terminal");
+    expect(await (await WebChannel.prototype.handleTerminalHandoff.call(stub, postReq)).text()).toBe("terminal-handoff");
     expect(await WebChannel.prototype.handleVncSession.call(stub, getReq).text()).toBe("vnc");
     expect(await (await WebChannel.prototype.handleVncHandoff.call(stub, postReq)).text()).toBe("handoff");
     expect(await (await WebChannel.prototype.handleRemote.call(stub, getReq)).text()).toBe("remote");
@@ -151,6 +156,7 @@ describe("web channel http surface delegation", () => {
       "active-chats",
       "sse",
       "terminal",
+      "terminal-handoff",
       "vnc",
       "handoff",
       "remote",

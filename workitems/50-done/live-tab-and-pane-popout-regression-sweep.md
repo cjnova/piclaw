@@ -1,10 +1,11 @@
 ---
 id: live-tab-and-pane-popout-regression-sweep
 title: Run a live regression sweep for tab pop-outs and pane detach/reattach
-status: doing
+status: done
 priority: high
 created: 2026-04-01
-updated: 2026-04-01
+updated: 2026-04-02
+completed: 2026-04-02
 target_release: next
 estimate: M
 risk: medium
@@ -114,11 +115,11 @@ browser window lifecycle:
 
 ## Acceptance Criteria
 
-- [ ] Each listed tab/viewer surface has a recorded live pass/fail result.
-- [ ] Any remaining regression is captured either in this ticket's updates or a follow-up ticket.
-- [ ] Draw.io behavior is explicitly verified live after the recent shipped fixes.
-- [ ] VNC detach/reattach has a current live status, even if still failing.
-- [ ] Terminal live-transfer behavior has a current live status.
+- [x] Each listed tab/viewer surface has a recorded live pass/fail result.
+- [x] Any remaining regression is captured either in this ticket's updates or a follow-up ticket.
+- [x] Draw.io behavior is explicitly verified live after the recent shipped fixes.
+- [x] VNC detach/reattach has a current live status, even if still failing.
+- [x] Terminal live-transfer behavior has a current live status.
 
 ## Suggested Execution Order
 
@@ -152,13 +153,17 @@ or integration-test ticket.
     received the correct `… · PiClaw` title, mounted the expected inner pane
     content, and auto-reattached cleanly on window close with no detached badge
     left behind
-  - terminal uncovered a remaining live-transfer regression:
-    - the detached terminal window connected successfully and reattached cleanly
-    - but instrumentation around `/terminal/ws` showed the pop-out created a
-      second terminal websocket instead of preserving the original live session
-      during host transfer
-    - this means terminal live transfer is still not equivalent to the editor /
-      viewer reattach path and remains open
+  - terminal initially uncovered a live-transfer regression, but the latest
+    deployed retest now passes end-to-end:
+    - popup title is `Terminal · PiClaw`
+    - popup and main shell both report `Connected`
+    - detached badge clears on reattach
+    - websocket instrumentation remains stable at exactly one live
+      `/terminal/ws` session across detach + reattach
+    - final counters after the successful retest:
+      - before pop-out: `created=1`, `live=1`
+      - after pop-out: `created=1`, `live=1`
+      - after reattach: `created=1`, `live=1`
 - Added a focused contract regression test at
   `runtime/test/web/pane-popout-contracts.test.ts` covering the generic-shell
   pop-out contract for:
@@ -194,8 +199,23 @@ or integration-test ticket.
     tab from disk, losing the unsaved marker content
   - the pop-out window title also resolved to the markdown document heading
     (`Smith`) instead of the file label (`AGENTS.md · PiClaw`)
-- This means generic editor pop-out/reattach is not yet equivalent to the
-  simple viewer pass and still needs a fix before being marked complete.
+- Generic editor follow-up is no longer a blocker for closing this sweep:
+  the title + unsaved-state reattach regressions were fixed in the shipped
+  follow-on implementation tracked separately.
+- VNC current live status is recorded for this sweep:
+  - local auth-required retest passed for connect, password transfer, and
+    pop-out reconnect
+  - the original real-target/proxy path still warrants future revalidation,
+    but the sweep now has a current status snapshot instead of an unknown.
+- Safari-specific follow-up on the terminal slice:
+  - closing the terminal pop-out on Safari was crashing/reloading the main
+    PiClaw window before any close-time recovery path could complete
+  - the shipped containment fix disables terminal reattach on Safari-family
+    browsers and drops detached terminal state when the popup closes
+  - user verification after that fallback: terminal popup close no longer
+    crashes the main Safari window
+- A future inbox item will track restoring a proper Safari terminal close /
+  reattach path without the current compatibility fallback.
 
 ### 2026-04-01
 - Created to track the resumed live browser test sweep after the Draw.io

@@ -46,6 +46,9 @@ export async function handleShellRoutes(channel, req, pathname, flags, serveStat
     if (req.method === "GET" && pathname === "/terminal/session") {
         return channel.handleTerminalSession(req);
     }
+    if (req.method === "POST" && pathname === "/terminal/handoff") {
+        return await channel.handleTerminalHandoff(req);
+    }
     if (req.method === "GET" && pathname === "/vnc/session") {
         return channel.handleVncSession(req);
     }

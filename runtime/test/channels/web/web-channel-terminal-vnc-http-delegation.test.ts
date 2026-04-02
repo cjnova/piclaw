@@ -20,6 +20,10 @@ describe("WebChannel terminal/VNC HTTP delegation", () => {
         calls.push(`terminal:${req.method}:${new URL(req.url).pathname}`);
         return new Response("terminal-session", { status: 201 });
       },
+      handleTerminalHandoff: async (req: Request) => {
+        calls.push(`terminal-handoff:${req.method}:${new URL(req.url).pathname}`);
+        return new Response("terminal-handoff", { status: 204 });
+      },
       handleVncSession: (req: Request) => {
         calls.push(`vnc-session:${req.method}:${new URL(req.url).searchParams.get("target") ?? ""}`);
         return new Response("vnc-session", { status: 202 });
@@ -34,6 +38,10 @@ describe("WebChannel terminal/VNC HTTP delegation", () => {
     expect(terminalResponse.status).toBe(201);
     expect(await terminalResponse.text()).toBe("terminal-session");
 
+    const terminalHandoffResponse = await fixture.channel.handleTerminalHandoff(new Request("https://example.com/terminal/handoff", { method: "POST" }));
+    expect(terminalHandoffResponse.status).toBe(204);
+    expect(await terminalHandoffResponse.text()).toBe("terminal-handoff");
+
     const vncSessionResponse = fixture.channel.handleVncSession(new Request("https://example.com/vnc/session?target=desk"));
     expect(vncSessionResponse.status).toBe(202);
     expect(await vncSessionResponse.text()).toBe("vnc-session");
@@ -44,6 +52,7 @@ describe("WebChannel terminal/VNC HTTP delegation", () => {
 
     expect(calls).toEqual([
       "terminal:GET:/terminal/session",
+      "terminal-handoff:POST:/terminal/handoff",
       "vnc-session:GET:desk",
       "vnc-handoff:POST:desk",
     ]);

@@ -2,10 +2,15 @@ import { expect, test } from 'bun:test';
 
 import {
   buildPanePopoutReattachRequestMessage,
+  canRecoverDetachedPaneInForeground,
   consumePanePopoutReattachRequestMessage,
   invokePaneAfterAttachToHost,
+  isLikelySafariBrowser,
   isWorkspaceUpdateRelevantForPath,
   removeSourcePaneAfterDetachClaim,
+  shouldDelayPaneReattachAfterWindowClose,
+  shouldDisableTerminalReattach,
+  shouldRequireManualTerminalCloseRecovery,
   shouldRetainPaneDetachState,
 } from '../../web/src/ui/app-pane-runtime-orchestration.js';
 
@@ -62,6 +67,7 @@ test('buildPanePopoutReattachRequestMessage stores editor state for reattach rec
   expect(restored).toEqual({
     panePath: '/workspace/notes.md',
     paneInstanceId: 'pane-inst-1',
+    allowLiveTransfer: true,
     editorTransfer: {
       path: '/workspace/notes.md',
       content: '# Draft',
@@ -112,9 +118,141 @@ test('consumePanePopoutReattachRequestMessage ignores mismatched transfer payloa
   })).toEqual({
     panePath: '/workspace/notes.md',
     paneInstanceId: null,
+    allowLiveTransfer: true,
     editorTransfer: null,
     hostTransfer: null,
   });
+});
+
+test('buildPanePopoutReattachRequestMessage can disable live transfer for close-window recovery', () => {
+  const localStorage = createStorage();
+  const runtime = { localStorage } as any;
+
+  const payload = buildPanePopoutReattachRequestMessage({
+    panePath: 'piclaw://terminal',
+    paneInstanceId: 'pane-inst-1',
+    terminalTabPath: 'piclaw://terminal',
+    allowLiveTransfer: false,
+    instance: {
+      exportHostTransferState: () => ({
+        kind: 'terminal',
+        live: true,
+        handoffToken: 'handoff-1',
+      }),
+    },
+    runtime,
+    nowMs: 1_000,
+  });
+
+  expect(payload).toEqual({
+    type: 'piclaw-pane-reattach-request',
+    panePath: 'piclaw://terminal',
+    paneInstanceId: 'pane-inst-1',
+    paneTransferToken: expect.any(String),
+    allowLiveTransfer: false,
+  });
+
+  expect(consumePanePopoutReattachRequestMessage({ payload, runtime, nowMs: 1_500 })).toEqual({
+    panePath: 'piclaw://terminal',
+    paneInstanceId: 'pane-inst-1',
+    editorTransfer: null,
+    hostTransfer: {
+      path: 'piclaw://terminal',
+      payload: {
+        kind: 'terminal',
+        live: true,
+        handoffToken: 'handoff-1',
+      },
+      capturedAt: 1_000,
+    },
+    allowLiveTransfer: false,
+  });
+});
+
+test('canRecoverDetachedPaneInForeground only allows visible documents', () => {
+  expect(canRecoverDetachedPaneInForeground(null)).toBe(true);
+  expect(canRecoverDetachedPaneInForeground({ visibilityState: 'visible' } as any)).toBe(true);
+  expect(canRecoverDetachedPaneInForeground({ visibilityState: 'hidden' } as any)).toBe(false);
+});
+
+test('isLikelySafariBrowser detects Safari-family browsers conservatively', () => {
+  expect(isLikelySafariBrowser({
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+    vendor: 'Apple Computer, Inc.',
+  } as any)).toBe(true);
+  expect(isLikelySafariBrowser({
+    userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+    vendor: 'Google Inc.',
+  } as any)).toBe(false);
+});
+
+test('shouldDelayPaneReattachAfterWindowClose only defers terminal close recovery paths', () => {
+  expect(shouldDelayPaneReattachAfterWindowClose({
+    panePath: 'piclaw://terminal',
+    terminalTabPath: 'piclaw://terminal',
+    allowLiveTransfer: false,
+    reason: 'message',
+  })).toBe(true);
+  expect(shouldDelayPaneReattachAfterWindowClose({
+    panePath: 'piclaw://terminal',
+    terminalTabPath: 'piclaw://terminal',
+    allowLiveTransfer: true,
+    reason: 'message',
+  })).toBe(false);
+  expect(shouldDelayPaneReattachAfterWindowClose({
+    panePath: 'piclaw://terminal',
+    terminalTabPath: 'piclaw://terminal',
+    allowLiveTransfer: true,
+    reason: 'closed-window',
+  })).toBe(true);
+  expect(shouldDelayPaneReattachAfterWindowClose({
+    panePath: '/workspace/notes.md',
+    terminalTabPath: 'piclaw://terminal',
+    allowLiveTransfer: false,
+    reason: 'closed-window',
+  })).toBe(false);
+});
+
+test('shouldDisableTerminalReattach only applies to Safari terminal panes', () => {
+  expect(shouldDisableTerminalReattach({
+    panePath: 'piclaw://terminal',
+    terminalTabPath: 'piclaw://terminal',
+    runtimeNavigator: {
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+      vendor: 'Apple Computer, Inc.',
+    } as any,
+  })).toBe(true);
+  expect(shouldDisableTerminalReattach({
+    panePath: '/workspace/notes.md',
+    terminalTabPath: 'piclaw://terminal',
+    runtimeNavigator: {
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+      vendor: 'Apple Computer, Inc.',
+    } as any,
+  })).toBe(false);
+});
+
+test('shouldRequireManualTerminalCloseRecovery only applies to Safari terminal close recovery', () => {
+  expect(shouldRequireManualTerminalCloseRecovery({
+    panePath: 'piclaw://terminal',
+    terminalTabPath: 'piclaw://terminal',
+    allowLiveTransfer: false,
+    reason: 'closed-window',
+    runtimeNavigator: {
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+      vendor: 'Apple Computer, Inc.',
+    } as any,
+  })).toBe(true);
+  expect(shouldRequireManualTerminalCloseRecovery({
+    panePath: 'piclaw://terminal',
+    terminalTabPath: 'piclaw://terminal',
+    allowLiveTransfer: false,
+    reason: 'closed-window',
+    runtimeNavigator: {
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+      vendor: 'Google Inc.',
+    } as any,
+  })).toBe(false);
 });
 
 test('invokePaneAfterAttachToHost calls the pane attach lifecycle hook when present', async () => {
@@ -176,7 +314,7 @@ test('shouldRetainPaneDetachState keeps detached ownership even after the source
   })).toBe(false);
 });
 
-test('removeSourcePaneAfterDetachClaim closes editor tabs but hides the dock for terminal panes', () => {
+test('removeSourcePaneAfterDetachClaim closes terminal tabs but hides detached dock panes', () => {
   const closed: string[] = [];
   const dockStates: boolean[] = [];
 
@@ -191,8 +329,16 @@ test('removeSourcePaneAfterDetachClaim closes editor tabs but hides the dock for
     terminalTabPath: 'piclaw://terminal',
     closeTab: (panePath: string) => closed.push(panePath),
     setDockVisible: (visible: boolean) => dockStates.push(visible),
+    sourceHost: 'tab',
+  });
+  removeSourcePaneAfterDetachClaim({
+    panePath: 'piclaw://terminal',
+    terminalTabPath: 'piclaw://terminal',
+    closeTab: (panePath: string) => closed.push(panePath),
+    setDockVisible: (visible: boolean) => dockStates.push(visible),
+    sourceHost: 'dock',
   });
 
-  expect(closed).toEqual(['/workspace/foo.drawio']);
+  expect(closed).toEqual(['/workspace/foo.drawio', 'piclaw://terminal']);
   expect(dockStates).toEqual([false]);
 });

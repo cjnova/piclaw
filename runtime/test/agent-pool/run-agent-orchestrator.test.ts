@@ -87,7 +87,7 @@ test("runAgentPrompt auto-compacts before prompting when estimated context excee
         reserveTokens: 10,
       }),
     };
-    model = { contextLength: 20, provider: "test", id: "model" };
+    model = { contextWindow: 20, provider: "test", id: "model" };
     isStreaming = false;
     isCompacting = false;
     isRetrying = false;
@@ -150,7 +150,7 @@ test("runAgentPrompt skips pre-prompt auto-compaction when it is disabled", asyn
         reserveTokens: 10,
       }),
     };
-    model = { contextLength: 20, provider: "test", id: "model" };
+    model = { contextWindow: 20, provider: "test", id: "model" };
     isStreaming = false;
     isCompacting = false;
     isRetrying = false;

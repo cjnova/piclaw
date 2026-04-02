@@ -298,10 +298,7 @@ export function handleAppSseEvent(
         setAgentPlan('');
         setAgentThought({ text: '', totalLines: 0 });
       }
-      setAgentStatus((prev) => {
-        if (prev && prev.type === data.type && prev.title === data.title) return prev;
-        return data;
-      });
+      setAgentStatus(data);
     }
     return;
   }

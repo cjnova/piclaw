@@ -334,6 +334,7 @@ export async function popOutPaneAction(options: PopOutPaneActionOptions): Promis
         editorInstanceRef,
         dockInstanceRef,
         terminalTabPath,
+        resolveTab,
         buildEditorPopoutTransfer: (panePath: string) => {
           if (!panePath || panePath === terminalTabPath) return null;
           const instance = editorInstanceRef.current;
@@ -349,7 +350,9 @@ export async function popOutPaneAction(options: PopOutPaneActionOptions): Promis
           });
         },
       });
-      const sourceInstance = panePath === terminalTabPath ? dockInstanceRef.current : editorInstanceRef.current;
+      const sourceInstance = panePath === terminalTabPath && !resolveTab(panePath)
+        ? dockInstanceRef.current
+        : editorInstanceRef.current;
       const exportedHostTransfer = typeof sourceInstance?.exportHostTransferState === 'function'
         ? sourceInstance.exportHostTransferState()
         : null;
@@ -359,7 +362,12 @@ export async function popOutPaneAction(options: PopOutPaneActionOptions): Promis
           payload: exportedHostTransfer,
         })
         : null;
-      if (detachTransfer?.paneInstanceId && detachTransfer?.paneWindowId && sourceInstance) {
+      if (
+        detachTransfer?.paneInstanceId
+        && detachTransfer?.paneWindowId
+        && sourceInstance
+        && exportedHostTransfer?.kind !== 'terminal'
+      ) {
         registerPaneLiveTransfer({
           panePath,
           paneInstanceId: detachTransfer.paneInstanceId,
@@ -369,6 +377,9 @@ export async function popOutPaneAction(options: PopOutPaneActionOptions): Promis
             if (panePath === terminalTabPath) {
               if (dockInstanceRef.current === sourceInstance) {
                 dockInstanceRef.current = null;
+              }
+              if (editorInstanceRef.current === sourceInstance) {
+                editorInstanceRef.current = null;
               }
               return;
             }

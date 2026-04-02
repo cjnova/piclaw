@@ -17,9 +17,15 @@ interface TerminalOwnerLike {
   userId: string;
 }
 
+interface TerminalHandoffLike {
+  token: string;
+  expires_at: string;
+}
+
 interface TerminalServiceLike {
   resolveOwnerFromRequest(req: Request, allowUnauthenticated?: boolean): TerminalSocketData | null;
   getSessionInfo(owner: TerminalOwnerLike): JsonObject;
+  createHandoffFromRequest(req: Request, allowUnauthenticated?: boolean): TerminalHandoffLike | null;
 }
 
 interface VncTargetLike {
@@ -82,6 +88,24 @@ export class WebTerminalVncHttpService {
       return this.deps.json({ error: "Unauthorized" }, 401);
     }
     return this.deps.json(this.deps.terminalService.getSessionInfo(owner));
+  }
+
+  async handleTerminalHandoff(req: Request): Promise<Response> {
+    if (!this.deps.webRuntimeConfig.terminalEnabled) {
+      return this.deps.json({ error: "Web terminal is disabled." }, 404);
+    }
+    const authEnabled = this.deps.authGateway.isAuthEnabled();
+    if (authEnabled && !this.deps.authGateway.isAuthenticated(req)) {
+      return this.deps.json({ error: "Unauthorized" }, 401);
+    }
+    if (!this.checkCsrfOrigin(req)) {
+      return this.deps.json({ error: "Origin not allowed" }, 403);
+    }
+    const handoff = this.deps.terminalService.createHandoffFromRequest(req, !authEnabled);
+    if (!handoff) {
+      return this.deps.json({ error: "No live terminal session is available to transfer." }, 409);
+    }
+    return this.deps.json({ ok: true, handoff }, 200);
   }
 
   handleVncSession(req: Request): Response {

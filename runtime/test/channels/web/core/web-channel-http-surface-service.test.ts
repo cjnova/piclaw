@@ -164,6 +164,10 @@ describe("web channel http surface service", () => {
           calls.push(`terminal:${req.method}`);
           return response("terminal");
         },
+        handleTerminalHandoff: async (req: Request) => {
+          calls.push(`terminal-handoff:${req.method}`);
+          return response("terminal-handoff");
+        },
         handleVncSession: (req: Request) => {
           calls.push(`vnc:${req.method}`);
           return response("vnc");
@@ -229,6 +233,7 @@ describe("web channel http surface service", () => {
     expect(await (await service.handleInternalPost(postReq)).text()).toBe("internal");
     expect(await service.handleSse(getReq).text()).toBe("sse");
     expect(await service.handleTerminalSession(getReq).text()).toBe("terminal");
+    expect(await (await service.handleTerminalHandoff(postReq)).text()).toBe("terminal-handoff");
     expect(await service.handleVncSession(getReq).text()).toBe("vnc");
     expect(await (await service.handleVncHandoff(postReq)).text()).toBe("handoff");
     expect(await (await service.handlePost(postReq, true)).text()).toBe("post");
@@ -273,6 +278,7 @@ describe("web channel http surface service", () => {
       "internal:POST",
       "sse:GET",
       "terminal:GET",
+      "terminal-handoff:POST",
       "vnc:GET",
       "handoff:POST",
       "post:POST:1",
