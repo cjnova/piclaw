@@ -7,7 +7,6 @@
 import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, extname, join } from "path";
 import { formatBytes } from "./agent-control/agent-control-helpers.js";
-import { getLegacyRuntimeSession, resolveActiveRuntimeSession } from "./agent-pool/session-runtime-compat.js";
 /** Default compaction prompt used before a rotation handoff. */
 export const ROTATION_COMPACTION_INSTRUCTIONS = [
     "Prepare a concise continuity summary for session rotation.",
@@ -101,7 +100,7 @@ export function seedRotatedSession(sessionManager, context, options) {
     }
 }
 /** Rotate a persisted session into a newly-seeded successor session file. */
-export async function rotateSession(session, options = {}) {
+export async function rotateSession(session, runtime, options = {}) {
     const reason = options.reason ?? "manual";
     if (session.isStreaming || session.isCompacting || session.isRetrying) {
         return {
@@ -159,7 +158,7 @@ export async function rotateSession(session, options = {}) {
     try {
         copyFileSync(previousSessionFile, archivePath);
         archived = true;
-        const ok = await getLegacyRuntimeSession(session).newSession({
+        const result = await runtime.newSession({
             parentSession: archivePath,
             setup: async (sessionManager) => {
                 seedRotatedSession(sessionManager, context, {
@@ -168,12 +167,12 @@ export async function rotateSession(session, options = {}) {
                 });
             },
         });
-        if (!ok) {
+        if (result.cancelled) {
             if (archived)
                 rmSync(archivePath, { force: true });
             return { status: "error", reason, compacted, message: "Session rotation cancelled." };
         }
-        const activeSession = resolveActiveRuntimeSession(session);
+        const activeSession = runtime.session;
         forcePersistSessionFile(activeSession);
         rmSync(previousSessionFile, { force: true });
         const nextSessionFile = activeSession.sessionFile || "(unavailable)";

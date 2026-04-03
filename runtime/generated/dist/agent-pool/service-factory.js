@@ -37,10 +37,11 @@ export function createAgentPoolServices(options) {
     let sessionManager;
     const runtimeFacade = new AgentRuntimeFacade({
         pool: options.pool,
-        getOrCreate: (chatJid) => sessionManager.getOrCreate(chatJid),
+        getOrCreateRuntime: (chatJid) => sessionManager.getOrCreate(chatJid),
         modelRegistry: options.modelRegistry,
         authStorage: options.authStorage,
         clearAttachments: (chatJid) => attachments.clear(chatJid),
+        refreshRuntime: (chatJid, runtime) => sessionManager.refreshRuntime(chatJid, runtime),
         onWarn: options.onWarn,
         onError: options.onError,
     });
@@ -48,7 +49,8 @@ export function createAgentPoolServices(options) {
         pool: options.pool,
         sidePool: options.sidePool,
         activeForkBaseLeafByChat: options.activeForkBaseLeafByChat,
-        getOrCreate: (chatJid) => sessionManager.getOrCreate(chatJid),
+        getOrCreateRuntime: (chatJid) => sessionManager.getOrCreate(chatJid),
+        refreshRuntime: (chatJid, runtime) => sessionManager.refreshRuntime(chatJid, runtime),
         isActive: (chatJid) => runtimeFacade.isActive(chatJid),
         onWarn: options.onWarn,
     });
@@ -61,7 +63,7 @@ export function createAgentPoolServices(options) {
         modelRegistry: options.modelRegistry,
         settingsManager: options.settingsManager,
         createDefaultTools: () => toolFactory.createDefaultTools(),
-        bindSession: (session, chatJid) => sessionBinder.bindSession(session, chatJid),
+        bindSession: (runtime, chatJid) => sessionBinder.bindSession(runtime, chatJid),
         ensureBranchRegistration: (chatJid, session) => {
             branchManager.ensureBranchRegistration(chatJid, session);
         },

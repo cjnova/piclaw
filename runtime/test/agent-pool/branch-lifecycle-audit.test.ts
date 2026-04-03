@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { join } from "path";
+import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { createTempWorkspace, importFresh, setEnv } from "../helpers.js";
 
@@ -9,6 +10,25 @@ afterEach(() => {
   restoreEnv?.();
   restoreEnv = null;
 });
+
+function createRuntime(session: any): AgentSessionRuntime {
+  return {
+    session,
+    cwd: "/workspace",
+    diagnostics: [],
+    services: {} as any,
+    modelFallbackMessage: undefined,
+    newSession: async (options?: { parentSession?: string; setup?: (sessionManager: SessionManager) => Promise<void> | void }) => ({
+      cancelled: !(await session.newSession(options)),
+    }),
+    switchSession: async () => ({ cancelled: false }),
+    fork: async () => ({ cancelled: false }),
+    importFromJsonl: async () => ({ cancelled: false }),
+    dispose: async () => {
+      session.dispose?.();
+    },
+  } as any;
+}
 
 function createAssistantMessage(text: string) {
   return {
@@ -92,10 +112,10 @@ test("agent pool audit: forks active chats from the previous stable turn boundar
 
   const pool = new AgentPool({
     createSession: async (chatJid: string, sessionDir: string) => {
-      if (created[chatJid]) return created[chatJid] as any;
+      if (created[chatJid]) return createRuntime(created[chatJid]) as any;
       const session = new ForkableSession(ws.workspace, sessionDir, false);
       created[chatJid] = session;
-      return session as any;
+      return createRuntime(session) as any;
     },
   });
 
@@ -146,7 +166,7 @@ test("agent pool audit: refuses to prune an active branch session", async () => 
   }
 
   const pool = new AgentPool({
-    createSession: async () => new ActiveBranchSession() as any,
+    createSession: async () => createRuntime(new ActiveBranchSession()) as any,
   });
 
   await (pool as any).getOrCreate("web:default:branch:active");

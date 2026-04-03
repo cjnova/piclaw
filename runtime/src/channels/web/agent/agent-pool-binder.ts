@@ -3,9 +3,9 @@
  */
 
 import type { AgentPool } from "../../../agent-pool.js";
-import type { AgentSession } from "@mariozechner/pi-coding-agent";
+import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 
-type SessionBinder = (session: AgentSession, chatJid: string) => Promise<void> | void;
+type SessionBinder = (runtime: AgentSessionRuntime, chatJid: string) => Promise<void> | void;
 
 interface SessionBinderCapable {
   setSessionBinder(binder?: SessionBinder): void;

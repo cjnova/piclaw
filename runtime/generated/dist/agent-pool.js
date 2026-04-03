@@ -100,7 +100,7 @@ export class AgentPool {
     /** Run a prompt against the persistent session for `chatJid`. */
     async runAgent(prompt, chatJid, options = {}) {
         return runAgentPrompt(prompt, chatJid, options, {
-            getOrCreate: (nextChatJid) => this.getOrCreate(nextChatJid),
+            getOrCreateRuntime: (nextChatJid) => this.getOrCreateRuntime(nextChatJid),
             turnCoordinator: this.turnCoordinator,
             clearAttachments: (nextChatJid) => this.attachments.clear(nextChatJid),
             takeAttachments: (nextChatJid) => this.attachments.take(nextChatJid),
@@ -123,8 +123,8 @@ export class AgentPool {
     async runSidePrompt(chatJid, prompt, options = {}) {
         return runSidePromptInternal(chatJid, prompt, options, {
             getOrCreate: (nextChatJid) => this.getOrCreate(nextChatJid),
-            getOrCreateSide: (nextChatJid) => this.getOrCreateSide(nextChatJid),
-            syncSideSessionFromMain: (mainSession, sideSession) => this.syncSideSessionFromMain(mainSession, sideSession),
+            getOrCreateSideRuntime: (nextChatJid) => this.getOrCreateSideRuntime(nextChatJid),
+            syncSideSessionFromMain: (mainSession, sideRuntime) => this.syncSideSessionFromMain(mainSession, sideRuntime),
             modelRegistry: this.modelRegistry,
             sideStreamSimple: this.sideStreamSimple,
             onWarn: (message, details) => log.warn(message, details),
@@ -217,14 +217,17 @@ export class AgentPool {
         await this.sessionManager.shutdown();
     }
     // ── internal ────────────────────────────────────────────
-    async getOrCreate(chatJid) {
+    async getOrCreateRuntime(chatJid) {
         return this.sessionManager.getOrCreate(chatJid);
     }
-    async getOrCreateSide(chatJid) {
+    async getOrCreate(chatJid) {
+        return (await this.getOrCreateRuntime(chatJid)).session;
+    }
+    async getOrCreateSideRuntime(chatJid) {
         return this.sessionManager.getOrCreateSide(chatJid);
     }
-    async syncSideSessionFromMain(mainSession, sideSession) {
-        return this.sessionManager.syncSideSessionFromMain(mainSession, sideSession);
+    async syncSideSessionFromMain(mainSession, sideRuntime) {
+        return this.sessionManager.syncSideSessionFromMain(mainSession, sideRuntime);
     }
     evictIdle() {
         this.sessionManager.evictIdle(IDLE_TTL);

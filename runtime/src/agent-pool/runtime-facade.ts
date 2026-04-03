@@ -5,7 +5,7 @@
  * and queued-message mutations so AgentPool can remain a thinner orchestrator.
  */
 
-import type { AgentSession, ModelRegistry, AuthStorage } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionRuntime, ModelRegistry, AuthStorage } from "@mariozechner/pi-coding-agent";
 
 import { applyControlCommand, type AgentControlCommand, type AgentControlResult } from "../agent-control/index.js";
 import { detectChannel } from "../router.js";
@@ -38,10 +38,11 @@ export interface AvailableModelsResult {
 /** Dependencies required by AgentRuntimeFacade. */
 export interface AgentRuntimeFacadeOptions {
   pool: Map<string, PoolEntry>;
-  getOrCreate: (chatJid: string) => Promise<AgentSession>;
+  getOrCreateRuntime: (chatJid: string) => Promise<AgentSessionRuntime>;
   modelRegistry: ModelRegistry;
   authStorage: AuthStorage;
   clearAttachments: (chatJid: string) => void;
+  refreshRuntime: (chatJid: string, runtime: AgentSessionRuntime) => Promise<void>;
   onWarn?: (message: string, details: Record<string, unknown>) => void;
   onError?: (message: string, details: Record<string, unknown>) => void;
   applyControlCommandFn?: typeof applyControlCommand;
@@ -55,20 +56,25 @@ export class AgentRuntimeFacade {
   constructor(private readonly options: AgentRuntimeFacadeOptions) {}
 
   async applyControlCommand(chatJid: string, command: AgentControlCommand): Promise<AgentControlResult> {
-    const session = await this.options.getOrCreate(chatJid);
+    const runtime = await this.options.getOrCreateRuntime(chatJid);
+    const session = runtime.session;
     const channel = detectChannel(chatJid);
     const apply = this.options.applyControlCommandFn ?? applyControlCommand;
-    return await withChatContext(chatJid, channel, () => apply(session, this.options.modelRegistry, command));
+    const result = await withChatContext(chatJid, channel, () => apply(session, runtime, this.options.modelRegistry, command));
+    if (runtime.session !== session) {
+      await this.options.refreshRuntime(chatJid, runtime);
+    }
+    return result;
   }
 
   async getCurrentModelLabel(chatJid: string): Promise<string | null> {
-    const session = await this.options.getOrCreate(chatJid);
+    const session = (await this.options.getOrCreateRuntime(chatJid)).session;
     const model = session.model;
     return model ? `${model.provider}/${model.id}` : null;
   }
 
   async getAvailableModels(chatJid: string): Promise<AvailableModelsResult> {
-    const session = await this.options.getOrCreate(chatJid);
+    const session = (await this.options.getOrCreateRuntime(chatJid)).session;
     const registry = (session as AgentSession & { modelRegistry?: ModelRegistry }).modelRegistry ?? this.options.modelRegistry;
     registry.refresh();
     const available = registry.getAvailable();
@@ -108,17 +114,17 @@ export class AgentRuntimeFacade {
   } | null {
     const entry = this.options.pool.get(chatJid);
     if (!entry) return null;
-    return entry.session.getContextUsage() ?? null;
+    return entry.runtime.session.getContextUsage() ?? null;
   }
 
   async saveSessionPosition(chatJid: string): Promise<string | null> {
-    const session = await this.options.getOrCreate(chatJid);
+    const session = (await this.options.getOrCreateRuntime(chatJid)).session;
     return session.sessionManager.getLeafId();
   }
 
   async restoreSessionPosition(chatJid: string, leafId: string | null): Promise<void> {
     if (leafId === null) return;
-    const session = await this.options.getOrCreate(chatJid);
+    const session = (await this.options.getOrCreateRuntime(chatJid)).session;
     const currentLeaf = session.sessionManager.getLeafId();
     if (currentLeaf === leafId) return;
     try {
@@ -146,11 +152,11 @@ export class AgentRuntimeFacade {
   }
 
   isStreaming(chatJid: string): boolean {
-    return this.options.pool.get(chatJid)?.session.isStreaming ?? false;
+    return this.options.pool.get(chatJid)?.runtime.session.isStreaming ?? false;
   }
 
   isActive(chatJid: string): boolean {
-    const session = this.options.pool.get(chatJid)?.session;
+    const session = this.options.pool.get(chatJid)?.runtime.session;
     if (!session) return false;
     return Boolean(session.isStreaming || session.isCompacting || session.isRetrying || session.isBashRunning);
   }
@@ -160,7 +166,7 @@ export class AgentRuntimeFacade {
     text: string,
     behavior: "steer" | "followUp",
   ): Promise<{ queued: boolean; error?: string }> {
-    const session = await this.options.getOrCreate(chatJid);
+    const session = (await this.options.getOrCreateRuntime(chatJid)).session;
     if (!session.isStreaming) return { queued: false };
 
     const channel = detectChannel(chatJid);
@@ -176,7 +182,7 @@ export class AgentRuntimeFacade {
   }
 
   async removeQueuedFollowupMessage(chatJid: string, queuedContent?: string): Promise<boolean> {
-    const session = await this.options.getOrCreate(chatJid);
+    const session = (await this.options.getOrCreateRuntime(chatJid)).session;
     if (!session.isStreaming) return false;
 
     const followups = [...session.getFollowUpMessages()];
@@ -216,10 +222,14 @@ export class AgentRuntimeFacade {
 
   async applySlashCommand(chatJid: string, rawText: string): Promise<AgentControlResult> {
     this.options.clearAttachments(chatJid);
-    const session = await this.options.getOrCreate(chatJid);
+    const runtime = await this.options.getOrCreateRuntime(chatJid);
+    const session = runtime.session;
     const channel = detectChannel(chatJid);
     const exec = this.options.executeSlashCommandFn ?? executeSlashCommand;
     const result = await withChatContext(chatJid, channel, () => exec(session, chatJid, rawText));
+    if (runtime.session !== session) {
+      await this.options.refreshRuntime(chatJid, runtime);
+    }
     this.options.clearAttachments(chatJid);
     return result;
   }

@@ -24,7 +24,7 @@ export class WebSessionBroadcastService {
         this.sse = opts.sse ?? new SseHub();
         this.uiBridge = opts.uiBridge ?? new UiBridge(this);
         const bindSessionBinder = opts.bindSessionBinder ?? bindWebUiSessionBinder;
-        bindSessionBinder(agentPool, (session, chatJid) => this.uiBridge.bindSession(session, chatJid));
+        bindSessionBinder(agentPool, (runtime, chatJid) => this.uiBridge.bindSession(runtime, chatJid));
     }
     handleSse(req) {
         return this.sse.handleRequest(req);

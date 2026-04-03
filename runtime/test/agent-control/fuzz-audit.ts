@@ -3,7 +3,7 @@ import "../helpers.js";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
 import { createTempWorkspace, setEnv } from "../helpers.js";
-import { DEFAULT_TEST_MODEL, TestAgentControlSession, cleanupRotatedSessionArtifacts, createTestAuthStorage, createTestModelRegistry } from "./session-fixture.js";
+import { DEFAULT_TEST_MODEL, TestAgentControlSession, cleanupRotatedSessionArtifacts, createTestAuthStorage, createTestModelRegistry, createTestSessionRuntime } from "./session-fixture.js";
 
 const TRIGGER_PATTERN = /(?:^|\s)@PiClaw\b/i;
 const DEFAULT_CHAT_JID = "web:default";
@@ -238,6 +238,7 @@ export async function runAgentControlFuzzAudit(options: AuditRunOptions = {}): P
       const caseSeed = seed + caseId;
       const replayCommand = buildReplayCommand(seed, iterations, caseId);
       const session = new TestAgentControlSession(workspace.workspace, registry);
+  const runtime = createTestSessionRuntime(session);
       cleanupRotatedSessionArtifacts(workspace.workspace);
       let parsed: any = null;
       try {
@@ -263,7 +264,7 @@ export async function runAgentControlFuzzAudit(options: AuditRunOptions = {}): P
       }
 
       try {
-        const result = await withChatContext(DEFAULT_CHAT_JID, "web", () => applyControlCommand(session as any, registry as any, parsed));
+        const result = await withChatContext(DEFAULT_CHAT_JID, "web", () => applyControlCommand(session as any, runtime as any, registry as any, parsed));
         if (!result || (result.status !== "success" && result.status !== "error") || typeof result.message !== "string") {
           failures.push({
             category: "routing_invariant",
@@ -351,6 +352,7 @@ export async function runAgentControlFuzzAudit(options: AuditRunOptions = {}): P
       const caseSeed = seed + caseId;
       const replayCommand = buildReplayCommand(seed, iterations, caseId);
       const session = new TestAgentControlSession(workspace.workspace, registry);
+  const runtime = createTestSessionRuntime(session);
       const parsed = parseControlCommand(testCase.raw, TRIGGER_PATTERN);
       if (!parsed) {
         failures.push({ category: "idempotence", caseId, seed: caseSeed, input: testCase.raw, detail: "Idempotence case did not parse", replayCommand });
@@ -358,9 +360,9 @@ export async function runAgentControlFuzzAudit(options: AuditRunOptions = {}): P
         caseId += 1;
         continue;
       }
-      const first = await withChatContext(DEFAULT_CHAT_JID, "web", () => applyControlCommand(session as any, registry as any, parsed));
+      const first = await withChatContext(DEFAULT_CHAT_JID, "web", () => applyControlCommand(session as any, runtime as any, registry as any, parsed));
       const afterFirst = testCase.read(session);
-      const second = await withChatContext(DEFAULT_CHAT_JID, "web", () => applyControlCommand(session as any, registry as any, parsed));
+      const second = await withChatContext(DEFAULT_CHAT_JID, "web", () => applyControlCommand(session as any, runtime as any, registry as any, parsed));
       const afterSecond = testCase.read(session);
       if (first.status !== second.status || JSON.stringify(afterFirst) !== JSON.stringify(afterSecond)) {
         failures.push({

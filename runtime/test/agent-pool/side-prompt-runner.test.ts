@@ -5,7 +5,7 @@ import { runSidePrompt } from "../../src/agent-pool/side-prompt-runner.js";
 test("runSidePrompt returns an error when no model is active", async () => {
   const result = await runSidePrompt("web:default", "hello", {}, {
     getOrCreate: async () => ({ model: null }) as any,
-    getOrCreateSide: async () => ({}) as any,
+    getOrCreateSideRuntime: async () => ({ session: {} }) as any,
     syncSideSessionFromMain: async () => {},
     modelRegistry: {},
   });
@@ -23,7 +23,7 @@ test("runSidePrompt handles streamSimple side prompts", async () => {
 
   const result = await runSidePrompt("web:default", "hello", { systemPrompt: "brief" }, {
     getOrCreate: async () => session as any,
-    getOrCreateSide: async () => ({}) as any,
+    getOrCreateSideRuntime: async () => ({ session: {} }) as any,
     syncSideSessionFromMain: async () => {},
     modelRegistry: {
       getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "key" }),

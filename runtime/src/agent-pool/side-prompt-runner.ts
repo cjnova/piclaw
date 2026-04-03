@@ -2,7 +2,7 @@
  * agent-pool/side-prompt-runner.ts – runSidePrompt orchestration helpers.
  */
 
-import type { AgentSession, AgentSessionEvent, ModelRegistry } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionEvent, AgentSessionRuntime, ModelRegistry } from "@mariozechner/pi-coding-agent";
 import { type AssistantMessageEvent, streamSimple, type AssistantMessageEventStream, type Model, type Api, type Usage } from "@mariozechner/pi-ai";
 
 import { getAgentRuntimeConfig } from "../core/config.js";
@@ -23,8 +23,8 @@ import type { SidePromptOptions, SidePromptResult } from "./contracts.js";
 /** Dependencies required to run side prompts. */
 export interface SidePromptRunnerOptions {
   getOrCreate: (chatJid: string) => Promise<AgentSession>;
-  getOrCreateSide: (chatJid: string) => Promise<AgentSession>;
-  syncSideSessionFromMain: (mainSession: AgentSession, sideSession: AgentSession) => Promise<void>;
+  getOrCreateSideRuntime: (chatJid: string) => Promise<AgentSessionRuntime>;
+  syncSideSessionFromMain: (mainSession: AgentSession, sideRuntime: AgentSessionRuntime) => Promise<void>;
   modelRegistry: ModelRegistry;
   sideStreamSimple?: (
     model: Model<Api>,
@@ -140,8 +140,9 @@ export async function runSidePrompt(
     };
   }
 
-  const sideSession = await deps.getOrCreateSide(chatJid);
-  await deps.syncSideSessionFromMain(session, sideSession);
+  const sideRuntime = await deps.getOrCreateSideRuntime(chatJid);
+  await deps.syncSideSessionFromMain(session, sideRuntime);
+  const sideSession = sideRuntime.session;
 
   let text = "";
   let thinking = "";

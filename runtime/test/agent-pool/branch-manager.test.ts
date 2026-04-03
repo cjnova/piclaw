@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 
+import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import { AgentBranchManager } from "../../src/agent-pool/branch-manager.js";
 import { createTempWorkspace, importFresh, setEnv } from "../helpers.js";
 
@@ -10,9 +11,26 @@ afterEach(() => {
   restoreEnv = null;
 });
 
+function createRuntime(session: any): AgentSessionRuntime {
+  return {
+    session,
+    cwd: "/workspace",
+    diagnostics: [],
+    services: {} as any,
+    modelFallbackMessage: undefined,
+    newSession: async () => ({ cancelled: false }),
+    switchSession: async () => ({ cancelled: false }),
+    fork: async () => ({ cancelled: false }),
+    importFromJsonl: async () => ({ cancelled: false }),
+    dispose: async () => {
+      session.dispose?.();
+    },
+  } as any;
+}
+
 function createManager(overrides: Partial<ConstructorParameters<typeof AgentBranchManager>[0]> = {}) {
-  const pool = new Map<string, { session: any; lastUsed: number }>();
-  const sidePool = new Map<string, { session: any; lastUsed: number }>();
+  const pool = new Map<string, { runtime: any; lastUsed: number }>();
+  const sidePool = new Map<string, { runtime: any; lastUsed: number }>();
   const activeForkBaseLeafByChat = new Map<string, string | null>();
   const warns: string[] = [];
 
@@ -20,9 +38,10 @@ function createManager(overrides: Partial<ConstructorParameters<typeof AgentBran
     pool,
     sidePool,
     activeForkBaseLeafByChat,
-    getOrCreate: async (chatJid) => pool.get(chatJid)?.session,
+    getOrCreateRuntime: async (chatJid) => pool.get(chatJid)?.runtime,
+    refreshRuntime: async () => {},
     isActive: (chatJid) => {
-      const session = pool.get(chatJid)?.session;
+      const session = pool.get(chatJid)?.runtime.session;
       return Boolean(session?.isStreaming || session?.isCompacting || session?.isRetrying || session?.isBashRunning);
     },
     onWarn: (message) => warns.push(message),
@@ -41,7 +60,7 @@ test("AgentBranchManager registers active chats and resolves agent handles", asy
 
   const fixture = createManager();
   fixture.pool.set("web:topic", {
-    session: {
+    runtime: createRuntime({
       sessionId: "session-1",
       sessionName: "Research Bot",
       model: { provider: "openai", id: "gpt-test" },
@@ -49,11 +68,11 @@ test("AgentBranchManager registers active chats and resolves agent handles", asy
       isCompacting: false,
       isRetrying: false,
       isBashRunning: false,
-    },
+    }),
     lastUsed: Date.now(),
   });
 
-  const branch = fixture.manager.ensureBranchRegistration("web:topic", fixture.pool.get("web:topic")?.session);
+  const branch = fixture.manager.ensureBranchRegistration("web:topic", fixture.pool.get("web:topic")?.runtime.session);
   expect(branch.agent_name).toBe("research-bot");
 
   const active = fixture.manager.listActiveChats();
@@ -99,8 +118,8 @@ test("AgentBranchManager prunes inactive branches and disposes cached sessions",
   };
 
   const fixture = createManager();
-  fixture.pool.set("web:default:branch:prune", { session, lastUsed: Date.now() });
-  fixture.sidePool.set("web:default:branch:prune", { session, lastUsed: Date.now() });
+  fixture.pool.set("web:default:branch:prune", { runtime: createRuntime(session), lastUsed: Date.now() });
+  fixture.sidePool.set("web:default:branch:prune", { runtime: createRuntime(session), lastUsed: Date.now() });
   fixture.activeForkBaseLeafByChat.set("web:default:branch:prune", "leaf-1");
 
   const archived = await fixture.manager.pruneChatBranch("web:default:branch:prune");

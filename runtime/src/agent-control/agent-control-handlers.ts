@@ -11,7 +11,7 @@
  *   - channels/web/request-router-service.ts calls it for web commands.
  */
 
-import type { AgentSession, ModelRegistry } from "@mariozechner/pi-coding-agent";
+import type { AgentSession, AgentSessionRuntime, ModelRegistry } from "@mariozechner/pi-coding-agent";
 import type { AgentControlCommand, AgentControlResult } from "./agent-control-types.js";
 import {
   handleAbort,
@@ -59,6 +59,7 @@ import { handleLabel, handleLabels, handleTree } from "./handlers/tree.js";
 /** Dispatch a parsed control command to the appropriate handler and return the result. */
 export async function applyControlCommand(
   session: AgentSession,
+  runtime: AgentSessionRuntime,
   modelRegistry: ModelRegistry,
   command: AgentControlCommand
 ): Promise<AgentControlResult> {
@@ -107,13 +108,13 @@ export async function applyControlCommand(
     case "session_name":
       return handleSessionName(session, command);
     case "new_session":
-      return handleNewSession(session, command);
+      return handleNewSession(session, runtime, command);
     case "switch_session":
-      return handleSwitchSession(session, command);
+      return handleSwitchSession(session, runtime, command);
     case "session_rotate":
-      return handleSessionRotate(session, command);
+      return handleSessionRotate(session, runtime, command);
     case "fork":
-      return handleFork(session, command);
+      return handleFork(session, runtime, command);
     case "forks":
       return handleForks(session, command);
     case "export_html":

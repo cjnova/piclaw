@@ -2,7 +2,7 @@
  * agent-pool/run-agent-orchestrator.ts – Main runAgent prompt lifecycle orchestration.
  */
 
-import { shouldCompact, type AgentSession } from "@mariozechner/pi-coding-agent";
+import { shouldCompact, type AgentSession, type AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 
 import type { AttachmentInfo } from "./attachments.js";
 
@@ -18,7 +18,7 @@ import type { AgentOutput, RunAgentOptions } from "./contracts.js";
 
 /** Dependencies required to run a main agent prompt. */
 export interface RunAgentOrchestratorOptions {
-  getOrCreate: (chatJid: string) => Promise<AgentSession>;
+  getOrCreateRuntime: (chatJid: string) => Promise<AgentSessionRuntime>;
   turnCoordinator: AgentTurnCoordinator;
   clearAttachments: (chatJid: string) => void;
   takeAttachments: (chatJid: string) => AttachmentInfo[];
@@ -32,6 +32,7 @@ export interface RunAgentOrchestratorOptions {
 
 async function maybeAutoRotateSession(
   session: AgentSession,
+  runtime: AgentSessionRuntime,
   chatJid: string,
   options: Pick<RunAgentOrchestratorOptions, "onInfo" | "onWarn">,
 ): Promise<void> {
@@ -48,7 +49,7 @@ async function maybeAutoRotateSession(
   const sessionFileSize = getSessionFileSize(session.sessionFile);
   if (sessionFileSize === null || sessionFileSize < thresholdBytes) return;
 
-  const result = await rotateSession(session, { reason: "automatic" });
+  const result = await rotateSession(session, runtime, { reason: "automatic" });
   if (result.status === "success") {
     options.onInfo?.("Auto-rotated oversized session", {
       operation: "maybe_auto_rotate_session",
@@ -176,8 +177,9 @@ export async function runAgentPrompt(
   options.clearAttachments(chatJid);
 
   try {
-    const session = await options.getOrCreate(chatJid);
-    await maybeAutoRotateSession(session, chatJid, options);
+    const runtime = await options.getOrCreateRuntime(chatJid);
+    const session = runtime.session;
+    await maybeAutoRotateSession(session, runtime, chatJid, options);
     await maybeAutoCompactSessionBeforePrompt(session, chatJid, options);
     pruneOrphanToolResults(session, chatJid);
     const forkBaseLeafId = typeof session.sessionManager?.getLeafId === "function"

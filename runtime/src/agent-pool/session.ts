@@ -17,7 +17,8 @@ import { mkdirSync, existsSync, symlinkSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import {
-  type AgentSession,
+  type AgentSessionRuntime,
+  type CreateAgentSessionRuntimeFactory,
   createAgentSessionFromServices,
   createAgentSessionRuntime,
   createAgentSessionServices,
@@ -30,7 +31,6 @@ import {
 
 import { SESSIONS_DIR, WORKSPACE_DIR } from "../core/config.js";
 import { builtinExtensionFactories } from "../extensions/index.js";
-import { attachLegacySessionRuntimeCompatibility } from "./session-runtime-compat.js";
 import { installSameTurnToolActivationPatch } from "./tool-activation-compat.js";
 
 installSameTurnToolActivationPatch();
@@ -122,14 +122,9 @@ export async function createSessionInDir(
     modelRegistry: ModelRegistry;
     settingsManager: SettingsManager;
     tools: NonNullable<AgentSessionCreateOptions["tools"]>;
-    onReplace?: (session: AgentSession) => Promise<void> | void;
   }
-): Promise<AgentSession> {
-  const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }: {
-    cwd: string;
-    sessionManager: SessionManager;
-    sessionStartEvent?: Parameters<typeof createAgentSessionFromServices>[0]["sessionStartEvent"];
-  }) => {
+): Promise<AgentSessionRuntime> {
+  const createRuntime: CreateAgentSessionRuntimeFactory = async ({ cwd, sessionManager, sessionStartEvent }) => {
     const services = await createAgentSessionServices({
       cwd,
       agentDir: getAgentDir(),
@@ -160,7 +155,7 @@ export async function createSessionInDir(
     sessionManager: SessionManager.continueRecent(WORKSPACE_DIR, sessionDir),
   });
 
-  return attachLegacySessionRuntimeCompatibility(runtime, options.onReplace);
+  return runtime;
 }
 
 export async function createDefaultSession(
@@ -170,9 +165,8 @@ export async function createDefaultSession(
     modelRegistry: ModelRegistry;
     settingsManager: SettingsManager;
     tools: NonNullable<AgentSessionCreateOptions["tools"]>;
-    onReplace?: (session: AgentSession) => Promise<void> | void;
   }
-): Promise<AgentSession> {
+): Promise<AgentSessionRuntime> {
   const chatSessionDir = ensureSessionDir(chatJid);
   return createSessionInDir(chatSessionDir, options);
 }

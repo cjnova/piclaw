@@ -1,19 +1,35 @@
 import { expect, test } from "bun:test";
 
+import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import { AgentRuntimeFacade } from "../../src/agent-pool/runtime-facade.js";
 
+function createRuntime(session: any): AgentSessionRuntime {
+  return {
+    session,
+    cwd: "/workspace",
+    diagnostics: [],
+    services: {} as any,
+    modelFallbackMessage: undefined,
+    newSession: async () => ({ cancelled: false }),
+    switchSession: async () => ({ cancelled: false }),
+    fork: async () => ({ cancelled: false }),
+    importFromJsonl: async () => ({ cancelled: false }),
+    dispose: async () => {},
+  } as any;
+}
+
 function createFacade(overrides: Partial<ConstructorParameters<typeof AgentRuntimeFacade>[0]> = {}) {
-  const pool = new Map<string, { session: any; lastUsed: number }>();
+  const pool = new Map<string, { runtime: any; lastUsed: number }>();
   const warnings: string[] = [];
   const errors: string[] = [];
   const cleared: string[] = [];
 
   const facade = new AgentRuntimeFacade({
     pool,
-    getOrCreate: async (chatJid) => {
+    getOrCreateRuntime: async (chatJid) => {
       const entry = pool.get(chatJid);
       if (!entry) throw new Error(`Missing session for ${chatJid}`);
-      return entry.session;
+      return entry.runtime;
     },
     modelRegistry: {
       getAll: () => [],
@@ -22,6 +38,7 @@ function createFacade(overrides: Partial<ConstructorParameters<typeof AgentRunti
     } as any,
     authStorage: { get: () => null } as any,
     clearAttachments: (chatJid) => cleared.push(chatJid),
+    refreshRuntime: async () => {},
     onWarn: (message) => warnings.push(message),
     onError: (message) => errors.push(message),
     ...overrides,
@@ -46,7 +63,7 @@ test("AgentRuntimeFacade reports available models and context usage", async () =
   };
 
   const fixture = createFacade();
-  fixture.pool.set("web:default", { session, lastUsed: Date.now() });
+  fixture.pool.set("web:default", { runtime: createRuntime(session), lastUsed: Date.now() });
 
   const available = await fixture.facade.getAvailableModels("web:default");
   expect(refreshCalls).toBe(1);
@@ -91,7 +108,7 @@ test("AgentRuntimeFacade removes one queued follow-up and replays the remaining 
   };
 
   const fixture = createFacade();
-  fixture.pool.set("web:default", { session, lastUsed: Date.now() });
+  fixture.pool.set("web:default", { runtime: createRuntime(session), lastUsed: Date.now() });
 
   await expect(fixture.facade.removeQueuedFollowupMessage("web:default", "second")).resolves.toBe(true);
   expect(prompts).toEqual([
@@ -110,7 +127,7 @@ test("AgentRuntimeFacade clears attachments around slash commands", async () => 
       rawText,
     } as any),
   });
-  fixture.pool.set("web:default", { session, lastUsed: Date.now() });
+  fixture.pool.set("web:default", { runtime: createRuntime(session), lastUsed: Date.now() });
 
   const result = await fixture.facade.applySlashCommand("web:default", "/tasks");
   expect(result).toEqual({ ok: true, chatJid: "web:default", rawText: "/tasks" });

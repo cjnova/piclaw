@@ -9,9 +9,8 @@
  * Consumers: channels/web.ts sets up the UI bridge during agent runs.
  */
 
-import type { AgentSession, ExtensionUIContext } from "@mariozechner/pi-coding-agent";
+import type { AgentSessionRuntime, ExtensionUIContext } from "@mariozechner/pi-coding-agent";
 
-import { getLegacyRuntimeSession } from "../../../agent-pool/session-runtime-compat.js";
 import { createLogger } from "../../../utils/logger.js";
 import { createFallbackTheme } from "./theme.js";
 
@@ -75,8 +74,10 @@ export class UiBridge {
 
   constructor(private channel: UiBridgeChannel) {}
 
-  async bindSession(session: AgentSession, chatJid: string): Promise<void> {
+  async bindSession(runtime: AgentSessionRuntime, chatJid: string): Promise<void> {
     if (!chatJid.startsWith("web:")) return;
+
+    const session = runtime.session;
 
     const waitForIdle = async (): Promise<void> => {
       if (!session.isStreaming) return;
@@ -95,22 +96,13 @@ export class UiBridge {
       uiContext,
       commandContextActions: {
         waitForIdle,
-        newSession: async (options) => {
-          const ok = await getLegacyRuntimeSession(session).newSession(options);
-          return { cancelled: !ok };
-        },
-        fork: async (entryId) => {
-          const result = await getLegacyRuntimeSession(session).fork(entryId);
-          return { cancelled: result.cancelled };
-        },
+        newSession: async (options) => runtime.newSession(options),
+        fork: async (entryId) => runtime.fork(entryId),
         navigateTree: async (targetId, options) => {
           const result = await session.navigateTree(targetId, options);
           return { cancelled: result.cancelled };
         },
-        switchSession: async (sessionPath) => {
-          const ok = await getLegacyRuntimeSession(session).switchSession(sessionPath);
-          return { cancelled: !ok };
-        },
+        switchSession: async (sessionPath) => runtime.switchSession(sessionPath),
         reload: () => session.reload(),
       },
       onError: (error) => {

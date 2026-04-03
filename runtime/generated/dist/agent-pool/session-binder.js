@@ -16,7 +16,7 @@ export class AgentSessionBinder {
             return;
         for (const [jid, entry] of this.options.pool) {
             try {
-                void binder(entry.session, jid);
+                void binder(entry.runtime, jid);
             }
             catch (err) {
                 this.options.onError?.("Failed to bind session", {
@@ -27,11 +27,11 @@ export class AgentSessionBinder {
             }
         }
     }
-    async bindSession(session, chatJid) {
+    async bindSession(runtime, chatJid) {
         if (!this.binder)
             return;
         try {
-            await this.binder(session, chatJid);
+            await this.binder(runtime, chatJid);
         }
         catch (err) {
             this.options.onError?.("Failed to bind session", {

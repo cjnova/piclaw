@@ -99,8 +99,9 @@ export async function runSidePrompt(chatJid, prompt, options, deps) {
             stopReason: finalMessage.stopReason,
         };
     }
-    const sideSession = await deps.getOrCreateSide(chatJid);
-    await deps.syncSideSessionFromMain(session, sideSession);
+    const sideRuntime = await deps.getOrCreateSideRuntime(chatJid);
+    await deps.syncSideSessionFromMain(session, sideRuntime);
+    const sideSession = sideRuntime.session;
     let text = "";
     let thinking = "";
     let sawText = false;

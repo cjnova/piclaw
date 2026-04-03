@@ -19,18 +19,23 @@ export class AgentRuntimeFacade {
         this.options = options;
     }
     async applyControlCommand(chatJid, command) {
-        const session = await this.options.getOrCreate(chatJid);
+        const runtime = await this.options.getOrCreateRuntime(chatJid);
+        const session = runtime.session;
         const channel = detectChannel(chatJid);
         const apply = this.options.applyControlCommandFn ?? applyControlCommand;
-        return await withChatContext(chatJid, channel, () => apply(session, this.options.modelRegistry, command));
+        const result = await withChatContext(chatJid, channel, () => apply(session, runtime, this.options.modelRegistry, command));
+        if (runtime.session !== session) {
+            await this.options.refreshRuntime(chatJid, runtime);
+        }
+        return result;
     }
     async getCurrentModelLabel(chatJid) {
-        const session = await this.options.getOrCreate(chatJid);
+        const session = (await this.options.getOrCreateRuntime(chatJid)).session;
         const model = session.model;
         return model ? `${model.provider}/${model.id}` : null;
     }
     async getAvailableModels(chatJid) {
-        const session = await this.options.getOrCreate(chatJid);
+        const session = (await this.options.getOrCreateRuntime(chatJid)).session;
         const registry = session.modelRegistry ?? this.options.modelRegistry;
         registry.refresh();
         const available = registry.getAvailable();
@@ -66,16 +71,16 @@ export class AgentRuntimeFacade {
         const entry = this.options.pool.get(chatJid);
         if (!entry)
             return null;
-        return entry.session.getContextUsage() ?? null;
+        return entry.runtime.session.getContextUsage() ?? null;
     }
     async saveSessionPosition(chatJid) {
-        const session = await this.options.getOrCreate(chatJid);
+        const session = (await this.options.getOrCreateRuntime(chatJid)).session;
         return session.sessionManager.getLeafId();
     }
     async restoreSessionPosition(chatJid, leafId) {
         if (leafId === null)
             return;
-        const session = await this.options.getOrCreate(chatJid);
+        const session = (await this.options.getOrCreateRuntime(chatJid)).session;
         const currentLeaf = session.sessionManager.getLeafId();
         if (currentLeaf === leafId)
             return;
@@ -101,16 +106,16 @@ export class AgentRuntimeFacade {
         return resolveModelLabel(this.options.modelRegistry, input);
     }
     isStreaming(chatJid) {
-        return this.options.pool.get(chatJid)?.session.isStreaming ?? false;
+        return this.options.pool.get(chatJid)?.runtime.session.isStreaming ?? false;
     }
     isActive(chatJid) {
-        const session = this.options.pool.get(chatJid)?.session;
+        const session = this.options.pool.get(chatJid)?.runtime.session;
         if (!session)
             return false;
         return Boolean(session.isStreaming || session.isCompacting || session.isRetrying || session.isBashRunning);
     }
     async queueStreamingMessage(chatJid, text, behavior) {
-        const session = await this.options.getOrCreate(chatJid);
+        const session = (await this.options.getOrCreateRuntime(chatJid)).session;
         if (!session.isStreaming)
             return { queued: false };
         const channel = detectChannel(chatJid);
@@ -126,7 +131,7 @@ export class AgentRuntimeFacade {
         }
     }
     async removeQueuedFollowupMessage(chatJid, queuedContent) {
-        const session = await this.options.getOrCreate(chatJid);
+        const session = (await this.options.getOrCreateRuntime(chatJid)).session;
         if (!session.isStreaming)
             return false;
         const followups = [...session.getFollowUpMessages()];
@@ -164,10 +169,14 @@ export class AgentRuntimeFacade {
     }
     async applySlashCommand(chatJid, rawText) {
         this.options.clearAttachments(chatJid);
-        const session = await this.options.getOrCreate(chatJid);
+        const runtime = await this.options.getOrCreateRuntime(chatJid);
+        const session = runtime.session;
         const channel = detectChannel(chatJid);
         const exec = this.options.executeSlashCommandFn ?? executeSlashCommand;
         const result = await withChatContext(chatJid, channel, () => exec(session, chatJid, rawText));
+        if (runtime.session !== session) {
+            await this.options.refreshRuntime(chatJid, runtime);
+        }
         this.options.clearAttachments(chatJid);
         return result;
     }

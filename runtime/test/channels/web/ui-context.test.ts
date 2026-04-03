@@ -7,6 +7,7 @@
 
 import { describe, test, expect } from "bun:test";
 import "../../helpers.js";
+import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import { UiBridge } from "../../../src/channels/web/theming/ui-bridge.js";
 import { bindSessionUiContext, createUiContext } from "../../../src/channels/web/ui-context.js";
 
@@ -18,6 +19,21 @@ function makeChannel() {
   const uiBridge = new UiBridge(channel as any);
   (channel as any).uiBridge = uiBridge;
   return { channel, events, uiBridge };
+}
+
+function createRuntime(session: any): AgentSessionRuntime {
+  return {
+    session,
+    cwd: "/workspace",
+    diagnostics: [],
+    services: {} as any,
+    modelFallbackMessage: undefined,
+    newSession: async () => ({ cancelled: false }),
+    switchSession: async () => ({ cancelled: true }),
+    fork: async () => ({ cancelled: false }),
+    importFromJsonl: async () => ({ cancelled: false }),
+    dispose: async () => {},
+  } as any;
 }
 
 describe("ui-context", () => {
@@ -96,16 +112,13 @@ describe("ui-context", () => {
       bindExtensions: async (args: any) => {
         boundArgs = args;
       },
-      newSession: async () => true,
-      fork: async () => ({ cancelled: false }),
       navigateTree: async () => ({ cancelled: true }),
-      switchSession: async () => false,
       reload: async () => {
         reloadCalled = true;
       },
     } as any;
 
-    await bindSessionUiContext(channel as any, session, "web:default");
+    await bindSessionUiContext(channel as any, createRuntime(session), "web:default");
     expect(boundArgs).toBeDefined();
 
     const actions = boundArgs.commandContextActions;
@@ -137,7 +150,7 @@ describe("ui-context", () => {
       },
     } as any;
 
-    await bindSessionUiContext(channel as any, session, "whatsapp:123");
+    await bindSessionUiContext(channel as any, createRuntime(session), "whatsapp:123");
     expect(bindCalled).toBe(false);
   });
 });

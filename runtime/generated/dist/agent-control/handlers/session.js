@@ -7,7 +7,6 @@
  * Consumers: agent-control-handlers.ts dispatches to these handlers.
  */
 import { truncateText } from "../agent-control-helpers.js";
-import { getLegacyRuntimeSession } from "../../agent-pool/session-runtime-compat.js";
 import { rotateSession } from "../../session-rotation.js";
 /** Handle /session-name: rename the current session. */
 export async function handleSessionName(session, command) {
@@ -27,27 +26,27 @@ export async function handleSessionName(session, command) {
     return { status: "success", message: `Session name set to "${name}".` };
 }
 /** Handle /new-session: create a new session, optionally under a parent. */
-export async function handleNewSession(session, command) {
-    const ok = await getLegacyRuntimeSession(session).newSession(command.parent ? { parentSession: command.parent } : undefined);
-    if (!ok) {
+export async function handleNewSession(session, runtime, command) {
+    const result = await runtime.newSession(command.parent ? { parentSession: command.parent } : undefined);
+    if (result.cancelled) {
         return { status: "error", message: "New session cancelled." };
     }
     return { status: "success", message: "Started a new session." };
 }
 /** Handle /switch-session: switch to an existing session by path. */
-export async function handleSwitchSession(session, command) {
+export async function handleSwitchSession(session, runtime, command) {
     if (!command.path) {
         return { status: "error", message: "Usage: /switch-session <path>" };
     }
-    const ok = await getLegacyRuntimeSession(session).switchSession(command.path.trim());
-    if (!ok) {
+    const result = await runtime.switchSession(command.path.trim());
+    if (result.cancelled) {
         return { status: "error", message: "Switch session cancelled." };
     }
     return { status: "success", message: `Switched to session: ${command.path.trim()}.` };
 }
 /** Handle /session-rotate: archive the current session file and start a compact carried-forward successor. */
-export async function handleSessionRotate(session, command) {
-    const result = await rotateSession(session, {
+export async function handleSessionRotate(session, runtime, command) {
+    const result = await rotateSession(session, runtime, {
         instructions: command.instructions,
         reason: "manual",
     });
@@ -57,12 +56,12 @@ export async function handleSessionRotate(session, command) {
     };
 }
 /** Handle /fork: fork the conversation from a specific entry. */
-export async function handleFork(session, command) {
+export async function handleFork(session, runtime, command) {
     if (!command.entryId) {
         return { status: "error", message: "Usage: /fork <entryId>" };
     }
     try {
-        const result = await getLegacyRuntimeSession(session).fork(command.entryId.trim());
+        const result = await runtime.fork(command.entryId.trim());
         if (result.cancelled) {
             return { status: "error", message: "Fork cancelled." };
         }

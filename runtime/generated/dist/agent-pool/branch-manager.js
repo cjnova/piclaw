@@ -8,7 +8,6 @@ import { getIdentityConfig } from "../core/config.js";
 import { archiveChatBranch, ensureChatBranch, getChatBranchByAgentName, getChatBranchByChatJid, listChatBranches, renameChatBranchIdentity, restoreChatBranchIdentity, storeChatMetadata, } from "../db.js";
 import { createUuid } from "../utils/ids.js";
 import { forcePersistSessionFile, seedRotatedSession } from "../session-rotation.js";
-import { getLegacyRuntimeSession, resolveActiveRuntimeSession } from "./session-runtime-compat.js";
 function normalizeAgentHandlePart(value) {
     return value
         .trim()
@@ -161,7 +160,7 @@ export class AgentBranchManager {
         }
     }
     async renameChatBranch(chatJid, options = {}) {
-        const session = this.options.pool.get(chatJid)?.session ?? null;
+        const session = this.options.pool.get(chatJid)?.runtime.session ?? null;
         this.ensureBranchRegistration(chatJid, session);
         const nextAgentName = options.agentName !== undefined ? options.agentName : undefined;
         const renamed = renameChatBranchIdentity({
@@ -183,7 +182,7 @@ export class AgentBranchManager {
         return renamed;
     }
     async pruneChatBranch(chatJid) {
-        const session = this.options.pool.get(chatJid)?.session ?? null;
+        const session = this.options.pool.get(chatJid)?.runtime.session ?? null;
         const existing = this.ensureBranchRegistration(chatJid, session);
         if (existing.chat_jid === existing.root_chat_jid) {
             throw new Error("Cannot prune the root chat branch.");
@@ -195,7 +194,7 @@ export class AgentBranchManager {
         const mainEntry = this.options.pool.get(chatJid);
         if (mainEntry) {
             try {
-                mainEntry.session.dispose();
+                await mainEntry.runtime.dispose();
             }
             catch (err) {
                 this.options.onWarn?.("Failed to dispose pruned session", {
@@ -209,7 +208,7 @@ export class AgentBranchManager {
         const sideEntry = this.options.sidePool.get(chatJid);
         if (sideEntry) {
             try {
-                sideEntry.session.dispose();
+                await sideEntry.runtime.dispose();
             }
             catch (err) {
                 this.options.onWarn?.("Failed to dispose pruned side session", {
@@ -229,7 +228,7 @@ export class AgentBranchManager {
             ...(options.agentName !== undefined ? { agent_name: options.agentName } : {}),
         });
         try {
-            await this.options.getOrCreate(chatJid);
+            await this.options.getOrCreateRuntime(chatJid);
         }
         catch (err) {
             this.options.onWarn?.("Restored branch but failed to warm its session", {
@@ -241,7 +240,7 @@ export class AgentBranchManager {
         return restored;
     }
     async createForkedChatBranch(sourceChatJid, options = {}) {
-        const sourceSession = await this.options.getOrCreate(sourceChatJid);
+        const sourceSession = (await this.options.getOrCreateRuntime(sourceChatJid)).session;
         const sourceIsActive = isSessionActive(sourceSession);
         const stableForkLeafId = this.options.activeForkBaseLeafByChat.has(sourceChatJid)
             ? this.options.activeForkBaseLeafByChat.get(sourceChatJid) ?? null
@@ -261,7 +260,7 @@ export class AgentBranchManager {
             parent_branch_id: sourceBranch.branch_id,
             agent_name: requestedAgentName,
         });
-        const targetSession = await this.options.getOrCreate(nextChatJid);
+        const targetRuntime = await this.options.getOrCreateRuntime(nextChatJid);
         const stableSeed = sourceIsActive
             ? getStableForkSeed(sourceSession, stableForkLeafId)
             : null;
@@ -271,7 +270,7 @@ export class AgentBranchManager {
         const sourceModel = stableSeed?.model || sourceContext.model || (sourceSession.model
             ? { provider: sourceSession.model.provider, modelId: sourceSession.model.id }
             : null);
-        const ok = await getLegacyRuntimeSession(targetSession).newSession({
+        const result = await targetRuntime.newSession({
             ...(parentSession ? { parentSession } : {}),
             setup: async (sessionManager) => {
                 if (stableSeed) {
@@ -287,10 +286,11 @@ export class AgentBranchManager {
                 });
             },
         });
-        if (!ok) {
+        if (result.cancelled) {
             throw new Error("Branch fork was cancelled.");
         }
-        const activeTargetSession = resolveActiveRuntimeSession(targetSession);
+        await this.options.refreshRuntime(nextChatJid, targetRuntime);
+        const activeTargetSession = targetRuntime.session;
         if (sourceSession.model) {
             try {
                 await activeTargetSession.setModel(sourceSession.model);
@@ -337,7 +337,8 @@ export class AgentBranchManager {
     listActiveChats() {
         const chats = [...this.options.pool.entries()]
             .flatMap(([chatJid, entry]) => {
-            const branch = this.ensureBranchRegistration(chatJid, entry.session);
+            const session = entry.runtime.session;
+            const branch = this.ensureBranchRegistration(chatJid, session);
             if (branch.archived_at)
                 return [];
             return [{
@@ -347,10 +348,10 @@ export class AgentBranchManager {
                     parent_branch_id: branch.parent_branch_id,
                     agent_name: branch.agent_name,
                     archived_at: branch.archived_at ?? null,
-                    session_id: entry.session.sessionId,
-                    session_name: entry.session.sessionName?.trim() || null,
-                    model: entry.session.model ? `${entry.session.model.provider}/${entry.session.model.id}` : null,
-                    is_active: isSessionActive(entry.session),
+                    session_id: session.sessionId,
+                    session_name: session.sessionName?.trim() || null,
+                    model: session.model ? `${session.model.provider}/${session.model.id}` : null,
+                    is_active: isSessionActive(session),
                     has_side_session: this.options.sidePool.has(chatJid),
                 }];
         })

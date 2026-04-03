@@ -10,6 +10,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { existsSync } from "fs";
 import { basename, join } from "path";
+import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { createTempWorkspace, importFresh, setEnv, type TempWorkspace } from "../helpers.js";
 
@@ -40,6 +41,23 @@ function createAssistantMessage(text: string) {
     stopReason: "stop",
     timestamp: Date.now(),
   } as const;
+}
+
+function createRuntime(session: IntegrationSession): AgentSessionRuntime {
+  return {
+    session: session as any,
+    cwd: session.workspace,
+    diagnostics: [],
+    services: {} as any,
+    modelFallbackMessage: undefined,
+    newSession: async (options?: { parentSession?: string; setup?: (sessionManager: SessionManager) => Promise<void> | void }) => ({
+      cancelled: !(await session.newSession(options)),
+    }),
+    switchSession: async () => ({ cancelled: false }),
+    fork: async () => ({ cancelled: false }),
+    importFromJsonl: async () => ({ cancelled: false }),
+    dispose: async () => {},
+  } as any;
 }
 
 class IntegrationSession {
@@ -99,11 +117,12 @@ test("session rotation archives the old file and continueRecent resumes the rota
 
   const sessionDir = ensureSessionDir("web:default");
   const session = new IntegrationSession(tempWorkspace.workspace, sessionDir);
+  const runtime = createRuntime(session);
   const previousSessionFile = session.sessionFile;
   expect(previousSessionFile).toBeTruthy();
   expect(previousSessionFile && existsSync(previousSessionFile)).toBe(true);
 
-  const result = await handleSessionRotate(session as any, {
+  const result = await handleSessionRotate(session as any, runtime as any, {
     type: "session_rotate",
     instructions: "keep only what matters for the resumed session",
     raw: "/session-rotate keep only what matters for the resumed session",
@@ -149,10 +168,11 @@ test("session rotation rejects queued follow-ups and leaves the active file unto
 
   const sessionDir = ensureSessionDir("web:default");
   const session = new IntegrationSession(tempWorkspace.workspace, sessionDir);
+  const runtime = createRuntime(session);
   const previousSessionFile = session.sessionFile;
   session.pendingMessageCount = 2;
 
-  const result = await handleSessionRotate(session as any, {
+  const result = await handleSessionRotate(session as any, runtime as any, {
     type: "session_rotate",
     raw: "/session-rotate",
   });

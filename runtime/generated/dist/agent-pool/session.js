@@ -18,7 +18,6 @@ import { fileURLToPath } from "url";
 import { createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices, getAgentDir, SessionManager, } from "@mariozechner/pi-coding-agent";
 import { SESSIONS_DIR, WORKSPACE_DIR } from "../core/config.js";
 import { builtinExtensionFactories } from "../extensions/index.js";
-import { attachLegacySessionRuntimeCompatibility } from "./session-runtime-compat.js";
 import { installSameTurnToolActivationPatch } from "./tool-activation-compat.js";
 installSameTurnToolActivationPatch();
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -124,7 +123,7 @@ export async function createSessionInDir(sessionDir, options) {
         agentDir: getAgentDir(),
         sessionManager: SessionManager.continueRecent(WORKSPACE_DIR, sessionDir),
     });
-    return attachLegacySessionRuntimeCompatibility(runtime, options.onReplace);
+    return runtime;
 }
 export async function createDefaultSession(chatJid, options) {
     const chatSessionDir = ensureSessionDir(chatJid);

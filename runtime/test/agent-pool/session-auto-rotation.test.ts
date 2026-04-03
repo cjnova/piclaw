@@ -6,6 +6,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { existsSync, truncateSync } from "fs";
 import { basename, join } from "path";
+import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { createTempWorkspace, importFresh, setEnv, type TempWorkspace } from "../helpers.js";
 
@@ -18,6 +19,25 @@ afterEach(() => {
   tempWorkspace?.cleanup();
   tempWorkspace = null;
 });
+
+function createRuntime(session: any): AgentSessionRuntime {
+  return {
+    session,
+    cwd: "/workspace",
+    diagnostics: [],
+    services: {} as any,
+    modelFallbackMessage: undefined,
+    newSession: async (options?: { parentSession?: string; setup?: (sessionManager: SessionManager) => Promise<void> | void }) => ({
+      cancelled: !(await session.newSession(options)),
+    }),
+    switchSession: async () => ({ cancelled: false }),
+    fork: async () => ({ cancelled: false }),
+    importFromJsonl: async () => ({ cancelled: false }),
+    dispose: async () => {
+      session.dispose?.();
+    },
+  } as any;
+}
 
 function createAssistantMessage(text: string) {
   return {
@@ -130,7 +150,7 @@ test("agent pool auto-rotates oversized persisted sessions before prompting", as
   truncateSync(previousSessionFile!, 2 * 1024 * 1024);
 
   const pool = new AgentPool({
-    createSession: async () => session as any,
+    createSession: async () => createRuntime(session) as any,
   });
 
   const result = await pool.runAgent("hello", "web:default", { timeoutMs: 0 });

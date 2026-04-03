@@ -24,7 +24,7 @@ import { handleTotp } from "./handlers/totp.js";
 import { handleQr } from "./handlers/qr.js";
 import { handleLabel, handleLabels, handleTree } from "./handlers/tree.js";
 /** Dispatch a parsed control command to the appropriate handler and return the result. */
-export async function applyControlCommand(session, modelRegistry, command) {
+export async function applyControlCommand(session, runtime, modelRegistry, command) {
     switch (command.type) {
         case "restart":
             return handleRestart(session, command);
@@ -70,13 +70,13 @@ export async function applyControlCommand(session, modelRegistry, command) {
         case "session_name":
             return handleSessionName(session, command);
         case "new_session":
-            return handleNewSession(session, command);
+            return handleNewSession(session, runtime, command);
         case "switch_session":
-            return handleSwitchSession(session, command);
+            return handleSwitchSession(session, runtime, command);
         case "session_rotate":
-            return handleSessionRotate(session, command);
+            return handleSessionRotate(session, runtime, command);
         case "fork":
-            return handleFork(session, command);
+            return handleFork(session, runtime, command);
         case "forks":
             return handleForks(session, command);
         case "export_html":

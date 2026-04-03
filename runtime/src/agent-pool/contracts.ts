@@ -2,7 +2,7 @@
  * agent-pool/contracts.ts – Shared public contracts for AgentPool and its helpers.
  */
 
-import type { AgentSession, AgentSessionEvent } from "@mariozechner/pi-coding-agent";
+import type { AgentSessionEvent, AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import type {
   Api,
   AssistantMessageEvent,
@@ -59,8 +59,8 @@ export interface RunAgentOptions {
 
 /** Construction options for creating an AgentPool. */
 export interface AgentPoolOptions {
-  createSession?: (chatJid: string, sessionDir: string) => Promise<AgentSession>;
-  createSideSession?: (chatJid: string, sessionDir: string) => Promise<AgentSession>;
+  createSession?: (chatJid: string, sessionDir: string) => Promise<AgentSessionRuntime>;
+  createSideSession?: (chatJid: string, sessionDir: string) => Promise<AgentSessionRuntime>;
   modelRegistry?: import("@mariozechner/pi-coding-agent").ModelRegistry;
   sideStreamSimple?: (
     model: Model<Api>,

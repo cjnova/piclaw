@@ -8,11 +8,38 @@
 import { expect, test, afterEach } from "bun:test";
 import { readdirSync, readFileSync } from "fs";
 import { join } from "path";
+import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
 import { getAttachmentRegistry } from "../../src/agent-pool/attachments.js";
 import { createTempWorkspace, getTestWorkspace, importFresh, setEnv } from "../helpers.js";
 
 let restoreEnv: (() => void) | null = null;
+
+function createRuntime(session: any, overrides: Partial<AgentSessionRuntime> = {}): AgentSessionRuntime {
+  return {
+    session,
+    cwd: "/workspace",
+    diagnostics: [],
+    services: {} as any,
+    modelFallbackMessage: undefined,
+    newSession: async (options?: any) => ({
+      cancelled: typeof session.newSession === "function" ? !(await session.newSession(options)) : false,
+    }),
+    switchSession: async (path: string) => ({
+      cancelled: typeof session.switchSession === "function" ? !(await session.switchSession(path)) : false,
+    }),
+    fork: async (entryId: string) => (
+      typeof session.fork === "function"
+        ? await session.fork(entryId)
+        : { cancelled: false }
+    ),
+    importFromJsonl: async () => ({ cancelled: false }),
+    dispose: async () => {
+      session.dispose?.();
+    },
+    ...overrides,
+  } as any;
+}
 
 afterEach(() => {
   restoreEnv?.();
@@ -49,7 +76,7 @@ test("agent pool aggregates streamed text and writes logs", async () => {
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
   });
 
   const result = await pool.runAgent("test", "web:default");
@@ -90,7 +117,7 @@ test("agent pool honors timeout overrides", async () => {
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
   });
 
   const timedOut = await pool.runAgent("test", "web:default", { timeoutMs: 5 });
@@ -131,7 +158,7 @@ test("agent pool clears attachments when a run errors", async () => {
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
   });
 
   const result = await pool.runAgent("test", "web:default", { timeoutMs: 0 });
@@ -163,7 +190,7 @@ test("agent pool evicts idle sessions and recreates them", async () => {
   const pool = new AgentPool({
     createSession: async () => {
       createCalls += 1;
-      return new StubSession() as any;
+      return createRuntime(new StubSession()) as any;
     },
   });
 
@@ -211,7 +238,7 @@ test("agent pool can run a side prompt with the current model and thinking level
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
     modelRegistry: {
       getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "test-key" }),
       find: () => undefined,
@@ -281,7 +308,7 @@ test("agent pool forwards header-based auth for side prompts", async () => {
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
     modelRegistry: {
       getApiKeyAndHeaders: async () => ({
         ok: true,
@@ -416,10 +443,10 @@ test("agent pool forks active chats from the previous stable turn boundary", asy
 
   const pool = new AgentPool({
     createSession: async (chatJid: string, sessionDir: string) => {
-      if (created[chatJid]) return created[chatJid] as any;
+      if (created[chatJid]) return createRuntime(created[chatJid]) as any;
       const session = new ForkableSession(ws.workspace, sessionDir, false);
       created[chatJid] = session;
-      return session as any;
+      return createRuntime(session) as any;
     },
   });
 
@@ -475,7 +502,7 @@ test("agent pool refuses to prune an active branch session", async () => {
   }
 
   const pool = new AgentPool({
-    createSession: async () => new ActiveBranchSession() as any,
+    createSession: async () => createRuntime(new ActiveBranchSession()) as any,
   });
 
   await (pool as any).getOrCreate("web:default:branch:active");
@@ -506,7 +533,7 @@ test("agent pool reports side prompt errors when no model is active", async () =
   }
 
   const pool = new AgentPool({
-    createSession: async () => new StubSession() as any,
+    createSession: async () => createRuntime(new StubSession()) as any,
   });
 
   const result = await pool.runSidePrompt("web:default", "Side question");
@@ -601,8 +628,8 @@ test("agent pool can run a tool-capable side prompt through a separate side sess
   }
 
   const pool = new AgentPool({
-    createSession: async () => new MainSession() as any,
-    createSideSession: async () => new SideSession() as any,
+    createSession: async () => createRuntime(new MainSession()) as any,
+    createSideSession: async () => createRuntime(new SideSession()) as any,
     modelRegistry: {
       getApiKeyAndHeaders: async () => ({ ok: true, apiKey: "test-key" }),
       find: () => undefined,

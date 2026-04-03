@@ -25,6 +25,7 @@ import { mkdirSync } from "fs";
 import { join } from "path";
 import {
   type AgentSession,
+  type AgentSessionRuntime,
   AuthStorage,
   ModelRegistry,
   SettingsManager,
@@ -129,14 +130,14 @@ export class AgentPool {
     this.cleanupTimer = setInterval(() => this.sessionManager.evictIdle(IDLE_TTL), CLEANUP_INTERVAL);
   }
 
-  setSessionBinder(binder?: (session: AgentSession, chatJid: string) => Promise<void> | void): void {
+  setSessionBinder(binder?: (runtime: AgentSessionRuntime, chatJid: string) => Promise<void> | void): void {
     this.sessionBinder.setBinder(binder);
   }
 
   /** Run a prompt against the persistent session for `chatJid`. */
   async runAgent(prompt: string, chatJid: string, options: RunAgentOptions = {}): Promise<AgentOutput> {
     return runAgentPrompt(prompt, chatJid, options, {
-      getOrCreate: (nextChatJid) => this.getOrCreate(nextChatJid),
+      getOrCreateRuntime: (nextChatJid) => this.getOrCreateRuntime(nextChatJid),
       turnCoordinator: this.turnCoordinator,
       clearAttachments: (nextChatJid) => this.attachments.clear(nextChatJid),
       takeAttachments: (nextChatJid) => this.attachments.take(nextChatJid),
@@ -162,8 +163,8 @@ export class AgentPool {
   async runSidePrompt(chatJid: string, prompt: string, options: SidePromptOptions = {}): Promise<SidePromptResult> {
     return runSidePromptInternal(chatJid, prompt, options, {
       getOrCreate: (nextChatJid) => this.getOrCreate(nextChatJid),
-      getOrCreateSide: (nextChatJid) => this.getOrCreateSide(nextChatJid),
-      syncSideSessionFromMain: (mainSession, sideSession) => this.syncSideSessionFromMain(mainSession, sideSession),
+      getOrCreateSideRuntime: (nextChatJid) => this.getOrCreateSideRuntime(nextChatJid),
+      syncSideSessionFromMain: (mainSession, sideRuntime) => this.syncSideSessionFromMain(mainSession, sideRuntime),
       modelRegistry: this.modelRegistry,
       sideStreamSimple: this.sideStreamSimple,
       onWarn: (message, details) => log.warn(message, details),
@@ -304,16 +305,20 @@ export class AgentPool {
 
   // ── internal ────────────────────────────────────────────
 
-  private async getOrCreate(chatJid: string): Promise<AgentSession> {
+  private async getOrCreateRuntime(chatJid: string): Promise<AgentSessionRuntime> {
     return this.sessionManager.getOrCreate(chatJid);
   }
 
-  private async getOrCreateSide(chatJid: string): Promise<AgentSession> {
+  private async getOrCreate(chatJid: string): Promise<AgentSession> {
+    return (await this.getOrCreateRuntime(chatJid)).session;
+  }
+
+  private async getOrCreateSideRuntime(chatJid: string): Promise<AgentSessionRuntime> {
     return this.sessionManager.getOrCreateSide(chatJid);
   }
 
-  private async syncSideSessionFromMain(mainSession: AgentSession, sideSession: AgentSession): Promise<void> {
-    return this.sessionManager.syncSideSessionFromMain(mainSession, sideSession);
+  private async syncSideSessionFromMain(mainSession: AgentSession, sideRuntime: AgentSessionRuntime): Promise<void> {
+    return this.sessionManager.syncSideSessionFromMain(mainSession, sideRuntime);
   }
 
   private evictIdle(): void {

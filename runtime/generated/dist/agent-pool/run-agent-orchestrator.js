@@ -9,7 +9,7 @@ import { writeAgentLog } from "./logging.js";
 import { getSessionFileSize, rotateSession } from "../session-rotation.js";
 import { withChatContext } from "../core/chat-context.js";
 import { formatTimeoutDuration, waitForSessionIdle } from "./prompt-utils.js";
-async function maybeAutoRotateSession(session, chatJid, options) {
+async function maybeAutoRotateSession(session, runtime, chatJid, options) {
     const sessionStorageConfig = getSessionStorageConfig();
     const autoRotateEnabled = sessionStorageConfig.autoRotate
         || ["1", "true", "yes", "on"].includes((process.env.PICLAW_SESSION_AUTO_ROTATE || "").trim().toLowerCase());
@@ -22,7 +22,7 @@ async function maybeAutoRotateSession(session, chatJid, options) {
     const sessionFileSize = getSessionFileSize(session.sessionFile);
     if (sessionFileSize === null || sessionFileSize < thresholdBytes)
         return;
-    const result = await rotateSession(session, { reason: "automatic" });
+    const result = await rotateSession(session, runtime, { reason: "automatic" });
     if (result.status === "success") {
         options.onInfo?.("Auto-rotated oversized session", {
             operation: "maybe_auto_rotate_session",
@@ -140,8 +140,9 @@ export async function runAgentPrompt(prompt, chatJid, runOptions, options) {
     const startTime = Date.now();
     options.clearAttachments(chatJid);
     try {
-        const session = await options.getOrCreate(chatJid);
-        await maybeAutoRotateSession(session, chatJid, options);
+        const runtime = await options.getOrCreateRuntime(chatJid);
+        const session = runtime.session;
+        await maybeAutoRotateSession(session, runtime, chatJid, options);
         await maybeAutoCompactSessionBeforePrompt(session, chatJid, options);
         pruneOrphanToolResults(session, chatJid);
         const forkBaseLeafId = typeof session.sessionManager?.getLeafId === "function"
