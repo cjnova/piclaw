@@ -184,6 +184,205 @@ describe("Web adaptive-card/side-prompt service", () => {
     expect(forwardCalls[1]?.chatJid).toBe("web:branch");
   });
 
+  test("routes login adaptive-card submissions through the source chat/thread and broadcasts model changes on success", async () => {
+    process.env.PICLAW_DB_IN_MEMORY = "1";
+    const db = await import("../../../../src/db.js");
+    db.initDatabase();
+    db.getDb().exec("DELETE FROM message_media; DELETE FROM messages; DELETE FROM chats; DELETE FROM chat_cursors;");
+
+    const sourcePostId = db.storeMessage({
+      id: "login-card-source-success",
+      chat_jid: "web:branch",
+      sender: "agent",
+      sender_name: "Agent",
+      content: "Provider authentication",
+      timestamp: new Date().toISOString(),
+      is_from_me: true,
+      is_bot_message: true,
+      thread_id: 17,
+      content_blocks: [
+        {
+          type: "adaptive_card",
+          card_id: "login-card-success",
+          state: "active",
+          submit_behavior: "keep_active",
+          payload: {
+            type: "AdaptiveCard",
+            version: "1.5",
+            body: [],
+            actions: [{ type: "Action.Submit", title: "Check", data: { intent: "login-step2", provider: "github-copilot", method: "oauth_check" } }],
+          },
+        },
+      ],
+    });
+
+    const applyCalls: Array<{ chatJid: string; command: { type: "login"; provider: string; raw: string } }> = [];
+    const fixture = createFixture({
+      agentPool: {
+        runSidePrompt: async (chatJid, prompt, options) => ({
+          status: "success",
+          result: `answer:${prompt}`,
+          thinking: options?.systemPrompt ?? null,
+          model: `model-for:${chatJid}`,
+          stopReason: "stop",
+        }),
+        applyControlCommand: async (chatJid, command) => {
+          applyCalls.push({ chatJid, command });
+          return {
+            status: "success",
+            message: "✓ GitHub Copilot authenticated.",
+            contentBlocks: [{
+              type: "adaptive_card",
+              card_id: "login-model-picker",
+              state: "active",
+              payload: { type: "AdaptiveCard", version: "1.5", body: [], actions: [] },
+            }],
+            model_label: "github-copilot/gpt-4.1",
+            thinking_level: "medium",
+          };
+        },
+        getAvailableModels: async () => ({
+          current: "github-copilot/gpt-4.1",
+          thinking_level: "medium",
+          supports_thinking: true,
+        }),
+      },
+    });
+
+    const response = await fixture.service.handleAdaptiveCardAction(createRequest("/agent/card-action", {
+      method: "POST",
+      body: JSON.stringify({
+        post_id: sourcePostId,
+        chat_jid: "web:default",
+        card_id: "login-card-success",
+        action: { type: "Action.Submit", title: "Check", data: { intent: "login-step2", provider: "github-copilot", method: "oauth_check" } },
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      status: "ok",
+      card_updated: false,
+      source_post_id: sourcePostId,
+      card_id: "login-card-success",
+      submitted_at: expect.any(String),
+      auth_result: "success",
+    });
+    expect(applyCalls).toHaveLength(1);
+    expect(applyCalls[0]).toEqual({
+      chatJid: "web:branch",
+      command: {
+        type: "login",
+        provider: `__step2 ${JSON.stringify({ intent: "login-step2", provider: "github-copilot", method: "oauth_check" })}`,
+        raw: "/login __step2 ",
+      },
+    });
+    expect(fixture.state.sentMessages).toEqual([
+      {
+        chatJid: "web:branch",
+        text: "✓ GitHub Copilot authenticated.",
+        options: {
+          threadId: 17,
+          contentBlocks: [{
+            type: "adaptive_card",
+            card_id: "login-model-picker",
+            state: "active",
+            payload: { type: "AdaptiveCard", version: "1.5", body: [], actions: [] },
+          }],
+        },
+      },
+    ]);
+    expect(fixture.state.broadcastEvents).toEqual([
+      {
+        eventType: "model_changed",
+        data: {
+          chat_jid: "web:branch",
+          model: "github-copilot/gpt-4.1",
+          thinking_level: "medium",
+          supports_thinking: true,
+        },
+      },
+    ]);
+    expect(fixture.state.skipFailedCalls).toEqual(["web:branch"]);
+  });
+
+  test("routes login adaptive-card failures back to the source chat/thread without model-change broadcasts", async () => {
+    process.env.PICLAW_DB_IN_MEMORY = "1";
+    const db = await import("../../../../src/db.js");
+    db.initDatabase();
+    db.getDb().exec("DELETE FROM message_media; DELETE FROM messages; DELETE FROM chats; DELETE FROM chat_cursors;");
+
+    const sourcePostId = db.storeMessage({
+      id: "login-card-source-error",
+      chat_jid: "web:branch",
+      sender: "agent",
+      sender_name: "Agent",
+      content: "Provider authentication",
+      timestamp: new Date().toISOString(),
+      is_from_me: true,
+      is_bot_message: true,
+      thread_id: 23,
+      content_blocks: [
+        {
+          type: "adaptive_card",
+          card_id: "login-card-error",
+          state: "active",
+          submit_behavior: "keep_active",
+          payload: {
+            type: "AdaptiveCard",
+            version: "1.5",
+            body: [],
+            actions: [{ type: "Action.Submit", title: "Check", data: { intent: "login-step2", provider: "github-copilot", method: "oauth_check" } }],
+          },
+        },
+      ],
+    });
+
+    const fixture = createFixture({
+      agentPool: {
+        runSidePrompt: async (chatJid, prompt, options) => ({
+          status: "success",
+          result: `answer:${prompt}`,
+          thinking: options?.systemPrompt ?? null,
+          model: `model-for:${chatJid}`,
+          stopReason: "stop",
+        }),
+        applyControlCommand: async () => ({
+          status: "error",
+          message: 'OAuth for **GitHub Copilot** did not complete yet.',
+        }),
+      },
+    });
+
+    const response = await fixture.service.handleAdaptiveCardAction(createRequest("/agent/card-action", {
+      method: "POST",
+      body: JSON.stringify({
+        post_id: sourcePostId,
+        card_id: "login-card-error",
+        action: { type: "Action.Submit", title: "Check", data: { intent: "login-step2", provider: "github-copilot", method: "oauth_check" } },
+      }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      status: "ok",
+      card_updated: false,
+      source_post_id: sourcePostId,
+      card_id: "login-card-error",
+      submitted_at: expect.any(String),
+      auth_result: "error",
+    });
+    expect(fixture.state.sentMessages).toEqual([
+      {
+        chatJid: "web:branch",
+        text: 'OAuth for **GitHub Copilot** did not complete yet.',
+        options: { threadId: 23 },
+      },
+    ]);
+    expect(fixture.state.broadcastEvents).toEqual([]);
+    expect(fixture.state.skipFailedCalls).toEqual([]);
+  });
+
   test("delegates parsed side-prompt payloads and maps error results to 502", async () => {
     const fixture = createFixture();
 

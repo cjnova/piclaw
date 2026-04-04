@@ -66,6 +66,22 @@ describe("parseControlCommand", () => {
     expect(parseControlCommand("/commands")).toEqual({ type: "commands", raw: "/commands" });
   });
 
+  test("/login", () => {
+    expect(parseControlCommand("/login")).toEqual({ type: "login", provider: undefined, raw: "/login" });
+  });
+
+  test("/login with provider", () => {
+    expect(parseControlCommand("/login github-copilot")).toEqual({ type: "login", provider: "github-copilot", raw: "/login github-copilot" });
+  });
+
+  test("/logout", () => {
+    expect(parseControlCommand("/logout")).toEqual({ type: "logout", provider: undefined, raw: "/logout" });
+  });
+
+  test("/logout with provider", () => {
+    expect(parseControlCommand("/logout openai")).toEqual({ type: "logout", provider: "openai", raw: "/logout openai" });
+  });
+
   test("/restart", () => {
     expect(parseControlCommand("/restart")).toEqual({ type: "restart", raw: "/restart" });
   });

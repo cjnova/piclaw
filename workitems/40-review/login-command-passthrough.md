@@ -1,10 +1,10 @@
 ---
 id: login-command-passthrough
 title: Pass /login command through to pi and effect successful logins
-status: doing
+status: review
 priority: medium
 created: 2026-03-11
-updated: 2026-03-28
+updated: 2026-04-04
 tags:
   - work-item
   - kanban
@@ -40,9 +40,9 @@ It is not about piclaw's own web/TOTP/passkey session login.
 - [x] `/login` recognized as a slash command in the web chat flow.
 - [x] Command is forwarded to pi's built-in `/login` handler rather than being sent as a normal chat message.
 - [x] Any follow-up provider-auth steps required by pi are surfaced via the card-driven login flow.
-- [ ] After successful provider authentication, the user stays in the same chat view.
+- [x] After successful provider authentication, the user stays in the same chat view.
 - [x] Scope remains limited to pi/provider-auth integration rather than piclaw's own web auth stack.
-- [ ] Error cases handled gracefully for provider-auth failures or cancellations.
+- [x] Error cases handled gracefully for provider-auth failures or cancellations.
 
 ## Investigation Needed
 
@@ -51,6 +51,17 @@ It is not about piclaw's own web/TOTP/passkey session login.
 - How should provider-auth prompts/URLs be relayed through the web chat flow?
 
 ## Updates
+
+### 2026-04-04
+- Lane change: `20-doing` → `40-review`.
+- Re-verified the shipped `/login` path with focused parser, handler, and web-card submission coverage:
+  - `PICLAW_DB_IN_MEMORY=1 bun test --timeout 30000 runtime/test/agent-control/parser.test.ts runtime/test/agent-control/agent-control-handlers.test.ts runtime/test/channels/web/cards/adaptive-card-side-prompt-service.test.ts`
+- Evidence confirmed:
+  - `/login` and `/logout` parse as first-class control commands
+  - login handler tests cover auth/config writes inside the overridden `PICLAW_PI_AGENT_DIR` and refresh-before-activate model selection
+  - adaptive-card submission tests confirm login follow-up actions route back to the source chat/thread, send success and failure messages in the same chat, and only broadcast `model_changed` after success
+- Remaining review focus: run one live browser/provider pass to confirm the user-visible OAuth/manual-paste UX matches the mocked test path.
+- Quality: ★★★★☆ 8/10 (problem: 2, scope: 2, test: 1, deps: 2, risk: 1)
 
 ### 2026-03-28
 - Lane retained: `20-doing` via web doing-card decision.

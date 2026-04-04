@@ -1,10 +1,11 @@
 ---
 id: fix-generic-editor-popout-reattach-state-and-title
 title: Fix generic editor pop-out reattach state loss and window title
-status: review
+status: done
 priority: high
 created: 2026-04-02
-updated: 2026-04-02
+updated: 2026-04-04
+completed: 2026-04-04
 target_release: next
 estimate: M
 risk: medium
@@ -59,8 +60,8 @@ reattach/recovery does not preserve the authoritative in-memory state.
 - [x] The standalone editor window title uses the file/tab label rather than a
       content-derived heading.
 - [x] Exactly one editor tab exists after reattach; no duplicate tab is created.
-- [ ] Existing viewer/simple-pane reattach behavior remains unchanged.
-- [ ] Focused regression coverage exists for both unsaved-state recovery and
+- [x] Existing viewer/simple-pane reattach behavior remains unchanged.
+- [x] Focused regression coverage exists for both unsaved-state recovery and
       window-title resolution.
 
 ## Suspected Areas
@@ -111,8 +112,24 @@ reattach/recovery does not preserve the authoritative in-memory state.
 - [x] focused `bun test ...` for editor pop-out/reattach flows
 - [x] live Playwright/browser reproduction for `AGENTS.md`
 - [x] `bun run lint`
-- [ ] `bun run typecheck`
+- [x] `bun run typecheck`
 - [x] `bun run build:web` if web bundles are affected
+
+## Implementation Paths Considered (historical)
+
+- Preserve editor reattach state through the shared pane-popout transfer-token path instead of adding an editor-only bespoke reopen flow.
+- Keep the pane/tab label authoritative for pop-out window titles by preventing shared branding effects from overwriting `document.title` in pane-popout mode.
+
+## Definition of Done
+
+- [x] All acceptance criteria satisfied and verified
+- [x] Focused regression tests passing for editor transfer + shared pane orchestration
+- [x] Type check clean (`bun run typecheck`)
+- [x] Web bundles rebuilt successfully (`bun run build:web`)
+- [x] Viewer/simple-pane behavior revalidated via shared pane-orchestration tests
+- [x] Update history complete with concrete command evidence
+- [x] Quality score ≥ 9 recorded in final update
+- [x] Ticket front matter updated (`status`, `updated`, `completed`)
 
 ## Links
 
@@ -123,6 +140,20 @@ reattach/recovery does not preserve the authoritative in-memory state.
 - `runtime/web/src/ui/app-branch-pane-lifecycle-actions.ts`
 
 ## Updates
+
+### 2026-04-04
+- Lane change: `40-review` → `50-done`.
+- Verified the landed fix on `main` with focused regression and shared pane-orchestration coverage:
+  - `PICLAW_DB_IN_MEMORY=1 bun test --timeout 30000 runtime/test/web/editor-popout-transfer.test.ts runtime/test/web/pane-popout-contracts.test.ts runtime/test/web/app-pane-runtime-orchestration.test.ts`
+  - `bun run lint`
+  - `bun run typecheck`
+  - `bun run build:web`
+- Evidence confirmed:
+  - editor reattach transfer tokens preserve unsaved in-memory state
+  - pop-out titles stay pinned to the file/tab label
+  - shared pane-orchestration behavior for simple viewers and terminal close/reattach paths still passes
+  - rebuilt web bundles succeed cleanly after the fix
+- Quality: ★★★★★ 9/10 (problem: 2, scope: 2, test: 2, deps: 2, risk: 1)
 
 ### 2026-04-02
 - Lane change: `20-doing` → `40-review` after confirming the generic editor pop-out regressions are functionally fixed and the latest live Playwright result is green.
