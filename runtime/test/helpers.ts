@@ -22,6 +22,7 @@ export interface TempWorkspace {
 }
 
 let sharedWorkspace: TempWorkspace | null = null;
+let sharedWorkspaceCleanupHooksRegistered = false;
 
 /** Create an isolated temp directory with workspace, store, and data subdirs. */
 export function createTempWorkspace(prefix = "piclaw-test-"): TempWorkspace {
@@ -42,11 +43,31 @@ export function createTempWorkspace(prefix = "piclaw-test-"): TempWorkspace {
   };
 }
 
+function applySharedWorkspaceEnv(workspace: TempWorkspace): void {
+  process.env.PICLAW_WORKSPACE = workspace.workspace;
+  process.env.PICLAW_STORE = workspace.store;
+  process.env.PICLAW_DATA = workspace.data;
+}
+
+export function cleanupSharedTestWorkspace(): void {
+  if (!sharedWorkspace) return;
+  sharedWorkspace.cleanup();
+  sharedWorkspace = null;
+}
+
+function ensureSharedWorkspaceCleanupHooks(): void {
+  if (sharedWorkspaceCleanupHooksRegistered) return;
+  sharedWorkspaceCleanupHooksRegistered = true;
+  process.once("exit", cleanupSharedTestWorkspace);
+}
+
 /** Return the shared temp workspace, creating it on first call. */
 export function getTestWorkspace(): TempWorkspace {
   if (!sharedWorkspace) {
     sharedWorkspace = createTempWorkspace("piclaw-shared-test-");
   }
+  ensureSharedWorkspaceCleanupHooks();
+  applySharedWorkspaceEnv(sharedWorkspace);
   return sharedWorkspace;
 }
 
@@ -54,10 +75,7 @@ const ENFORCED_TEST_ENV: Readonly<Record<string, string>> = {
   PICLAW_DB_IN_MEMORY: "1",
 };
 
-const shared = getTestWorkspace();
-process.env.PICLAW_WORKSPACE = shared.workspace;
-process.env.PICLAW_STORE = shared.store;
-process.env.PICLAW_DATA = shared.data;
+getTestWorkspace();
 for (const [key, value] of Object.entries(ENFORCED_TEST_ENV)) {
   process.env[key] = value;
 }
