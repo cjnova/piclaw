@@ -23,6 +23,7 @@ import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "fs";
 import { parseArgs } from "util";
 import { buildInClause, resolveSessionScope, summariseSessionScope } from "./lib/chat-session-scope";
+import { refreshAgentMemoryFromDailyNotes } from "./lib/agent-memory-sidecar";
 
 const defaultDbPath = `${process.env.PICLAW_STORE || "/workspace/.piclaw/store"}/messages.db`;
 
@@ -352,3 +353,8 @@ if (dateMismatches.length > 0) {
   for (const d of dateMismatches)
     console.log(`  → ${d.path} (front matter ${d.actual}, expected ${d.expected})`);
 }
+
+const agentMemory = refreshAgentMemoryFromDailyNotes({ recentDays: Math.max(DAYS || 0, 7) });
+console.log(`\nAgent memory refreshed:`);
+console.log(`  → ${agentMemory.currentStatePath}`);
+console.log(`  → ${agentMemory.recentContextPath}`);

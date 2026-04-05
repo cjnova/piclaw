@@ -6,6 +6,8 @@ import { toolActivation } from "./tool-activation.js";
 import { sqlIntrospect } from "./sql-introspect.js";
 import { scheduledTasks } from "./scheduled-tasks.js";
 import { workspaceSearch } from "./workspace-search.js";
+import { workspaceMemoryBootstrap } from "./workspace-memory-bootstrap.js";
+import { dreamMaintenance } from "./dream-maintenance.js";
 import { uiThemeExtension } from "./ui-theme.js";
 import { smartCompaction } from "./smart-compaction.js";
 import { sendAdaptiveCard } from "./send-adaptive-card.js";
@@ -22,6 +24,8 @@ export const builtinExtensionFactories = [
     sqlIntrospect,
     scheduledTasks,
     workspaceSearch,
+    workspaceMemoryBootstrap,
+    dreamMaintenance,
     uiThemeExtension,
     smartCompaction,
     sendAdaptiveCard,

@@ -42,10 +42,15 @@ describe("workspace-search extension", () => {
     await fs.writeFile(path.join(skillsDir, "SKILL.md"), "Demo skill that mentions kittens and puppies.");
   }
 
-  async function getSearchTool() {
-    const { workspaceSearch } = await import("../../src/extensions/workspace-search.js");
+  async function getSearchExtension() {
+    const { workspaceSearch } = await import(`../../src/extensions/workspace-search.js?t=${Date.now()}-${Math.random().toString(36).slice(2)}`) as typeof import("../../src/extensions/workspace-search.js");
     const fake = createFakeExtensionApi();
     workspaceSearch(fake.api);
+    return fake;
+  }
+
+  async function getSearchTool() {
+    const fake = await getSearchExtension();
     return fake.tools.get("search_workspace")!;
   }
 
@@ -54,9 +59,25 @@ describe("workspace-search extension", () => {
   }
 
   test("registers search_workspace tool", async () => {
-    const tool = await getSearchTool();
+    const fake = await getSearchExtension();
+    const tool = fake.tools.get("search_workspace");
+    const refreshTool = fake.tools.get("refresh_workspace_index");
     expect(tool).toBeDefined();
-    expect(tool.name).toBe("search_workspace");
+    expect(tool?.name).toBe("search_workspace");
+    expect(refreshTool?.name).toBe("refresh_workspace_index");
+  });
+
+  test("indexes notes automatically on session start", async () => {
+    await seedWorkspace();
+    const fake = await getSearchExtension();
+    const sessionStart = fake.handlers.find((entry) => entry.event === "session_start");
+    expect(sessionStart).toBeDefined();
+    await sessionStart!.handler();
+
+    const tool = fake.tools.get("search_workspace")!;
+    const result = await executeWithContext(tool, { query: "kittens", scope: "notes", refresh: false });
+    expect(result.details.count).toBe(1);
+    expect(result.content[0].text).toContain("notes/alpha.md");
   });
 
   test("indexes notes + skills and returns matches", async () => {
@@ -123,6 +144,22 @@ describe("workspace-search extension", () => {
     expect(first.details.count).toBe(1);
     expect(second.details.count).toBe(1);
     expect(second.details.results[0].path).not.toBe(first.details.results[0].path);
+  });
+
+  test("respects configured FTS roots", async () => {
+    const docsDir = path.join(ws.workspace, "docs");
+    await fs.mkdir(docsDir, { recursive: true });
+    await fs.writeFile(path.join(docsDir, "guide.md"), "custom root token");
+    const restore = setEnv({ PICLAW_WORKSPACE_SEARCH_ROOTS: "docs" });
+
+    try {
+      const tool = await getSearchTool();
+      const result = await executeWithContext(tool, { query: "token", refresh: true, scope: "all" });
+      expect(result.details.count).toBe(1);
+      expect(result.content[0].text).toContain("docs/guide.md");
+    } finally {
+      restore();
+    }
   });
 
   test("refresh indexes large file sets", async () => {

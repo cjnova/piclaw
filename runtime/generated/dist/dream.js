@@ -1,0 +1,384 @@
+import { closeSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { join, resolve } from "path";
+import { buildDreamPrompt } from "./agent-memory/dream-prompt.js";
+import { refreshDailyNotesFromMessages } from "./agent-memory/daily-notes.js";
+import { refreshAgentMemoryFromDailyNotes } from "./agent-memory/refresh.js";
+import { DATA_DIR, SESSIONS_DIR, WORKSPACE_DIR } from "./core/config.js";
+import { getTaskById, createTask, getDb, updateTask } from "./db.js";
+import { refreshWorkspaceIndex } from "./workspace-search.js";
+import { computeNextRun } from "./task-scheduler-utils.js";
+import { sanitiseJid } from "./agent-pool/session.js";
+export const DREAM_TASK_ID = "builtin-dream-midnight";
+export const DREAM_TASK_KIND = "internal";
+export const DREAM_TASK_PROMPT = "dream";
+export const DREAM_TASK_CRON = "0 0 * * *";
+const DREAM_DAILY_DIR = resolve(WORKSPACE_DIR, "notes/daily");
+const DREAM_MEMORY_DIR = resolve(WORKSPACE_DIR, "notes/memory");
+const DREAM_BACKUPS_DIR = resolve(DATA_DIR, "dream-backups");
+const DREAM_LOCK_PATH = resolve(DREAM_MEMORY_DIR, ".dream.lock");
+const DREAM_CURRENT_STATE_PATH = resolve(DREAM_MEMORY_DIR, "current-state.json");
+const DREAM_RECENT_CONTEXT_PATH = resolve(DREAM_MEMORY_DIR, "recent-context.md");
+const DREAM_MEMORY_PATH = resolve(DREAM_MEMORY_DIR, "MEMORY.md");
+const AUTO_DREAM_MIN_HOURS = 24;
+const AUTO_DREAM_MIN_SESSIONS = 6;
+function refreshDailyNotes(chatJid, days) {
+    refreshDailyNotesFromMessages({ chatJid, days });
+    return true;
+}
+function readLastConsolidatedAt() {
+    if (!existsSync(DREAM_CURRENT_STATE_PATH))
+        return null;
+    try {
+        const parsed = JSON.parse(readFileSync(DREAM_CURRENT_STATE_PATH, "utf8"));
+        return typeof parsed.generated_at === "string" && parsed.generated_at.trim() ? parsed.generated_at : null;
+    }
+    catch {
+        return null;
+    }
+}
+function countSessionsSince(chatJid, sinceIso) {
+    if (!sinceIso)
+        return null;
+    try {
+        const db = getDb();
+        if (chatJid.startsWith("web:")) {
+            const row = db.query(`SELECT COUNT(DISTINCT COALESCE(cb.root_chat_jid, m.chat_jid)) AS count
+         FROM messages m
+         LEFT JOIN chat_branches cb ON cb.chat_jid = m.chat_jid
+         WHERE m.chat_jid LIKE 'web:%'
+           AND m.timestamp > ?`).get(sinceIso);
+            return row?.count ?? 0;
+        }
+        const row = db.query(`SELECT COUNT(DISTINCT m.chat_jid) AS count
+       FROM messages m
+       WHERE m.chat_jid = ?
+         AND m.timestamp > ?`).get(chatJid, sinceIso);
+        return row?.count ?? 0;
+    }
+    catch {
+        return null;
+    }
+}
+export function parseDreamPromptToken(prompt) {
+    const trimmed = (prompt || "").trim().toLowerCase();
+    const match = trimmed.match(/^(auto\s+dream|dream)(?:\s+(\d+))?$/i);
+    if (!match)
+        return { matched: false, mode: "manual", days: 7 };
+    return {
+        matched: true,
+        mode: match[1].toLowerCase().startsWith("auto") ? "auto" : "manual",
+        days: match[2] ? Math.max(1, Number.parseInt(match[2], 10) || 7) : 7,
+    };
+}
+function shouldRunAutoDream(lastConsolidatedAt, sessionsSinceLast) {
+    if (!lastConsolidatedAt)
+        return { ok: true, reason: null };
+    const elapsedMs = Date.now() - new Date(lastConsolidatedAt).getTime();
+    const elapsedHours = Number.isFinite(elapsedMs) ? elapsedMs / 3_600_000 : 0;
+    if (elapsedHours < AUTO_DREAM_MIN_HOURS) {
+        return { ok: false, reason: `Only ${elapsedHours.toFixed(1)}h since last consolidation (need ${AUTO_DREAM_MIN_HOURS}h).` };
+    }
+    if ((sessionsSinceLast ?? 0) < AUTO_DREAM_MIN_SESSIONS) {
+        return { ok: false, reason: `Only ${sessionsSinceLast ?? 0} sessions since last consolidation (need ${AUTO_DREAM_MIN_SESSIONS}+).` };
+    }
+    return { ok: true, reason: null };
+}
+function buildDreamChatJid(chatJid, mode) {
+    return `dream:${mode}:${sanitiseJid(chatJid)}:${Date.now()}`;
+}
+async function cleanupDreamChat(agentPool, dreamChatJid) {
+    try {
+        await agentPool.disposeChatSession(dreamChatJid);
+    }
+    catch {
+        /* ignore */
+    }
+    try {
+        const db = getDb();
+        db.prepare("DELETE FROM message_media WHERE message_rowid IN (SELECT rowid FROM messages WHERE chat_jid = ?)").run(dreamChatJid);
+        db.prepare("DELETE FROM messages WHERE chat_jid = ?").run(dreamChatJid);
+        db.prepare("DELETE FROM chat_branches WHERE chat_jid = ?").run(dreamChatJid);
+        db.prepare("DELETE FROM chats WHERE jid = ?").run(dreamChatJid);
+    }
+    catch {
+        /* ignore */
+    }
+    rmSync(join(SESSIONS_DIR, sanitiseJid(dreamChatJid)), { recursive: true, force: true });
+    rmSync(join(SESSIONS_DIR, `${sanitiseJid(dreamChatJid)}__btw-side`), { recursive: true, force: true });
+}
+function acquireDreamLock() {
+    mkdirSync(DREAM_MEMORY_DIR, { recursive: true });
+    const fd = openSync(DREAM_LOCK_PATH, "wx");
+    writeFileSync(DREAM_LOCK_PATH, String(process.pid), "utf8");
+    return fd;
+}
+function releaseDreamLock(fd) {
+    try {
+        closeSync(fd);
+    }
+    catch { /* ignore */ }
+    try {
+        rmSync(DREAM_LOCK_PATH, { force: true });
+    }
+    catch { /* ignore */ }
+}
+async function refreshWorkspaceSearchIndex() {
+    try {
+        await refreshWorkspaceIndex({ scope: "all" });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+function createDreamBackup(chatJid, mode, days) {
+    mkdirSync(DREAM_BACKUPS_DIR, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupRoot = resolve(DREAM_BACKUPS_DIR, `${stamp}-${mode}-${sanitiseJid(chatJid)}`);
+    const notesRoot = join(backupRoot, "notes");
+    mkdirSync(notesRoot, { recursive: true });
+    if (existsSync(DREAM_DAILY_DIR)) {
+        cpSync(DREAM_DAILY_DIR, join(notesRoot, "daily"), {
+            recursive: true,
+            force: true,
+            preserveTimestamps: true,
+        });
+    }
+    if (existsSync(DREAM_MEMORY_DIR)) {
+        cpSync(DREAM_MEMORY_DIR, join(notesRoot, "memory"), {
+            recursive: true,
+            force: true,
+            preserveTimestamps: true,
+        });
+        rmSync(join(notesRoot, "memory", ".dream.lock"), { force: true });
+    }
+    writeFileSync(join(backupRoot, "manifest.json"), `${JSON.stringify({
+        generated_at: new Date().toISOString(),
+        mode,
+        chat_jid: chatJid,
+        days,
+        sources: {
+            daily: existsSync(DREAM_DAILY_DIR) ? DREAM_DAILY_DIR : null,
+            memory: existsSync(DREAM_MEMORY_DIR) ? DREAM_MEMORY_DIR : null,
+        },
+    }, null, 2)}\n`, "utf8");
+    return backupRoot;
+}
+export async function runDreamAgentTurn(options) {
+    const chatJid = options.chatJid;
+    const days = Number.isFinite(options.days) && Number(options.days) > 0 ? Math.floor(Number(options.days)) : 7;
+    const mode = options.mode === "auto" ? "auto" : "manual";
+    const lastConsolidatedAt = readLastConsolidatedAt();
+    const sessionsSinceLast = countSessionsSince(chatJid, lastConsolidatedAt);
+    if (mode === "auto") {
+        const gate = shouldRunAutoDream(lastConsolidatedAt, sessionsSinceLast);
+        if (!gate.ok) {
+            return {
+                mode,
+                skipped: true,
+                result: formatDreamSummary({
+                    generated_at: new Date().toISOString(),
+                    mode,
+                    skipped: true,
+                    skip_reason: gate.reason,
+                    chat_jid: chatJid,
+                    days,
+                    daily_notes_refreshed: false,
+                    workspace_index_refreshed: false,
+                    sessions_since_last_consolidation: sessionsSinceLast,
+                    last_consolidated_at: lastConsolidatedAt,
+                    complete_days: 0,
+                    partial_days: 0,
+                    unsummarised_days: 0,
+                    latest_complete_date: null,
+                    current_state_path: DREAM_CURRENT_STATE_PATH,
+                    recent_context_path: DREAM_RECENT_CONTEXT_PATH,
+                    memory_path: DREAM_MEMORY_PATH,
+                    refresh: null,
+                    backup_path: null,
+                }),
+            };
+        }
+    }
+    let lockFd = null;
+    let backupPath = null;
+    let dailyNotesRefreshed = false;
+    const dreamChatJid = buildDreamChatJid(chatJid, mode);
+    try {
+        lockFd = acquireDreamLock();
+        backupPath = createDreamBackup(chatJid, mode, days);
+        dailyNotesRefreshed = refreshDailyNotes(chatJid, days);
+        const out = await options.agentPool.runAgent(buildDreamPrompt({ mode, days }), dreamChatJid);
+        const workspaceIndexRefreshed = await refreshWorkspaceSearchIndex();
+        if (out.status === "error") {
+            throw new Error(out.error || "Dream agent run failed.");
+        }
+        const suffix = [
+            `- Daily notes refreshed before Dream: ${dailyNotesRefreshed ? "yes" : "no"}`,
+            `- Pre-Dream backup: ${backupPath || "(none)"}`,
+            `- Workspace index refreshed: ${workspaceIndexRefreshed ? "yes" : "no"}`,
+        ].join("\n");
+        return {
+            mode,
+            skipped: false,
+            result: `${(out.result || `${mode === "auto" ? "AutoDream" : "Dream"} complete.`).trimEnd()}\n${suffix}`,
+        };
+    }
+    finally {
+        if (lockFd !== null)
+            releaseDreamLock(lockFd);
+        await cleanupDreamChat(options.agentPool, dreamChatJid);
+    }
+}
+export async function runDreamMaintenance(options) {
+    const chatJid = typeof options?.chatJid === "string" && options.chatJid.trim()
+        ? options.chatJid.trim()
+        : "web:default";
+    const days = Number.isFinite(options?.days) && Number(options?.days) > 0
+        ? Math.floor(Number(options?.days))
+        : 7;
+    const mode = options?.mode === "auto" ? "auto" : "manual";
+    const lastConsolidatedAt = readLastConsolidatedAt();
+    const sessionsSinceLast = countSessionsSince(chatJid, lastConsolidatedAt);
+    if (mode === "auto") {
+        const gate = shouldRunAutoDream(lastConsolidatedAt, sessionsSinceLast);
+        if (!gate.ok) {
+            return {
+                generated_at: new Date().toISOString(),
+                mode,
+                skipped: true,
+                skip_reason: gate.reason,
+                chat_jid: chatJid,
+                days,
+                daily_notes_refreshed: false,
+                workspace_index_refreshed: false,
+                sessions_since_last_consolidation: sessionsSinceLast,
+                last_consolidated_at: lastConsolidatedAt,
+                complete_days: 0,
+                partial_days: 0,
+                unsummarised_days: 0,
+                latest_complete_date: null,
+                current_state_path: DREAM_CURRENT_STATE_PATH,
+                recent_context_path: DREAM_RECENT_CONTEXT_PATH,
+                memory_path: DREAM_MEMORY_PATH,
+                refresh: null,
+                backup_path: null,
+            };
+        }
+    }
+    let lockFd = null;
+    let backupPath = null;
+    try {
+        lockFd = acquireDreamLock();
+        backupPath = createDreamBackup(chatJid, mode, days);
+        const dailyNotesRefreshed = refreshDailyNotes(chatJid, days);
+        const refresh = refreshAgentMemoryFromDailyNotes({ recentDays: days });
+        const workspaceIndexRefreshed = await refreshWorkspaceSearchIndex();
+        return {
+            generated_at: new Date().toISOString(),
+            mode,
+            skipped: false,
+            skip_reason: null,
+            chat_jid: chatJid,
+            days,
+            daily_notes_refreshed: dailyNotesRefreshed,
+            workspace_index_refreshed: workspaceIndexRefreshed,
+            sessions_since_last_consolidation: sessionsSinceLast,
+            last_consolidated_at: lastConsolidatedAt,
+            complete_days: refresh.currentState.complete_days.length,
+            partial_days: refresh.currentState.partial_days.length,
+            unsummarised_days: refresh.currentState.unsummarised_days.length,
+            latest_complete_date: refresh.currentState.latest_complete_date,
+            current_state_path: refresh.currentStatePath,
+            recent_context_path: refresh.recentContextPath,
+            memory_path: refresh.memoryPath,
+            refresh,
+            backup_path: backupPath,
+        };
+    }
+    finally {
+        if (lockFd !== null)
+            releaseDreamLock(lockFd);
+    }
+}
+export function formatDreamSummary(result) {
+    if (result.skipped) {
+        return [
+            `${result.mode === "auto" ? "AutoDream" : "Dream"} skipped.`,
+            `- Chat anchor: ${result.chat_jid}`,
+            `- Window: last ${result.days} days`,
+            `- Last consolidated: ${result.last_consolidated_at || "(none)"}`,
+            `- Sessions since last consolidation: ${result.sessions_since_last_consolidation ?? "(unknown)"}`,
+            `- Reason: ${result.skip_reason || "(none)"}`,
+        ].join("\n");
+    }
+    const lines = [
+        `${result.mode === "auto" ? "AutoDream" : "Dream"} complete.`,
+        `- Chat anchor: ${result.chat_jid}`,
+        `- Window: last ${result.days} days`,
+        `- Last consolidated: ${result.last_consolidated_at || "(none)"}`,
+        `- Sessions since last consolidation: ${result.sessions_since_last_consolidation ?? "(unknown)"}`,
+        `- Daily notes refreshed: ${result.daily_notes_refreshed ? "yes" : "no"}`,
+        `- Workspace index refreshed: ${result.workspace_index_refreshed ? "yes" : "no"}`,
+        `- Pre-Dream backup: ${result.backup_path || "(none)"}`,
+        `- Complete days: ${result.complete_days}`,
+        `- Partial days: ${result.partial_days}`,
+        `- Unsummarised days: ${result.unsummarised_days}`,
+        `- Latest complete day: ${result.latest_complete_date || "(none)"}`,
+        "- Updated:",
+        `  - ${result.memory_path}`,
+        `  - ${result.current_state_path}`,
+        `  - ${result.recent_context_path}`,
+    ];
+    if (result.refresh?.currentState.partial_days.length) {
+        lines.push("- Partial days needing follow-up:");
+        for (const day of result.refresh.currentState.partial_days.slice(0, 5)) {
+            lines.push(`  - ${day.date} (${day.state})`);
+        }
+    }
+    if (result.refresh?.currentState.unsummarised_days.length) {
+        lines.push("- Unsummarised days:");
+        for (const day of result.refresh.currentState.unsummarised_days.slice(0, 5)) {
+            lines.push(`  - ${day.date}`);
+        }
+    }
+    return lines.join("\n");
+}
+export function ensureDreamTask(chatJid = "web:default") {
+    const existing = getTaskById(DREAM_TASK_ID);
+    const nextRun = computeNextRun("cron", DREAM_TASK_CRON);
+    if (!existing) {
+        createTask({
+            id: DREAM_TASK_ID,
+            chat_jid: chatJid,
+            prompt: DREAM_TASK_PROMPT,
+            model: null,
+            task_kind: DREAM_TASK_KIND,
+            command: null,
+            cwd: null,
+            timeout_sec: null,
+            schedule_type: "cron",
+            schedule_value: DREAM_TASK_CRON,
+            next_run: nextRun,
+            status: "active",
+            created_at: new Date().toISOString(),
+        });
+        return getTaskById(DREAM_TASK_ID);
+    }
+    const shouldRecomputeNextRun = existing.schedule_type !== "cron"
+        || existing.schedule_value !== DREAM_TASK_CRON
+        || !existing.next_run;
+    updateTask(DREAM_TASK_ID, {
+        prompt: DREAM_TASK_PROMPT,
+        model: null,
+        task_kind: DREAM_TASK_KIND,
+        command: null,
+        cwd: null,
+        timeout_sec: null,
+        schedule_type: "cron",
+        schedule_value: DREAM_TASK_CRON,
+        next_run: shouldRecomputeNextRun ? nextRun : existing.next_run,
+        status: "active",
+    });
+    return getTaskById(DREAM_TASK_ID);
+}

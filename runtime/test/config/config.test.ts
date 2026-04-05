@@ -283,6 +283,40 @@ test("tool activation config getter groups additional default tools from config 
   );
 });
 
+test("workspace search config getter groups configured FTS roots from env or config", async () => {
+  await withTempWorkspaceEnv(
+    "piclaw-config-",
+    {
+      PICLAW_WORKSPACE_SEARCH_ROOTS: "notes,.pi/skills,docs",
+    },
+    async () => {
+      const cfg = await importFresh<typeof import("../../src/core/config.js")>("../src/core/config.js");
+      expect(cfg.getWorkspaceSearchConfig()).toBe(cfg.WORKSPACE_SEARCH_CONFIG);
+      expect(Object.isFrozen(cfg.WORKSPACE_SEARCH_CONFIG)).toBe(true);
+      expect(cfg.WORKSPACE_SEARCH_CONFIG).toEqual({
+        roots: ["notes", ".pi/skills", "docs"],
+      });
+    },
+  );
+
+  await withTempWorkspaceEnv(
+    "piclaw-config-",
+    {},
+    async (ws) => {
+      writeWorkspaceConfig(ws.workspace, {
+        tools: {
+          workspaceSearchRoots: ["notes", ".pi/skills", "workitems"],
+        },
+      });
+
+      const cfg = await importFresh<typeof import("../../src/core/config.js")>("../src/core/config.js");
+      expect(cfg.getWorkspaceSearchConfig()).toEqual({
+        roots: ["notes", ".pi/skills", "workitems"],
+      });
+    },
+  );
+});
+
 test("pushover config getter groups aliased config file settings", async () => {
   await withTempWorkspaceEnv(
     "piclaw-config-",

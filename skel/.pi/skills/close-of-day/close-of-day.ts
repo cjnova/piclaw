@@ -31,12 +31,12 @@ function resolveExistingPath(label: string, candidates: string[]): string {
 const dbModulePath = resolveExistingPath("piclaw db module", [
   "/workspace/piclaw/runtime/src/db.ts",
   "/home/agent/piclaw/runtime/src/db.ts",
-  "/usr/local/lib/bun/install/global/node_modules/piclaw/src/db.ts",
+  "/usr/local/lib/bun/install/global/node_modules/piclaw/runtime/src/db.ts",
 ]);
 const messagesCrudModulePath = resolveExistingPath("messages-crud module", [
   "/workspace/piclaw/runtime/src/extensions/messages-crud.ts",
   "/home/agent/piclaw/runtime/src/extensions/messages-crud.ts",
-  "/usr/local/lib/bun/install/global/node_modules/piclaw/src/extensions/messages-crud.ts",
+  "/usr/local/lib/bun/install/global/node_modules/piclaw/runtime/src/extensions/messages-crud.ts",
 ]);
 
 const { initDatabase } = await import(dbModulePath);
@@ -82,6 +82,8 @@ type CleanupGroup = {
   exactMatches?: string[];
   role?: MessageRole;
   maxLength?: number;
+  force?: boolean;
+  allowMediaSources?: string[];
 };
 
 
@@ -295,6 +297,47 @@ function searchPatternGroup(group: CleanupGroup, since: string): number[] {
   return Array.from(ids).sort((a, b) => a - b);
 }
 
+function filterRootsByAllowedMediaSources(rowIds: number[], allowedSources: string[]): number[] {
+  const requested = Array.from(new Set(rowIds.filter((id) => Number.isInteger(id) && id > 0))).sort((a, b) => a - b);
+  const normalizedSources = Array.from(new Set(allowedSources.map((value) => cleanText(value)).filter(Boolean)));
+  if (requested.length === 0 || normalizedSources.length === 0 || !existsSync(DB_PATH)) {
+    return requested;
+  }
+
+  const db = new Database(DB_PATH, { readonly: true });
+  try {
+    const disallowedRoots = new Set<number>();
+    const chunkSize = 200;
+
+    for (let i = 0; i < requested.length; i += chunkSize) {
+      const chunk = requested.slice(i, i + chunkSize);
+      const rootPlaceholders = chunk.map(() => "?").join(", ");
+      const sourcePlaceholders = normalizedSources.map(() => "?").join(", ");
+      const rows = db.prepare(`
+        SELECT DISTINCT root.rowid AS root_rowid
+        FROM messages root
+        JOIN messages cascade
+          ON cascade.chat_jid = root.chat_jid
+         AND (cascade.rowid = root.rowid OR cascade.thread_id = root.rowid)
+        JOIN message_media mm ON mm.message_rowid = cascade.rowid
+        JOIN media media ON media.id = mm.media_id
+        WHERE root.rowid IN (${rootPlaceholders})
+          AND COALESCE(json_extract(media.metadata, '$.source'), '') NOT IN (${sourcePlaceholders})
+      `).all(...chunk, ...normalizedSources) as Array<{ root_rowid: number }>;
+
+      for (const row of rows) {
+        if (typeof row.root_rowid === "number" && Number.isFinite(row.root_rowid)) {
+          disallowedRoots.add(row.root_rowid);
+        }
+      }
+    }
+
+    return requested.filter((id) => !disallowedRoots.has(id));
+  } finally {
+    db.close();
+  }
+}
+
 function deleteByRows(rowIds: number[], dryRun: boolean, force: boolean): DeleteDetails {
   const requested = Array.from(new Set(rowIds.filter((id) => Number.isInteger(id) && id > 0))).sort((a, b) => a - b);
   if (requested.length === 0) {
@@ -398,8 +441,10 @@ function runCleanup(): Record<string, DeleteDetails> {
     },
     {
       name: "compaction",
-      patterns: ["compaction", "compacting", "auto-compact"],
+      patterns: ["/compact", "compaction", "compaction complete", "full compaction report", "auto-compact", "auto-compaction"],
       maxLength: 500,
+      force: true,
+      allowMediaSources: ["compact"],
     },
     {
       name: "greetings",
@@ -533,12 +578,16 @@ function runCleanup(): Record<string, DeleteDetails> {
 
   for (const group of groups) {
     const rowIds = searchPatternGroup(group, SINCE);
-    const details = deleteByRows(rowIds, DRY_RUN, includeMedia);
+    const safeRowIds = !includeMedia && group.allowMediaSources?.length
+      ? filterRootsByAllowedMediaSources(rowIds, group.allowMediaSources)
+      : rowIds;
+    const details = deleteByRows(safeRowIds, DRY_RUN, includeMedia || Boolean(group.force));
     results[group.name] = details;
 
     const deleted = details.count ?? 0;
-    const skipped = details.skipped_count ?? 0;
-    const total = (details.requested_row_ids ?? []).length;
+    const filteredSkipped = Math.max(0, rowIds.length - safeRowIds.length);
+    const skipped = (details.skipped_count ?? 0) + filteredSkipped;
+    const total = rowIds.length;
     console.log(`- ${group.name}: found ${total}, ${DRY_RUN ? "would delete" : "deleted"} ${deleted}, skipped ${skipped}`);
   }
 

@@ -194,7 +194,7 @@ Built-in default baseline:
 - `read`
 - `edit`
 - `write`
-- `bash` on Linux/macOS, or `powershell` on Windows
+- `bash` on Linux/macOS, or `powershell` plus `bun_run` on Windows
 - `list_internal_tools`
 - `activate_tools`
 - `reset_active_tools`
@@ -232,6 +232,79 @@ Notes:
 - Unknown tool names are ignored when the active tool list is applied.
 - On Windows, `bash` is replaced by the `powershell` tool in the default active set.
 - Newly activated tools become available immediately to subsequent tool/model steps in the same turn; keep critical control tools in the default baseline or config-defined defaults.
+
+### Workspace search / FTS roots
+
+Piclaw's `search_workspace` tool uses SQLite FTS over a configurable set of workspace roots.
+Dream and AutoDream refresh this index at the end of memory maintenance so generated note outputs are searchable immediately.
+
+Default roots:
+
+- `notes`
+- `.pi/skills`
+
+Override them with either `.piclaw/config.json`:
+
+```json
+{
+  "tools": {
+    "workspaceSearchRoots": [
+      "notes",
+      ".pi/skills",
+      "docs",
+      "workitems"
+    ]
+  }
+}
+```
+
+or an environment variable:
+
+```bash
+PICLAW_WORKSPACE_SEARCH_ROOTS="notes,.pi/skills,docs,workitems"
+```
+
+Rules:
+
+- Relative paths are resolved against `PICLAW_WORKSPACE`
+- Absolute paths are allowed
+- Configured roots are indexed automatically at session start
+- `search_workspace` can still refresh indexing on demand per call
+- `scope: notes` and `scope: skills` remain the built-in convenience filters; `scope: all` searches across the configured root set
+
+### Dream and AutoDream
+
+Memory maintenance has two trigger modes:
+
+- `Dream` — manual `/dream [days]`
+- `AutoDream` — built-in nightly scheduled task (`builtin-dream-midnight`)
+
+Both modes now run as out-of-band model turns on a temporary `dream:` channel.
+The dream channel is cleaned up after the cycle ends.
+Before the model turn begins, runtime creates a pre-Dream backup of `notes/daily/` and `notes/memory/` and refreshes/seeds in-window daily notes from the messages database.
+
+AutoDream is gated and only runs when both are true:
+
+- at least 24 hours since the last consolidation
+- at least 6 sessions since the last consolidation
+
+The model follows the original 4-phase Dream flow:
+
+1. Orient
+2. Signal
+3. Consolidate
+4. Prune and Index
+
+In the Prune and Index phase, Dream should both remove stale pointers and add concise references to newly important memories; verbose `MEMORY.md` lines should be shortened with detail moved into the linked file.
+
+Search collection should stay narrow:
+
+- inspect daily/memory files first
+- inspect drifted memories
+- use narrow message searches for already suspected terms
+- avoid exhaustive transcript sweeps
+
+See [runtime/docs/dream-memory.md](../runtime/docs/dream-memory.md) for the detailed file sequence and outputs.
 
 ## Authentication (TOTP + passkeys)
 

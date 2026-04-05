@@ -2,8 +2,10 @@
  * runtime/wiring.ts – Runtime message/scheduler wiring helpers.
  */
 
+import { ensureDreamTask, runDreamAgentTurn } from "../dream.js";
 import { startIpcWatcher, type IpcDeps } from "../ipc.js";
 import { startSchedulerLoop, type SchedulerDeps } from "../task-scheduler.js";
+import { createUuid } from "../utils/ids.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("runtime.wiring");
@@ -71,6 +73,8 @@ export function startRuntimeWorkers(
   web: RuntimeWebWorkerChannel,
   senders: RuntimeSenders
 ): void {
+  ensureDreamTask("web:default");
+
   startIpcWatcher({
     sendMessage: senders.sendMessage,
     sendNudge: senders.sendNudge,
@@ -87,6 +91,31 @@ export function startRuntimeWorkers(
         ? data.chatJid.trim()
         : undefined;
       web.resumePendingChats(chatJid);
+    },
+    runDream: async (data) => {
+      const chatJid = typeof data.chatJid === "string" && data.chatJid.trim()
+        ? data.chatJid.trim()
+        : typeof data.chat_jid === "string" && data.chat_jid.trim()
+          ? data.chat_jid.trim()
+          : "web:default";
+      const mode = data.mode === "auto" ? "auto" : "manual";
+      const days = typeof data.days === "number" && Number.isFinite(data.days)
+        ? Math.max(1, Math.floor(data.days))
+        : typeof data.days === "string" && data.days.trim()
+          ? Math.max(1, Number.parseInt(data.days, 10) || 7)
+          : 7;
+      const taskId = `dream-ipc:${createUuid("dream")}`;
+      queue.enqueueTask(taskId, async () => {
+        const result = await runDreamAgentTurn({
+          chatJid,
+          days,
+          mode,
+          agentPool,
+        });
+        if (mode !== "auto") {
+          await senders.sendMessage(chatJid, result.result, { forceRoot: true, source: "dream" });
+        }
+      }, `chat:${chatJid}`);
     },
   });
 

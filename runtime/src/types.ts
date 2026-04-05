@@ -67,8 +67,8 @@ export interface ScheduledTask {
   prompt: string;
   /** Optional model override for this task's agent session. */
   model?: string | null;
-  /** Task kind: agent prompt or shell command. */
-  task_kind?: "agent" | "shell";
+  /** Task kind: agent prompt, shell command, or built-in internal maintenance task. */
+  task_kind?: "agent" | "shell" | "internal";
   /** Shell command to execute (for task_kind === "shell"). */
   command?: string | null;
   /** Working directory for shell command execution. */

@@ -17,7 +17,7 @@ Default always-active set:
 - `read`
 - `edit`
 - `write`
-- `bash` on Linux/macOS, or `powershell` on Windows
+- `bash` on Linux/macOS, or `powershell` plus `bun_run` on Windows
 - `list_internal_tools`
 - `activate_tools`
 - `reset_active_tools`
@@ -46,7 +46,8 @@ You can extend that baseline with `.piclaw/config.json`:
   - `get` (lookup by `row_ids` with context)
   - `add` (insert a row, optionally attaching media)
   - `delete` (thread-cascade delete, optional `dry_run`, optional `force`)
-- `search_workspace` — full‑text search across notes + skills (FTS, with aggressive cleanup and size limits)
+- `search_workspace` — full‑text search across configured workspace FTS roots (notes + skills by default, with aggressive cleanup and size limits)
+- `refresh_workspace_index` — rebuild workspace FTS indexing for the configured roots
 - `get_model_state` — show current model, thinking level, and context usage
 - `list_models` — list available models/providers
 - `switch_model` — switch to a different model
@@ -63,6 +64,7 @@ You can extend that baseline with `.piclaw/config.json`:
 - `send_dashboard_widget` — post the built-in host-backed live dashboard widget to the web UI timeline
 - `exec_batch` — run multiple shell commands and return concise summaries for each
 - `powershell` — Windows-only replacement for the default shell tool; active instead of `bash` on Windows hosts
+- `bun_run` — run a workspace Bun script directly; kept in the default active baseline on Windows so there is still a first-party script runner alongside PowerShell
 - `exit_process` — gracefully terminate piclaw so Supervisor restarts it; kept always active because lifecycle control should not depend on same-turn lazy activation
 - `ssh` — get, set, or clear the session-scoped SSH profile used by remote-backed core tools (`read`, `write`, `edit`, `bash`)
 - `proxmox` — get, set, or clear the session-scoped Proxmox API profile, perform ad-hoc Proxmox API requests, or run common VM/task/metrics workflows with keychain-backed token auth
@@ -402,6 +404,7 @@ Direct commands (no LLM round-trip):
 | `/btw <question>` | Open a side-conversation panel in the web UI and stream an answer without interrupting the main chat |
 | `/tasks [filter]` | List scheduled tasks (via extension) |
 | `/scheduled [filter]` | Alias for `/tasks` |
+| `/dream [days]` | Queue an out-of-band Dream cycle on a temporary `dream:` channel; runtime backs up notes, seeds daily notes from DB, the model follows Orient / Signal / Consolidate / Prune and Index, and runtime refreshes FTS at the end |
 
 > [!NOTE]
 > Provider auth works via `pi /login` in the terminal or the experimental `/login` card flow in the web UI.
@@ -430,6 +433,38 @@ Adaptive Card and side-conversation helpers are intentionally explicit web-facin
 Skills create tasks via IPC JSON files. Each task can optionally specify a `model` field (e.g. `anthropic/claude-sonnet-4-20250514`) to run on a cheaper or different model than the user's current one. The scheduler handles model switching and restoration automatically.
 
 Tasks are isolated from the user's conversation using the **session tree** — the scheduler saves the tree position before execution and navigates back afterwards. This prevents the task's prompt/response from appearing in the user's conversation context while still preserving it in a side branch for inspection via `/tree`. See [runtime-flows.md](runtime-flows.md) for the full flow.
+
+## Dream and AutoDream
+
+PiClaw has two memory-maintenance modes:
+
+- `Dream` — the manual `/dream [days]` command
+- `AutoDream` — the built-in nightly internal task
+
+Both are now **model-driven** and run as out-of-band agent turns on a temporary `dream:` channel.
+The temporary dream channel is cleaned up after the cycle ends.
+
+Dream/AutoDream follow the original 4-phase flow:
+- Orient — inspect startup memory and existing daily/memory state first
+- Signal — gather only narrow confirming evidence for suspected drift
+- Consolidate — merge, normalize dates, and correct contradictions at the source
+- Prune and Index — prune stale pointers, add references to newly important memories, shorten overly verbose `MEMORY.md` lines, and let runtime refresh FTS afterward
+
+Search behavior follows Claude-style rough criteria:
+- inspect existing daily/memory files first
+- inspect memories that drifted
+- use narrow `messages.search` queries only for things already suspected to matter
+- avoid exhaustive transcript sweeps
+
+AutoDream is gated and only runs when both are true:
+- at least 24 hours since the last consolidation
+- at least 6 sessions since the last consolidation
+
+Dream keeps the two note layers aligned:
+- `notes/daily/` — concise human-readable overview
+- `notes/memory/` — agent-facing durable memory and transcript-derived detail
+
+See also: [runtime/docs/dream-memory.md](../runtime/docs/dream-memory.md)
 
 Model names are validated at task creation time — invalid or ambiguous model identifiers are rejected before the task is persisted.
 

@@ -255,6 +255,10 @@ export class AgentPool {
     return this.runtimeFacade.restoreSessionPosition(chatJid, leafId);
   }
 
+  async disposeChatSession(chatJid: string): Promise<void> {
+    await this.sessionManager.recreate(chatJid);
+  }
+
   hasProviderModels(provider: string): boolean {
     return this.runtimeFacade.hasProviderModels(provider);
   }

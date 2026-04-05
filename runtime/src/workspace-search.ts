@@ -16,7 +16,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { getDb } from "./db.js";
-import { WORKSPACE_DIR } from "./core/config.js";
+import { WORKSPACE_DIR, getWorkspaceSearchConfig } from "./core/config.js";
 import { prepareFtsQuery } from "./utils/fts-query.js";
 
 /** Search scope: restrict to notes/, skills/, or search all indexed roots. */
@@ -82,9 +82,28 @@ const getWorkspaceRoot = (): string => {
   return path.resolve(process.env.PICLAW_WORKSPACE || WORKSPACE_DIR);
 };
 
-const getDefaultRoots = (): string[] => {
+const getBuiltInRoots = (): string[] => {
   const root = getWorkspaceRoot();
   return [path.join(root, "notes"), path.join(root, ".pi", "skills")];
+};
+
+const getConfiguredRoots = (): string[] => {
+  const envRoots = process.env.PICLAW_WORKSPACE_SEARCH_ROOTS
+    ?.split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  return envRoots && envRoots.length > 0 ? envRoots : getWorkspaceSearchConfig().roots;
+};
+
+const getDefaultRoots = (): string[] => {
+  const root = getWorkspaceRoot();
+  const configured = getConfiguredRoots();
+  const resolved = configured.map((entry) => {
+    const trimmed = entry.trim();
+    if (!trimmed) return "";
+    return path.isAbsolute(trimmed) ? path.resolve(trimmed) : path.join(root, trimmed);
+  }).filter(Boolean);
+  return resolved.length > 0 ? resolved : getBuiltInRoots();
 };
 
 const toRelative = (absPath: string): string => {
@@ -120,11 +139,12 @@ async function walkFiles(root: string): Promise<string[]> {
 }
 
 function normalizeRoots(scope: string | undefined): string[] {
-  const roots = getDefaultRoots();
-  if (!scope || scope === "all") return roots;
-  if (scope === "notes") return [roots[0]];
-  if (scope === "skills") return [roots[1]];
-  return roots;
+  const configuredRoots = getDefaultRoots();
+  const builtInRoots = getBuiltInRoots();
+  if (!scope || scope === "all") return configuredRoots;
+  if (scope === "notes") return [builtInRoots[0]];
+  if (scope === "skills") return [builtInRoots[1]];
+  return configuredRoots;
 }
 
 async function indexWorkspace(roots: string[], maxBytes: number): Promise<void> {
@@ -183,6 +203,11 @@ async function indexWorkspace(roots: string[], maxBytes: number): Promise<void> 
   }
 }
 
+export async function refreshWorkspaceIndex(params?: { scope?: WorkspaceSearchScope | string; max_kb?: number }): Promise<void> {
+  const maxBytes = clampNumber(params?.max_kb, 512, 16, 2048) * 1024;
+  await indexWorkspace(normalizeRoots(params?.scope), maxBytes);
+}
+
 /** Full-text search across indexed workspace files. */
 export async function searchWorkspace(params: WorkspaceSearchParams): Promise<WorkspaceSearchResult> {
   const query = params.query.trim();
@@ -196,7 +221,7 @@ export async function searchWorkspace(params: WorkspaceSearchParams): Promise<Wo
   }
 
   if (refresh) {
-    await indexWorkspace(normalizeRoots(params.scope), maxBytes);
+    await refreshWorkspaceIndex({ scope: params.scope, max_kb: params.max_kb });
   }
 
   const ftsQuery = prepareFtsQuery(query);

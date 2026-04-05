@@ -14,6 +14,7 @@
  *   - sqlIntrospect: introspect_sql for read-only DB introspection.
  *   - scheduledTasks: /tasks and /scheduled commands for task listing.
  *   - workspaceSearch: search_workspace tool for FTS over workspace files.
+ *   - dreamMaintenance: /dream memory-consolidation slash command.
  *   - sendAdaptiveCard: send_adaptive_card for agent-owned Adaptive Card posting.
  *   - sendDashboardWidget: send_dashboard_widget for posting the built-in live dashboard widget.
  *
@@ -33,6 +34,8 @@ import { toolActivation } from "./tool-activation.js";
 import { sqlIntrospect } from "./sql-introspect.js";
 import { scheduledTasks } from "./scheduled-tasks.js";
 import { workspaceSearch } from "./workspace-search.js";
+import { workspaceMemoryBootstrap } from "./workspace-memory-bootstrap.js";
+import { dreamMaintenance } from "./dream-maintenance.js";
 import { uiThemeExtension } from "./ui-theme.js";
 import { smartCompaction } from "./smart-compaction.js";
 import { sendAdaptiveCard } from "./send-adaptive-card.js";
@@ -50,6 +53,8 @@ export const builtinExtensionFactories: ExtensionFactory[] = [
   sqlIntrospect,
   scheduledTasks,
   workspaceSearch,
+  workspaceMemoryBootstrap,
+  dreamMaintenance,
   uiThemeExtension,
   smartCompaction,
   sendAdaptiveCard,

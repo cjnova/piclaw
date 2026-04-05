@@ -2,8 +2,8 @@
  * runtime/startup.ts – Runtime startup wiring helpers.
  */
 
-import { mkdirSync, writeFileSync } from "fs";
-import { join } from "path";
+import { copyFileSync, cpSync, existsSync, mkdirSync, statSync, writeFileSync } from "fs";
+import { dirname, join, resolve } from "path";
 import type { AgentPool } from "../agent-pool.js";
 import { WebChannel } from "../channels/web.js";
 import { PushoverChannel } from "../channels/pushover.js";
@@ -26,6 +26,43 @@ import { patchConsoleTimestamps } from "./console-timestamps.js";
 import type { RuntimeState } from "./state.js";
 
 const log = createLogger("runtime.startup");
+const WORKSPACE_SKEL_DIR = resolve(import.meta.dir, "../../../skel");
+const WORKSPACE_BOOTSTRAP_ENTRIES = [
+  "AGENTS.md",
+  ".pi/skills",
+  ".piclaw/README.md",
+  ".piclaw/config.json.example",
+  "notes/index.md",
+  "notes/memory/README.md",
+  "notes/daily/.gitkeep",
+  "notes/memory/days/.gitkeep",
+  "notes/preferences/.gitkeep",
+] as const;
+
+function bootstrapWorkspaceFromSkel(): void {
+  if (!existsSync(WORKSPACE_SKEL_DIR)) return;
+
+  for (const entry of WORKSPACE_BOOTSTRAP_ENTRIES) {
+    const source = join(WORKSPACE_SKEL_DIR, entry);
+    const target = join(WORKSPACE_DIR, entry);
+    if (!existsSync(source) || existsSync(target)) continue;
+
+    mkdirSync(dirname(target), { recursive: true });
+    try {
+      if (statSync(source).isDirectory()) {
+        cpSync(source, target, { recursive: true, force: false, errorOnExist: false });
+      } else {
+        copyFileSync(source, target);
+      }
+    } catch (err) {
+      log.warn("Failed to seed workspace bootstrap entry", {
+        operation: "workspace_bootstrap.seed",
+        entry,
+        err,
+      });
+    }
+  }
+}
 
 /** Initialize directories, database, and persisted runtime state. */
 export function initializeRuntimeEnvironment(state: RuntimeState): void {
@@ -33,6 +70,7 @@ export function initializeRuntimeEnvironment(state: RuntimeState): void {
   mkdirSync(STORE_DIR, { recursive: true });
   mkdirSync(DATA_DIR, { recursive: true });
   mkdirSync(WORKSPACE_DIR, { recursive: true });
+  bootstrapWorkspaceFromSkel();
 
   initDatabase();
   const toolOutputConfig = getToolOutputConfig();

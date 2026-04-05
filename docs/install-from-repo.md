@@ -75,6 +75,9 @@ After install, the goal is that:
 - the vendored Draw.io editor ships in the repo/package and does not rely on a Windows-time download
 - bundled automation extensions such as `cdp_browser` are available after install
 - Windows-only `win_*` desktop automation extensions are included but remain inert on non-Windows hosts
+- first runtime startup seeds missing workspace skeleton files from the packaged `skel/` tree (for example `AGENTS.md`, `.pi/skills/`, `.piclaw/config.json.example`, `.piclaw/README.md`, and the Dream/notes bootstrap files)
+- Dream/AutoDream workspace bootstrap files are present for direct Bun installs as well as container installs
+- out-of-band Dream runs use a temporary `dream:` channel/session and clean it up after the cycle, so direct installs do not accumulate visible Dream chats
 
 ## Notes
 
@@ -83,3 +86,4 @@ After install, the goal is that:
 - The Bun repo-install path now ships the bundled `cdp-browser` and `win-ui` extensions in the package tree alongside the existing optional extensions.
 - Build, pack, and install commands should be run from the repo root; `runtime/` is not a separate package.
 - If repo-install behavior differs slightly from the published package layout, those differences should stay small and documented.
+- Dream/AutoDream details, file sequence, and outputs are documented in [`runtime/docs/dream-memory.md`](../runtime/docs/dream-memory.md).

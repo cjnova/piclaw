@@ -184,6 +184,9 @@ export class AgentPool {
     async restoreSessionPosition(chatJid, leafId) {
         return this.runtimeFacade.restoreSessionPosition(chatJid, leafId);
     }
+    async disposeChatSession(chatJid) {
+        await this.sessionManager.recreate(chatJid);
+    }
     hasProviderModels(provider) {
         return this.runtimeFacade.hasProviderModels(provider);
     }

@@ -7,6 +7,23 @@ const REQUIRED_PACK_ENTRIES = [
   "runtime/extensions/viewers/drawio-editor/vendor/index.html",
   "runtime/extensions/viewers/drawio-editor/vendor/js/app.min.js",
   "runtime/extensions/viewers/drawio-editor/vendor/drawio.meta.json",
+  "runtime/src/dream.ts",
+  "runtime/src/agent-memory/daily-notes.ts",
+  "runtime/src/agent-memory/dream-prompt.ts",
+  "runtime/src/agent-memory/refresh.ts",
+  "runtime/src/extensions/dream-maintenance.ts",
+  "runtime/src/extensions/workspace-memory-bootstrap.ts",
+  "runtime/docs/dream-memory.md",
+  "skel/AGENTS.md",
+  "skel/.piclaw/README.md",
+  "skel/.piclaw/config.json.example",
+  "skel/notes/index.md",
+  "skel/notes/memory/README.md",
+  "skel/notes/daily/.gitkeep",
+  "skel/notes/memory/days/.gitkeep",
+  "skel/scripts/daily-notes.ts",
+  "skel/scripts/lib/chat-session-scope.ts",
+  "skel/scripts/lib/agent-memory-sidecar.ts",
 ] as const;
 
 export function extractPackedFiles(output: string): string[] {

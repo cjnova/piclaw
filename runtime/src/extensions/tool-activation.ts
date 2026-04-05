@@ -96,6 +96,10 @@ const DEFAULT_ACTIVE_TOOL_NAMES = [
   "exit_process",
 ] as const;
 
+const WINDOWS_DEFAULT_ACTIVE_TOOL_NAMES = [
+  "bun_run",
+] as const;
+
 const TOOL_ACTIVATION_HINT = [
   "## Tool Activation",
   "Keep the active tool set small by default.",
@@ -136,6 +140,7 @@ export function getToolsetsForTool(toolName: string): string[] {
 export function getDefaultActiveToolNames(platform = process.platform): string[] {
   return normalizeToolNamesForPlatform([
     ...DEFAULT_ACTIVE_TOOL_NAMES,
+    ...(platform === "win32" ? WINDOWS_DEFAULT_ACTIVE_TOOL_NAMES : []),
     ...getToolActivationConfig().additionalDefaultTools,
   ], platform);
 }

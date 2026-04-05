@@ -7,7 +7,7 @@ import type {
   ExtensionContext,
   ExtensionFactory,
 } from "@mariozechner/pi-coding-agent";
-import { searchWorkspace, type WorkspaceSearchRow } from "../workspace-search.js";
+import { refreshWorkspaceIndex, searchWorkspace, type WorkspaceSearchRow } from "../workspace-search.js";
 
 const WorkspaceSearchSchema = Type.Object({
   query: Type.String({ description: "FTS query text (matches workspace content)." }),
@@ -56,14 +56,43 @@ async function execute(
   return { content: [{ type: "text", text: `${header}\n${lines.join("\n")}` }], details: { count: rows.length, results: rows } };
 }
 
+const WORKSPACE_SEARCH_HINT = [
+  "## Workspace search",
+  "Use `search_workspace` for note/skill lookups in the workspace.",
+  "Configured workspace-search roots are automatically FTS-indexed at session start and can be refreshed on demand per search.",
+].join("\n");
+
 /** Extension factory that registers the search_workspace tool. */
 export const workspaceSearch: ExtensionFactory = (api) => {
+  api.on("session_start", async () => {
+    await refreshWorkspaceIndex({ scope: "all" });
+  });
+
+  api.on("before_agent_start", async (event) => ({
+    systemPrompt: `${event.systemPrompt}\n\n${WORKSPACE_SEARCH_HINT}`,
+  }));
+
   api.registerTool({
     name: "search_workspace",
     label: "search_workspace",
-    description: "Search indexed workspace content (notes + skills by default).",
-    promptSnippet: "search_workspace: full-text search over indexed workspace notes/skills/files.",
+    description: "Search indexed workspace content (configured FTS roots; notes + skills by default).",
+    promptSnippet: "search_workspace: full-text search over indexed workspace files from the configured FTS roots.",
     parameters: WorkspaceSearchSchema,
     execute,
+  });
+
+  api.registerTool({
+    name: "refresh_workspace_index",
+    label: "refresh_workspace_index",
+    description: "Refresh the workspace FTS index for the configured roots.",
+    promptSnippet: "refresh_workspace_index: rebuild workspace FTS indexing for the configured roots.",
+    parameters: Type.Object({}),
+    async execute() {
+      await refreshWorkspaceIndex({ scope: "all" });
+      return {
+        content: [{ type: "text", text: "Workspace index refreshed." }],
+        details: { refreshed: true },
+      };
+    },
   });
 };

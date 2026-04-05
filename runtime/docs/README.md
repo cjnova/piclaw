@@ -8,9 +8,13 @@ Use it for documents that describe shipped runtime surfaces, for example:
 - packaged extension-route behavior
 - packaged web API/SSE inventories
 - runtime-facing implementation notes that are useful in the published tree
+- shipped operational/runtime features such as Dream/AutoDream memory maintenance
 
 Do **not** use this directory for repo-only planning, audits, or reorg notes.
 Those belong under the repo-root `docs/` directory.
+
+Key docs here:
+- `dream-memory.md`
 
 Related:
 - `docs/repo-runtime-boundaries-2026-03-28.md`

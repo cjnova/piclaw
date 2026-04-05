@@ -61,6 +61,7 @@ const envConfig = readEnvFile([
   "PICLAW_TRUST_PROXY",
   "PICLAW_SESSION_MAX_SIZE_MB",
   "PICLAW_SESSION_AUTO_ROTATE",
+  "PICLAW_WORKSPACE_SEARCH_ROOTS",
   "PICLAW_INTERNAL_SECRET",
   "PICLAW_REMOTE_INTEROP_ENABLED",
   "PICLAW_REMOTE_INTEROP_ALLOW_HTTP",
@@ -638,6 +639,11 @@ const configAdditionalDefaultTools = pickStringArray(toolsConfig, [
   "additional_default_tools",
   "PICLAW_ADDITIONAL_DEFAULT_TOOLS",
 ]);
+const configWorkspaceSearchRoots = pickStringArray(toolsConfig, [
+  "workspaceSearchRoots",
+  "workspace_search_roots",
+  "PICLAW_WORKSPACE_SEARCH_ROOTS",
+]);
 
 /** Typed session-file safeguards grouped for runtime/session wiring. */
 export interface SessionStorageConfig {
@@ -679,6 +685,26 @@ export interface ToolActivationConfig {
 export const TOOL_ACTIVATION_CONFIG = Object.freeze<ToolActivationConfig>({
   additionalDefaultTools: configAdditionalDefaultTools ?? [],
 });
+
+/** Typed workspace-search config grouped for FTS root selection. */
+export interface WorkspaceSearchConfig {
+  roots: string[];
+}
+
+const workspaceSearchRoots = pickStringArray(
+  { PICLAW_WORKSPACE_SEARCH_ROOTS: process.env.PICLAW_WORKSPACE_SEARCH_ROOTS ?? envConfig.PICLAW_WORKSPACE_SEARCH_ROOTS },
+  ["PICLAW_WORKSPACE_SEARCH_ROOTS"],
+) ?? configWorkspaceSearchRoots ?? ["notes", ".pi/skills"];
+
+/** Grouped workspace-search config loaded from env/config. */
+export const WORKSPACE_SEARCH_CONFIG = Object.freeze<WorkspaceSearchConfig>({
+  roots: workspaceSearchRoots,
+});
+
+/** Return grouped workspace-search config for runtime wiring and tests. */
+export function getWorkspaceSearchConfig(): Readonly<WorkspaceSearchConfig> {
+  return WORKSPACE_SEARCH_CONFIG;
+}
 
 /** Return grouped tool-activation config for runtime wiring and tests. */
 export function getToolActivationConfig(): Readonly<ToolActivationConfig> {

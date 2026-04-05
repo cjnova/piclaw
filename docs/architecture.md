@@ -114,6 +114,7 @@ These are compiled into the package and registered via `extensionFactories` on t
 | `workspaceSearch` | `search_workspace` |
 | `modelControl` | `get_model_state`, `list_models`, `switch_model`, `switch_thinking` |
 | `scheduledTasks` | `schedule_task`, `/tasks`, `/scheduled` slash commands |
+| `dreamMaintenance` | `/dream` memory-consolidation slash command |
 | `sqlIntrospect` | `introspect_sql` (read-only SQLite queries) |
 | `internalTools` | `list_internal_tools` |
 | `sendAdaptiveCard` | `send_adaptive_card` for agent-owned Adaptive Card posting |
@@ -141,6 +142,31 @@ In addition to the inline factories, piclaw ships **packaged runtime extensions*
 | `viewers/office-viewer/` | Always loaded | Lightweight JS Office document viewer with extension route |
 
 These packaged runtime extensions use relative imports into `runtime/src/...` where needed and require a `node_modules` symlink next to the `extensions/` directory (created automatically at startup) so jiti can resolve deep package imports. `runtime/src/extensions/` remains a separate built-in factory surface and should not be confused with the filesystem-backed packaged extension tree.
+
+Dream-backed startup memory now follows a compact-index pattern inside the workspace:
+- `notes/memory/MEMORY.md` is the startup index and is kept under the session budget (line-capped and under ~25KB)
+- typed memory files (`user.md`, `feedback.md`, `project.md`, `reference.md`) hold the richer agent-facing detail
+- per-day files under `notes/memory/days/` preserve transcript-derived signals while the human-readable `notes/daily/*.md` files remain concise overviews
+- the built-in nightly AutoDream task and the manual `/dream` command now execute as out-of-band model turns on a temporary `dream:` channel
+- runtime creates a pre-Dream backup and seeds in-window daily notes from the database before the model turn starts
+- Dream ends with a runtime-owned workspace FTS refresh so newly written memory files are searchable immediately
+- the temporary dream channel/session is cleaned up after the cycle completes
+
+Dream/AutoDream use the original model-driven 4-phase flow:
+1. Orient
+2. Signal
+3. Consolidate
+4. Prune and Index
+
+In the Prune and Index phase, Dream should both remove stale pointers and add concise references to newly important memories; overly verbose index lines should be shortened with detail moved into the target file.
+
+Search collection is intentionally narrow:
+- inspect existing daily/memory files first
+- inspect drifted memories
+- only then run narrow transcript/message searches for known suspicions
+- avoid exhaustive transcript sweeps
+
+See [runtime/docs/dream-memory.md](../runtime/docs/dream-memory.md) for the detailed feature description.
 
 For infrastructure integrations, the intended uniform contract is:
 - session-scoped profile actions: `get` / `set` / `clear`

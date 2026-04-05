@@ -24,7 +24,9 @@ describe("tool-activation extension", () => {
     expect(getDefaultActiveToolNames()).toContain("keychain");
     expect(getDefaultActiveToolNames()).toContain("exit_process");
     expect(getDefaultActiveToolNames()).not.toContain("list_models");
+    expect(getDefaultActiveToolNames()).not.toContain("bun_run");
     expect(getDefaultActiveToolNames("win32")).toContain("powershell");
+    expect(getDefaultActiveToolNames("win32")).toContain("bun_run");
     expect(getDefaultActiveToolNames("win32")).not.toContain("bash");
   });
 
@@ -41,6 +43,16 @@ describe("tool-activation extension", () => {
     expect(sessionStart).toBeDefined();
     await sessionStart!.handler({}, {});
     expect(fake.api.getActiveTools()).toEqual(getDefaultActiveToolNames());
+  });
+
+  test("windows baseline includes bun_run alongside powershell", async () => {
+    const { getDefaultActiveToolNames } = await import("../../src/extensions/tool-activation.js");
+    const names = getDefaultActiveToolNames("win32");
+
+    expect(names).toContain("powershell");
+    expect(names).toContain("bun_run");
+    expect(names.indexOf("powershell")).toBeGreaterThanOrEqual(0);
+    expect(names.indexOf("bun_run")).toBeGreaterThanOrEqual(0);
   });
 
   test("activate_tools appends tools and reports missing names", async () => {

@@ -77,6 +77,7 @@ describe("core config", () => {
           debugCardSubmissions: true,
           tools: {
             additionalDefaultTools: ["search_workspace", "introspect_sql"],
+            workspaceSearchRoots: ["notes", ".pi/skills", "docs"],
           },
           remoteInteropEnabled: true,
           remoteInteropAllowHttp: true,
@@ -110,6 +111,9 @@ describe("core config", () => {
         });
         expect(config.getToolActivationConfig()).toEqual({
           additionalDefaultTools: ["search_workspace", "introspect_sql"],
+        });
+        expect(config.getWorkspaceSearchConfig()).toEqual({
+          roots: ["notes", ".pi/skills", "docs"],
         });
         expect(config.getRemoteInteropConfig()).toEqual({
           enabled: true,

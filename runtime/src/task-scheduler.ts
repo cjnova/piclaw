@@ -20,6 +20,7 @@
  */
 
 import { WORKSPACE_DIR, getRuntimeTimingConfig } from "./core/config.js";
+import { DREAM_TASK_ID, parseDreamPromptToken, runDreamAgentTurn, runDreamMaintenance } from "./dream.js";
 import { computeNextRun } from "./task-scheduler-utils.js";
 import type { AgentPool } from "./agent-pool.js";
 import { getDueTasks, getTaskById, logTaskRun, updateTaskAfterRun } from "./db.js";
@@ -146,6 +147,58 @@ async function restoreOriginalModel(
 
 const MAX_SHELL_OUTPUT_CHARS = 8000;
 
+async function runInternalTask(task: ScheduledTask, deps: SchedulerDeps): Promise<{ result: string | null; error: string | null; notify: boolean }> {
+  const action = (task.prompt || "").trim().toLowerCase();
+  const dreamToken = parseDreamPromptToken(action);
+
+  if (dreamToken.matched && task.id === DREAM_TASK_ID) {
+    try {
+      const result = await runDreamAgentTurn({
+        chatJid: task.chat_jid,
+        days: dreamToken.days,
+        mode: "auto",
+        agentPool: deps.agentPool,
+      });
+      return {
+        result: result.result,
+        error: null,
+        notify: false,
+      };
+    } catch (error) {
+      return {
+        result: null,
+        error: error instanceof Error ? error.message : String(error),
+        notify: false,
+      };
+    }
+  }
+
+  if (dreamToken.matched) {
+    try {
+      const result = await runDreamMaintenance({
+        chatJid: task.chat_jid,
+        days: dreamToken.days,
+        mode: dreamToken.mode,
+      });
+      return {
+        result: result.skipped
+          ? `${result.mode === "auto" ? "AutoDream" : "Dream"} skipped: ${result.skip_reason}`
+          : `${result.mode === "auto" ? "AutoDream" : "Dream"} updated ${result.memory_path} (${result.complete_days} complete, ${result.partial_days} partial, ${result.unsummarised_days} unsummarised).`,
+        error: null,
+        notify: false,
+      };
+    } catch (error) {
+      return {
+        result: null,
+        error: error instanceof Error ? error.message : String(error),
+        notify: false,
+      };
+    }
+  }
+
+  return { result: null, error: `Unknown internal task: ${task.prompt || "(empty)"}`, notify: false };
+}
+
 async function runShellTask(task: ScheduledTask): Promise<{ result: string | null; error: string | null; notify: boolean }> {
   const validated = validateShellCommand(task.command);
   if (!validated.ok) return { result: null, error: validated.error || "Invalid command.", notify: false };
@@ -202,9 +255,20 @@ export async function runScheduledTask(task: ScheduledTask, deps: SchedulerDeps)
   let result: string | null = null;
   let error: string | null = null;
 
-  const kind = task.task_kind === "shell" || task.command ? "shell" : "agent";
+  const kind = task.task_kind === "internal"
+    ? "internal"
+    : task.task_kind === "shell" || task.command
+      ? "shell"
+      : "agent";
 
-  if (kind === "shell") {
+  if (kind === "internal") {
+    const out = await runInternalTask(task, deps);
+    if (out.error) {
+      error = out.error;
+    } else {
+      result = out.result;
+    }
+  } else if (kind === "shell") {
     const out = await runShellTask(task);
     if (out.error) {
       error = out.error;

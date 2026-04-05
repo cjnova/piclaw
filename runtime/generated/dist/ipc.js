@@ -493,5 +493,15 @@ export async function processTaskCommand(data, deps) {
             }
             break;
         }
+        case "run_dream": {
+            log.info("Processing run_dream IPC task", {
+                operation: "process_task_command.run_dream",
+                chatJid: getStringField(data, "chatJid") || getStringField(data, "chat_jid") || "web:default",
+            });
+            if (deps.runDream) {
+                await deps.runDream(data);
+            }
+            break;
+        }
     }
 }

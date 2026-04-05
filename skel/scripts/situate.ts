@@ -27,6 +27,7 @@ import {
   resolveSessionScope,
   summariseSessionScope,
 } from "./lib/chat-session-scope";
+import { refreshAgentMemoryFromDailyNotes } from "./lib/agent-memory-sidecar";
 
 
 // --help support
@@ -137,9 +138,7 @@ if (UPDATE_NOTES) {
       `--db ${shellEscape(DB_PATH)}`,
     ].join(" ");
     execSync(cmd, { timeout: 30000 });
-  } catch {
-    /* expected: daily-notes generation is optional context enrichment for this situate report. */
-  }
+  } catch {}
 }
 
 // ── 1. Read daily notes and classify ────────────────────────────────────
@@ -363,9 +362,26 @@ let skills = "(could not list)";
 try {
   skills = execSync("ls /workspace/.pi/skills/", { timeout: 3000 })
     .toString().trim().split("\n").map(s => `\`${s}\``).join(", ");
+} catch {}
+
+const agentMemory = refreshAgentMemoryFromDailyNotes({ recentDays: Math.max(DAYS, 7) });
+const agentMemoryCurrentStateRaw = readFile(agentMemory.currentStatePath);
+const agentMemoryRecentContextRaw = readFile(agentMemory.recentContextPath);
+let agentMemoryCurrentState: {
+  complete_days?: Array<{ date: string }>;
+  partial_days?: Array<{ date: string }>;
+  unsummarised_days?: Array<{ date: string }>;
+  latest_complete_date?: string | null;
+  latest_complete_summary?: string | null;
+} | null = null;
+try {
+  agentMemoryCurrentState = agentMemoryCurrentStateRaw ? JSON.parse(agentMemoryCurrentStateRaw) : null;
 } catch {
-  /* expected: skill directory may be absent in minimal installs or restricted environments. */
+  agentMemoryCurrentState = null;
 }
+const agentMemoryRecentContextBody = agentMemoryRecentContextRaw
+  .replace(/^# Agent-ready recent context\s*/m, "")
+  .trim();
 
 // ── 5. Build output ─────────────────────────────────────────────────────
 const now = new Date().toISOString().slice(0, 19) + "Z";
@@ -383,6 +399,31 @@ if (scopeStats.length > 0) {
   }
 }
 sections.push("");
+
+if (agentMemoryCurrentState || agentMemoryRecentContextBody) {
+  sections.push("## Agent memory snapshot\n");
+  if (agentMemoryCurrentState) {
+    const completeCount = agentMemoryCurrentState.complete_days?.length || 0;
+    const partialCount = agentMemoryCurrentState.partial_days?.length || 0;
+    const unsummarisedCount = agentMemoryCurrentState.unsummarised_days?.length || 0;
+    sections.push(`- Complete days in window: ${completeCount}`);
+    sections.push(`- Partial days in window: ${partialCount}`);
+    sections.push(`- Unsummarised days in window: ${unsummarisedCount}`);
+    if (agentMemoryCurrentState.latest_complete_date) {
+      sections.push(`- Latest complete day: ${agentMemoryCurrentState.latest_complete_date}`);
+    }
+    if (agentMemoryCurrentState.latest_complete_summary) {
+      sections.push("");
+      sections.push(`Latest complete summary:\n> ${agentMemoryCurrentState.latest_complete_summary}`);
+    }
+    sections.push("");
+  }
+  if (agentMemoryRecentContextBody) {
+    sections.push("### Agent-ready recent context\n");
+    sections.push(agentMemoryRecentContextBody);
+    sections.push("");
+  }
+}
 
 if (summarised.length > 0) {
   sections.push("## Recent Context\n");
@@ -447,6 +488,7 @@ sections.push(`## Environment
 sections.push(`## User Preferences\n${prefs || "(none saved)"}\n`);
 sections.push(`## Notes Index\n${index || "(empty)"}\n`);
 sections.push(`## Scheduled Tasks\n${scheduledTasks}\n`);
+sections.push(`## Agent Memory\n- Current state: \`${agentMemory.currentStatePath}\`\n- Recent context: \`${agentMemory.recentContextPath}\`\n`);
 sections.push(`## Available Skills\n${skills}\n`);
 
 const doc = sections.join("\n");

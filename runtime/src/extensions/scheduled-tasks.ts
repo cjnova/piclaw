@@ -50,11 +50,26 @@ function summarizeCommand(command: string | null | undefined, maxLen = 140): str
   return `${cmd.slice(0, maxLen - 1)}…`;
 }
 
+function summarizeInternalTask(prompt: string | null | undefined): string {
+  const token = (prompt || "").trim().toLowerCase();
+  if (!token) return "(internal task)";
+  if (token === "dream" || token === "/dream") return "dream maintenance";
+  return token;
+}
+
 function formatTask(row: ScheduledTaskRow): string {
   const next = row.next_run ? `next ${row.next_run}` : "next n/a";
   const model = row.model ? ` model ${row.model}` : "";
-  const kind = row.task_kind === "shell" ? "shell" : "agent";
-  const summary = kind === "shell" ? summarizeCommand(row.command) : summarizePrompt(row.prompt);
+  const kind = row.task_kind === "shell"
+    ? "shell"
+    : row.task_kind === "internal"
+      ? "internal"
+      : "agent";
+  const summary = kind === "shell"
+    ? summarizeCommand(row.command)
+    : kind === "internal"
+      ? summarizeInternalTask(row.prompt)
+      : summarizePrompt(row.prompt);
   return `• ${row.id} (${row.status}) — ${kind} ${row.schedule_type} ${row.schedule_value}, ${next}${model} — ${summary}`;
 }
 

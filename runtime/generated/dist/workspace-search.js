@@ -14,7 +14,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { getDb } from "./db.js";
-import { WORKSPACE_DIR } from "./core/config.js";
+import { WORKSPACE_DIR, getWorkspaceSearchConfig } from "./core/config.js";
 import { prepareFtsQuery } from "./utils/fts-query.js";
 const DEFAULT_EXTS = new Set([
     ".md",
@@ -39,9 +39,27 @@ const clampNumber = (value, fallback, min, max) => {
 const getWorkspaceRoot = () => {
     return path.resolve(process.env.PICLAW_WORKSPACE || WORKSPACE_DIR);
 };
-const getDefaultRoots = () => {
+const getBuiltInRoots = () => {
     const root = getWorkspaceRoot();
     return [path.join(root, "notes"), path.join(root, ".pi", "skills")];
+};
+const getConfiguredRoots = () => {
+    const envRoots = process.env.PICLAW_WORKSPACE_SEARCH_ROOTS
+        ?.split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean);
+    return envRoots && envRoots.length > 0 ? envRoots : getWorkspaceSearchConfig().roots;
+};
+const getDefaultRoots = () => {
+    const root = getWorkspaceRoot();
+    const configured = getConfiguredRoots();
+    const resolved = configured.map((entry) => {
+        const trimmed = entry.trim();
+        if (!trimmed)
+            return "";
+        return path.isAbsolute(trimmed) ? path.resolve(trimmed) : path.join(root, trimmed);
+    }).filter(Boolean);
+    return resolved.length > 0 ? resolved : getBuiltInRoots();
 };
 const toRelative = (absPath) => {
     const workspaceRoot = getWorkspaceRoot();
@@ -76,14 +94,15 @@ async function walkFiles(root) {
     return files;
 }
 function normalizeRoots(scope) {
-    const roots = getDefaultRoots();
+    const configuredRoots = getDefaultRoots();
+    const builtInRoots = getBuiltInRoots();
     if (!scope || scope === "all")
-        return roots;
+        return configuredRoots;
     if (scope === "notes")
-        return [roots[0]];
+        return [builtInRoots[0]];
     if (scope === "skills")
-        return [roots[1]];
-    return roots;
+        return [builtInRoots[1]];
+    return configuredRoots;
 }
 async function indexWorkspace(roots, maxBytes) {
     const db = getDb();
@@ -137,6 +156,10 @@ async function indexWorkspace(roots, maxBytes) {
         }
     }
 }
+export async function refreshWorkspaceIndex(params) {
+    const maxBytes = clampNumber(params?.max_kb, 512, 16, 2048) * 1024;
+    await indexWorkspace(normalizeRoots(params?.scope), maxBytes);
+}
 /** Full-text search across indexed workspace files. */
 export async function searchWorkspace(params) {
     const query = params.query.trim();
@@ -148,7 +171,7 @@ export async function searchWorkspace(params) {
         return { rows: [], limit, offset, error: "Provide a query." };
     }
     if (refresh) {
-        await indexWorkspace(normalizeRoots(params.scope), maxBytes);
+        await refreshWorkspaceIndex({ scope: params.scope, max_kb: params.max_kb });
     }
     const ftsQuery = prepareFtsQuery(query);
     if (!ftsQuery) {

@@ -60,6 +60,8 @@ export interface IpcDeps {
   resumeChat?: (data: Record<string, unknown>) => Promise<void>;
   /** Resume any pending agent turns after a restart. */
   resumePending?: (data?: Record<string, unknown>) => Promise<void>;
+  /** Run a Dream/AutoDream cycle out of band. */
+  runDream?: (data: Record<string, unknown>) => Promise<void>;
 }
 
 /** Guard to prevent starting the watcher more than once. */
@@ -575,6 +577,17 @@ export async function processTaskCommand(data: JsonRecord, deps: IpcDeps): Promi
       });
       if (deps.resumePending) {
         await deps.resumePending(data);
+      }
+      break;
+    }
+
+    case "run_dream": {
+      log.info("Processing run_dream IPC task", {
+        operation: "process_task_command.run_dream",
+        chatJid: getStringField(data, "chatJid") || getStringField(data, "chat_jid") || "web:default",
+      });
+      if (deps.runDream) {
+        await deps.runDream(data);
       }
       break;
     }

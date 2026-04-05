@@ -19,6 +19,7 @@
     "runtime/scripts",
     "runtime/vendor-manifests",
     "runtime/LICENSE",
+    "skel",
     "docs/install-from-repo.md",
     "README.md",
     "LICENSE"

@@ -99,4 +99,5 @@ For the daily-notes phase:
   - attachment-bearing threads are skipped unless `--include-media` is set
   - cleanup resolves the full session scope (all web session trees) so branch chats are cleaned alongside the anchor chat
 - The generated close-of-day report is an intermediate artifact for the daily-notes step, not the final deliverable.
+- The situate/daily-notes flow now also refreshes `notes/daily/*.agent.json` plus rolling files under `notes/agent-memory/`; those should be left consistent before the workflow is considered done.
 - For ad-hoc one-off cleanup groups, use `timeline-cleanup` directly.
