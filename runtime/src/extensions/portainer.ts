@@ -13,6 +13,11 @@ import {
   type PortainerWorkflowResponse,
   type PortainerWorkflowName,
 } from "../portainer/client.js";
+import {
+  appendOutputFileNote,
+  runRequestBatch,
+  writeRequestOutputFile,
+} from "./request-batch.js";
 import { presentStructuredToolValue } from "./structured-tool-response.js";
 
 type SessionPortainerConfigInput = Omit<PortainerConfig, "chat_jid" | "created_at" | "updated_at">;
@@ -94,6 +99,19 @@ const PortainerWorkflowSchema = Type.Union([
   Type.Literal("volume.prune"),
 ], { description: "Named higher-level Portainer workflow to run." });
 
+const PortainerRawRequestItemSchema = Type.Object({
+  label: Type.Optional(Type.String({ description: "Optional label for one request in a batch." })),
+  method: Type.Optional(Type.String({ description: "HTTP method for this batched request (defaults to GET)." })),
+  path: Type.String({ description: "Relative Portainer API path for this batched request." }),
+  query: Type.Optional(Type.Any({ description: "Optional query-string parameters for this batched request." })),
+  body: Type.Optional(Type.Any({ description: "Optional request body for this batched request." })),
+  body_mode: Type.Optional(Type.Union([
+    Type.Literal("json"),
+    Type.Literal("text"),
+  ], { description: "How to encode the request body for this batched request." })),
+  headers: Type.Optional(Type.Record(Type.String(), Type.String(), { description: "Optional extra headers for this batched request." })),
+});
+
 const PortainerToolSchema = Type.Object({
   action: Type.Union([
     Type.Literal("get"),
@@ -123,6 +141,19 @@ const PortainerToolSchema = Type.Object({
     Type.Literal("text"),
   ], { description: "How to encode the request body for action=request." })),
   headers: Type.Optional(Type.Record(Type.String(), Type.String(), { description: "Optional extra headers for action=request." })),
+  requests: Type.Optional(Type.Array(PortainerRawRequestItemSchema, { description: "Optional sequential batch of raw Portainer requests for action=request. When provided, path/method/body/query apply per item instead of globally." })),
+  pause_ms: Type.Optional(Type.Integer({ minimum: 0, description: "Fixed pause between sequential batched requests." })),
+  throttle_ms: Type.Optional(Type.Integer({ minimum: 0, description: "Minimum spacing between the start of batched request attempts, including retries." })),
+  timeout_ms: Type.Optional(Type.Integer({ minimum: 1, description: "Per-request timeout for batched raw requests." })),
+  retries: Type.Optional(Type.Integer({ minimum: 0, maximum: 10, description: "Retry count for batched raw requests on retriable failures." })),
+  retry_delay_ms: Type.Optional(Type.Integer({ minimum: 0, description: "Initial delay before retrying a failed batched request." })),
+  retry_backoff_factor: Type.Optional(Type.Number({ minimum: 1, description: "Backoff multiplier applied to retry_delay_ms for each additional retry." })),
+  fail_fast: Type.Optional(Type.Boolean({ description: "Stop a batched request sequence after the first non-retriable or exhausted failure. Defaults to true." })),
+  output_path: Type.Optional(Type.String({ description: "Optional workspace-relative output file path for action=request results." })),
+  output_format: Type.Optional(Type.Union([
+    Type.Literal("json"),
+    Type.Literal("jsonl"),
+  ], { description: "Optional output file format for action=request results (default json)." })),
   workflow: Type.Optional(PortainerWorkflowSchema),
   category: Type.Optional(Type.String({ description: "Optional workflow family/category filter for action=capabilities or action=recommend." })),
   include_workflows: Type.Optional(Type.Boolean({ description: "Include detailed workflow entries for action=capabilities. Defaults to false unless category is set." })),
@@ -432,6 +463,18 @@ function buildPortainerRequestExamples(): Array<Record<string, unknown>> {
       query: { endpointId: 2 },
       purpose: "Fetch stack compose content when you know the stack and endpoint IDs.",
     },
+    {
+      action: "request",
+      requests: [
+        { label: "endpoints", method: "GET", path: "/api/endpoints" },
+        { label: "diskstation containers", method: "GET", path: "/api/endpoints/2/docker/containers/json", query: { all: 1 } },
+      ],
+      throttle_ms: 250,
+      retries: 2,
+      retry_delay_ms: 1000,
+      output_path: "exports/portainer-request-batch.json",
+      purpose: "Run a small sequential batch, keep spacing between attempts, and persist the combined result to a file.",
+    },
   ];
 }
 
@@ -439,9 +482,9 @@ function buildPortainerRequestHelpPayload(): Record<string, unknown> {
   return {
     action: "request_help",
     request_contract: {
-      summary: "Use request for raw Portainer API calls when the workflow surface is too narrow or when you need a Docker-proxy-style endpoint path.",
-      required_fields: ["path"],
-      optional_fields: ["method", "query", "body", "body_mode", "headers"],
+      summary: "Use request for raw Portainer API calls when the workflow surface is too narrow or when you need a Docker-proxy-style endpoint path. Provide either path for one request or requests for a sequential batch.",
+      required_fields: ["path or requests"],
+      optional_fields: ["method", "query", "body", "body_mode", "headers", "requests", "pause_ms", "throttle_ms", "timeout_ms", "retries", "retry_delay_ms", "retry_backoff_factor", "fail_fast", "output_path", "output_format"],
       defaults: {
         method: "GET",
         body_mode: "json",
@@ -450,6 +493,9 @@ function buildPortainerRequestHelpPayload(): Record<string, unknown> {
         "path may be given with or without a leading slash; the runtime normalizes it against the configured Portainer base URL.",
         "Use query for endpointId and list-style filters.",
         "Use body_mode=text only when an endpoint expects raw text instead of JSON.",
+        "Use requests for sequential batches; each item supports its own method/path/query/body/body_mode/headers/label.",
+        "Batched requests run sequentially with configurable pause_ms, throttle_ms, timeout_ms, retries, and retry_delay_ms.",
+        "Use output_path to persist either a single request result or a full batch result to a workspace file.",
       ],
       response_shape: {
         content_text: "Success summary plus the full inline Response body when bounded, otherwise a tool-output handle/path plus preview.",
@@ -461,7 +507,10 @@ function buildPortainerRequestHelpPayload(): Record<string, unknown> {
           body: "parsed JSON body when possible, otherwise raw text",
         },
         body_access_path: "details.response.body",
-        overflow_tool_output_access_path: "details.response_tool_output",
+        batch_details_path: "details.batch",
+        batch_results_access_path: "details.batch.results",
+        overflow_tool_output_access_path: "details.response_tool_output or details.batch_tool_output",
+        output_file_access_path: "details.output_file",
       },
       examples: buildPortainerRequestExamples(),
       inventory_patterns: [
@@ -734,7 +783,7 @@ export const portainerTool: ExtensionFactory = (pi: ExtensionAPI) => {
         return {
           content: [{
             type: "text",
-            text: "Portainer request help: path is required; method defaults to GET; use details.request_contract for examples and response-shape guidance.",
+            text: "Portainer request help: provide path for one request or requests for a sequential batch; method defaults to GET; use details.request_contract for examples and response-shape guidance.",
           }],
           details: { chat_jid: chatJid, ...payload },
         };
@@ -896,11 +945,76 @@ export const portainerTool: ExtensionFactory = (pi: ExtensionAPI) => {
         };
       }
 
+      const outputPath = typeof params.output_path === "string" ? params.output_path.trim() : "";
+      const outputFormat = params.output_format === "jsonl" ? "jsonl" : "json";
+      const requestBatch = Array.isArray(params.requests) ? params.requests : [];
+      if (requestBatch.length > 0) {
+        const batchRequests = requestBatch.map((entry, index) => {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+            throw new Error(`Portainer batch request entry ${index + 1} must be an object.`);
+          }
+          const item = entry as Record<string, unknown>;
+          const batchPath = typeof item.path === "string" ? item.path.trim() : "";
+          if (!batchPath) {
+            throw new Error(`Portainer batch request entry ${index + 1} requires path.`);
+          }
+          const batchBodyMode = item.body_mode === "json" || item.body_mode === "text"
+            ? item.body_mode
+            : undefined;
+          return {
+            ...(typeof item.label === "string" && item.label.trim() ? { label: item.label.trim() } : {}),
+            method: typeof item.method === "string" && item.method.trim() ? item.method.trim().toUpperCase() : "GET",
+            path: batchPath,
+            ...(item.query !== undefined ? { query: item.query } : {}),
+            ...(item.body !== undefined ? { body: item.body } : {}),
+            ...(batchBodyMode ? { body_mode: batchBodyMode as "json" | "text" } : {}),
+            ...(item.headers && typeof item.headers === "object" && !Array.isArray(item.headers) ? { headers: item.headers as Record<string, string> } : {}),
+          };
+        });
+
+        const batch = await runRequestBatch({
+          requests: batchRequests,
+          execute: (request) => handlers.request(chatJid, request),
+          timeout_ms: params.timeout_ms,
+          retries: params.retries,
+          retry_delay_ms: params.retry_delay_ms,
+          retry_backoff_factor: params.retry_backoff_factor,
+          throttle_ms: params.throttle_ms,
+          pause_ms: params.pause_ms,
+          fail_fast: params.fail_fast,
+          timeout_label_prefix: "Portainer batch",
+          getLabel: (request) => request.label || `${request.method} ${request.path}`,
+        });
+
+        const presented = presentStructuredToolValue(
+          `Portainer request batch ${batch.ok ? "completed" : "completed with failures"}: ${batch.success_count} succeeded, ${batch.failure_count} failed across ${batch.request_count} request(s).${batch.stopped_early ? " Stopped early due to fail_fast." : ""}`,
+          "Batch result",
+          batch,
+          "portainer:request:batch",
+        );
+        const outputFile = outputPath ? writeRequestOutputFile(outputPath, outputFormat, batch) : undefined;
+
+        return {
+          content: [{
+            type: "text",
+            text: appendOutputFileNote(presented.text, outputFile),
+          }],
+          details: {
+            action: "request",
+            chat_jid: chatJid,
+            ok: batch.ok,
+            batch,
+            ...(presented.stored_output ? { batch_tool_output: presented.stored_output } : {}),
+            ...(outputFile ? { output_file: outputFile } : {}),
+          },
+        };
+      }
+
       const path = typeof params.path === "string" ? params.path.trim() : "";
       const method = typeof params.method === "string" && params.method.trim() ? params.method.trim().toUpperCase() : "GET";
       if (!path) {
         return {
-          content: [{ type: "text", text: "Provide path for action=request." }],
+          content: [{ type: "text", text: "Provide path or requests for action=request." }],
           details: { action: "request", chat_jid: chatJid, ok: false },
         };
       }
@@ -920,11 +1034,12 @@ export const portainerTool: ExtensionFactory = (pi: ExtensionAPI) => {
         response.body,
         `portainer:request:${response.method}:${response.path}`,
       );
+      const outputFile = outputPath ? writeRequestOutputFile(outputPath, outputFormat, response) : undefined;
 
       return {
         content: [{
           type: "text",
-          text: presented.text,
+          text: appendOutputFileNote(presented.text, outputFile),
         }],
         details: {
           action: "request",
@@ -932,6 +1047,7 @@ export const portainerTool: ExtensionFactory = (pi: ExtensionAPI) => {
           ok: true,
           response,
           ...(presented.stored_output ? { response_tool_output: presented.stored_output } : {}),
+          ...(outputFile ? { output_file: outputFile } : {}),
         },
       };
     },

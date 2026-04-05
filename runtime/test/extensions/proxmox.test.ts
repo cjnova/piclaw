@@ -195,16 +195,19 @@ test("proxmox capabilities and workflow_help are available without handlers", as
 
   const contract = await tool.execute("tool-contract", { action: "contract" });
   expect(contract.details.actions).toContain("request_help");
-  expect(contract.details.request_contract.required_fields).toContain("path");
+  expect(contract.details.request_contract.required_fields).toContain("path or requests");
   expect(contract.details.request_contract.response_shape.body_access_path).toBe("details.response.body");
-  expect(contract.details.request_contract.response_shape.overflow_tool_output_access_path).toBe("details.response_tool_output");
+  expect(contract.details.request_contract.response_shape.overflow_tool_output_access_path).toBe("details.response_tool_output or details.batch_tool_output");
   expect(Array.isArray(contract.details.request_contract.examples)).toBe(true);
   expect(contract.content[0].text).toContain("discover");
 
   const requestHelp = await tool.execute("tool-request-help", { action: "request_help" });
   expect(requestHelp.details.request_contract.optional_fields).toContain("query");
+  expect(requestHelp.details.request_contract.optional_fields).toContain("requests");
+  expect(requestHelp.details.request_contract.optional_fields).toContain("output_path");
   expect(requestHelp.details.request_contract.metrics_charting_patterns[0].steps[0]).toContain("/cluster/resources");
-  expect(requestHelp.content[0].text).toContain("path is required");
+  expect(requestHelp.content[0].text).toContain("path for one request or requests for a sequential batch");
+  expect(requestHelp.details.request_contract.response_shape.batch_results_access_path).toBe("details.batch.results");
 
   const capabilities = await tool.execute("tool-cap", { action: "capabilities" });
   expect(capabilities.details.workflow_count).toBeGreaterThan(10);
@@ -235,6 +238,77 @@ test("proxmox capabilities and workflow_help are available without handlers", as
   const provisionRecommend = await tool.execute("tool-recommend-2", { action: "recommend", category: "storage", intent: "download an ISO" });
   expect(provisionRecommend.details.recommendation_count).toBeGreaterThan(0);
   expect(provisionRecommend.details.recommendations[0].workflow).toBe("storage.download_url");
+});
+
+test("proxmox request supports sequential batches with retries and output files", async () => {
+  const workspace = createTempWorkspace("piclaw-proxmox-batch-");
+  const restore = setEnv({
+    PICLAW_WORKSPACE: workspace.workspace,
+    PICLAW_STORE: workspace.store,
+    PICLAW_DATA: workspace.data,
+  });
+
+  try {
+    const freshDb = await importFresh<typeof import("../src/db.js")>("../src/db.js");
+    freshDb.initDatabase();
+    const fresh = await importFresh<typeof import("../src/extensions/proxmox.js")>("../src/extensions/proxmox.js");
+    const seen: string[] = [];
+    let metricsAttempts = 0;
+    fresh.setProxmoxToolHandlers({
+      get: () => null,
+      async set() { throw new Error("unexpected"); },
+      async clear() { return { deleted: false, apply_timing: "immediate" as const }; },
+      async request(_chatJid, input) {
+        seen.push(`${input.method} ${input.path}`);
+        if (input.path === "nodes/pve/qemu/117/rrddata") {
+          metricsAttempts += 1;
+          if (metricsAttempts === 1) {
+            throw new Error("Proxmox API GET /nodes/pve/qemu/117/rrddata failed with HTTP 502: upstream timeout");
+          }
+        }
+        return {
+          status: 200,
+          method: input.method,
+          path: input.path.startsWith("/") ? input.path : `/${input.path}`,
+          body: { ok: true, path: input.path, attempt: metricsAttempts || 1 },
+        };
+      },
+      async workflow() { throw new Error("unexpected"); },
+    });
+
+    const fake = createFakeExtensionApi();
+    fresh.proxmoxTool(fake.api);
+    const tool = fake.tools.get("proxmox");
+    const result = await tool.execute("tool-batch-request", {
+      action: "request",
+      requests: [
+        { label: "resources", method: "GET", path: "cluster/resources", query: { type: "vm" } },
+        { label: "metrics", method: "GET", path: "nodes/pve/qemu/117/rrddata", query: { timeframe: "day", cf: "AVERAGE" } },
+      ],
+      retries: 1,
+      retry_delay_ms: 0,
+      throttle_ms: 0,
+      pause_ms: 0,
+      output_path: "exports/proxmox-batch.json",
+    });
+
+    expect(seen).toEqual([
+      "GET cluster/resources",
+      "GET nodes/pve/qemu/117/rrddata",
+      "GET nodes/pve/qemu/117/rrddata",
+    ]);
+    expect(result.details.batch.success_count).toBe(2);
+    expect(result.details.batch.failure_count).toBe(0);
+    expect(result.details.batch.results[1].attempt_count).toBe(2);
+    expect(result.details.output_file.relative_path).toBe("exports/proxmox-batch.json");
+    expect(result.content[0].text).toContain("Output file:");
+    const payload = JSON.parse(await Bun.file(result.details.output_file.path).text());
+    expect(payload.request_count).toBe(2);
+    expect(payload.success_count).toBe(2);
+  } finally {
+    restore();
+    workspace.cleanup();
+  }
 });
 
 test("proxmox stores large request bodies as tool-output and preserves full body in details", async () => {
@@ -271,6 +345,41 @@ test("proxmox stores large request bodies as tool-output and preserves full body
     expect(result.details.response.body).toEqual(largeBody);
     expect(result.details.response_tool_output.id).toMatch(/^out-/);
     expect(result.details.response_tool_output.path).toContain("tool-output");
+  } finally {
+    restore();
+    workspace.cleanup();
+  }
+});
+
+test("proxmox request can write a single response to an output file", async () => {
+  const workspace = createTempWorkspace("piclaw-proxmox-output-");
+  const restore = setEnv({
+    PICLAW_WORKSPACE: workspace.workspace,
+    PICLAW_STORE: workspace.store,
+    PICLAW_DATA: workspace.data,
+  });
+
+  try {
+    const fresh = await importFresh<typeof import("../src/extensions/proxmox.js")>("../src/extensions/proxmox.js");
+    fresh.setProxmoxToolHandlers({
+      get: () => null,
+      async set() { throw new Error("unexpected"); },
+      async clear() { return { deleted: false, apply_timing: "immediate" as const }; },
+      async request(_chatJid, input) {
+        return { status: 200, method: input.method, path: "/cluster/resources", body: { data: [{ vmid: 117 }] } };
+      },
+      async workflow() { throw new Error("unexpected"); },
+    });
+
+    const fake = createFakeExtensionApi();
+    fresh.proxmoxTool(fake.api);
+    const tool = fake.tools.get("proxmox");
+    const result = await tool.execute("tool-output-file", { action: "request", method: "GET", path: "/cluster/resources", output_path: "exports/proxmox-single.json" });
+
+    expect(result.details.output_file.relative_path).toBe("exports/proxmox-single.json");
+    const payload = JSON.parse(await Bun.file(result.details.output_file.path).text());
+    expect(payload.path).toBe("/cluster/resources");
+    expect(payload.body.data[0].vmid).toBe(117);
   } finally {
     restore();
     workspace.cleanup();
