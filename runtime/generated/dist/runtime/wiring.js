@@ -7,6 +7,10 @@ import { startSchedulerLoop } from "../task-scheduler.js";
 import { createUuid } from "../utils/ids.js";
 import { createLogger } from "../utils/logger.js";
 const log = createLogger("runtime.wiring");
+/** Queue-lane key for out-of-band Dream work; separate from the interactive chat lane. */
+export function getDreamQueueLane(chatJid) {
+    return `dream:${chatJid || "web:default"}`;
+}
 /** Build sendMessage/sendNudge closures for runtime workers. */
 export function createRuntimeSenders(web, whatsapp, pushover) {
     const sendMessage = async (jid, text, options) => {
@@ -69,7 +73,7 @@ export function startRuntimeWorkers(queue, agentPool, web, senders) {
                 if (mode !== "auto") {
                     await senders.sendMessage(chatJid, result.result, { forceRoot: true, source: "dream" });
                 }
-            }, `chat:${chatJid}`);
+            }, getDreamQueueLane(chatJid));
         },
     });
     startSchedulerLoop({

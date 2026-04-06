@@ -432,8 +432,17 @@ function normalizeSlot(value: string | undefined, field: string, workflow: Proxm
 function decodeBase64Text(value: unknown): string {
   const text = typeof value === "string" ? value.trim() : "";
   if (!text) return "";
+  const normalized = text.replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/=]+$/.test(normalized) || normalized.length % 4 !== 0) {
+    return text;
+  }
   try {
-    return Buffer.from(text, "base64").toString("utf8");
+    const decoded = Buffer.from(normalized, "base64").toString("utf8");
+    const reencoded = Buffer.from(decoded, "utf8").toString("base64").replace(/=+$/g, "");
+    if (reencoded !== normalized.replace(/=+$/g, "")) {
+      return text;
+    }
+    return decoded;
   } catch {
     return text;
   }
@@ -1312,8 +1321,7 @@ export class ProxmoxClient {
       method: "POST",
       path: `/nodes/${encodeURIComponent(node)}/qemu/${vmid}/agent/exec`,
       body: {
-        command: wrappedCommand.command,
-        ...(wrappedCommand.commandArgs.length > 0 ? { "extra-args": wrappedCommand.commandArgs } : {}),
+        command: [wrappedCommand.command, ...wrappedCommand.commandArgs],
         ...(typeof resolvedInputData === "string" && resolvedInputData.length > 0 ? { "input-data": resolvedInputData } : {}),
       },
       body_mode: "form",
@@ -1333,7 +1341,7 @@ export class ProxmoxClient {
         query: { pid },
       });
       const data = asRecord(getPayloadData(response.body, response.path) ?? {}, response.path);
-      if (data.exited === true) {
+      if (data.exited === true || data.exited === 1 || data.exited === "1") {
         const outData = decodeBase64Text(data["out-data"]);
         const errData = decodeBase64Text(data["err-data"]);
         const redactedOutData = await redactKeychainSecretsInText(outData);

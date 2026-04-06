@@ -159,7 +159,7 @@ export async function buildInjectedExecCommand(shellFamily: InjectedShellFamily,
 
   const execCommand = `exec ${[resolvedCommand, ...resolvedArgs].map(shellQuote).join(" ")}`;
   const shellCommand = envEntries.length > 0
-    ? `env ${envEntries.map(([key, value]) => `${key}=${shellQuote(value)}`).join(" ")} ${execCommand}`
+    ? `${envEntries.map(([key, value]) => `${key}=${shellQuote(value)}`).join(" ")} ${execCommand}`
     : execCommand;
   return {
     command: "sh",

@@ -213,8 +213,34 @@ function parseResponseBody(text: string): unknown {
   try {
     return JSON.parse(trimmed);
   } catch {
-    return trimmed;
+    return text;
   }
+}
+
+function decodeDockerMultiplexedText(text: string): string {
+  if (!text) return "";
+  const buffer = Buffer.from(text, "utf8");
+  if (buffer.length < 8) return text;
+
+  let offset = 0;
+  const chunks: Buffer[] = [];
+  let parsedAnyFrame = false;
+
+  while (offset + 8 <= buffer.length) {
+    const streamType = buffer[offset];
+    const frameLength = buffer.readUInt32BE(offset + 4);
+    const frameStart = offset + 8;
+    const frameEnd = frameStart + frameLength;
+    if (![0, 1, 2, 3].includes(streamType) || frameEnd > buffer.length) {
+      return text;
+    }
+    chunks.push(buffer.subarray(frameStart, frameEnd));
+    parsedAnyFrame = true;
+    offset = frameEnd;
+  }
+
+  if (!parsedAnyFrame || offset !== buffer.length) return text;
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function requirePositiveInt(value: number | undefined, field: string, workflow: PortainerWorkflowName): number {
@@ -954,9 +980,10 @@ export class PortainerClient {
     });
 
     const rawOutput = typeof startResponse.body === "string" ? startResponse.body : JSON.stringify(startResponse.body);
+    const decodedOutput = decodeDockerMultiplexedText(rawOutput);
     return {
       exec_id: execId,
-      output: await redactKeychainSecretsInText(rawOutput),
+      output: await redactKeychainSecretsInText(decodedOutput),
       inspect: inspectResponse.body,
     };
   }

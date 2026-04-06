@@ -1,4 +1,5 @@
 import { getKeychainEntry, listKeychainEntries } from "../secure/keychain.js";
+import { buildInjectedExecCommand, redactKeychainSecretsInText } from "../secure/shell-secrets.js";
 const defaultRequestExecutor = async ({ url, method, headers, body, allowInsecureTls }) => {
     const response = await fetch(url, {
         method,
@@ -364,7 +365,8 @@ export async function requestPortainerApi(config, request) {
     });
     const body = parseResponseBody(result.bodyText);
     if (result.status >= 400) {
-        throw new Error(`Portainer API ${request.method} ${path} failed with HTTP ${result.status}: ${typeof body === "string" ? body : JSON.stringify(body)}`);
+        const redactedBody = await redactKeychainSecretsInText(typeof body === "string" ? body : JSON.stringify(body));
+        throw new Error(`Portainer API ${request.method} ${path} failed with HTTP ${result.status}: ${redactedBody}`);
     }
     return {
         status: result.status,
@@ -706,6 +708,7 @@ export class PortainerClient {
         await this.request({ method: "DELETE", path: `/api/endpoints/${endpointId}/docker/networks/${encodeURIComponent(networkId)}` });
     }
     async execContainer(endpointId, containerId, input) {
+        const wrappedCommand = await buildInjectedExecCommand(input.shell_family ?? "posix", input.command, input.command_args || []);
         const createResponse = await this.request({
             method: "POST",
             path: `/api/endpoints/${endpointId}/docker/containers/${encodeURIComponent(containerId)}/exec`,
@@ -713,7 +716,7 @@ export class PortainerClient {
                 AttachStdout: true,
                 AttachStderr: true,
                 Tty: false,
-                Cmd: [input.command, ...(input.command_args || [])],
+                Cmd: [wrappedCommand.command, ...wrappedCommand.commandArgs],
             },
             body_mode: "json",
         });
@@ -733,9 +736,10 @@ export class PortainerClient {
             method: "GET",
             path: `/api/endpoints/${endpointId}/docker/exec/${encodeURIComponent(execId)}/json`,
         });
+        const rawOutput = typeof startResponse.body === "string" ? startResponse.body : JSON.stringify(startResponse.body);
         return {
             exec_id: execId,
-            output: typeof startResponse.body === "string" ? startResponse.body : JSON.stringify(startResponse.body),
+            output: await redactKeychainSecretsInText(rawOutput),
             inspect: inspectResponse.body,
         };
     }
@@ -1107,6 +1111,7 @@ export async function runPortainerWorkflow(config, input) {
                 result: await client.execContainer(endpointId, id, {
                     command,
                     ...(Array.isArray(input.command_args) ? { command_args: input.command_args } : {}),
+                    ...(input.shell_family === "powershell" || input.shell_family === "posix" ? { shell_family: input.shell_family } : {}),
                 }),
             };
         }

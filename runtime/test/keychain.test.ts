@@ -182,8 +182,7 @@ test("builds injected POSIX and PowerShell exec commands and redacts secret valu
     expect(wrapped.command).toBe("sh");
     expect(wrapped.commandArgs).toHaveLength(2);
     expect(wrapped.commandArgs[0]).toBe("-lc");
-    expect(wrapped.commandArgs[1]).toContain("STRIPE_KEY='stripe-secret'");
-    expect(wrapped.commandArgs[1]).toContain("exec 'echo' '$STRIPE_KEY' 'stripe-secret'");
+    expect(wrapped.commandArgs[1]).toContain("STRIPE_KEY='stripe-secret' exec 'echo' '$STRIPE_KEY' 'stripe-secret'");
 
     const wrappedPowerShell = await shellSecrets.buildInjectedPowerShellCommand("Write-Output", ["$env:STRIPE_KEY", "keychain:STRIPE_KEY"]);
     expect(wrappedPowerShell.command).toBe("powershell");
@@ -192,6 +191,19 @@ test("builds injected POSIX and PowerShell exec commands and redacts secret valu
     expect(wrappedPowerShell.commandArgs[1]).toBe("-Command");
     expect(wrappedPowerShell.commandArgs[2]).toContain("$env:STRIPE_KEY = 'stripe-secret'");
     expect(wrappedPowerShell.commandArgs[2]).toContain("& 'Write-Output' '$env:STRIPE_KEY' 'stripe-secret'");
+
+    const proc = Bun.spawn([wrapped.command, ...wrapped.commandArgs], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout.trim()).toBe("$STRIPE_KEY stripe-secret");
 
     await expect(shellSecrets.redactKeychainSecretsInText("value=stripe-secret")).resolves.toBe("value=[REDACTED:STRIPE_KEY]");
   });

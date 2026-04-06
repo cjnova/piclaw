@@ -123,8 +123,8 @@ test("guest agent exec injects env-style keychain entries and redacts output", a
       },
     });
 
-    expect(seenExecBody?.get("command")).toBe("sh");
-    expect(seenExecBody?.getAll("extra-args")).toEqual([
+    expect(seenExecBody?.getAll("command")).toEqual([
+      "sh",
       "-lc",
       expect.stringContaining("STRIPE_KEY='stripe-secret'"),
     ]);
@@ -173,12 +173,61 @@ test("guest agent exec supports PowerShell wrappers", async () => {
       pollMs: 1,
     });
 
-    expect(seenExecBody?.get("command")).toBe("powershell");
-    expect(seenExecBody?.getAll("extra-args")).toEqual([
+    expect(seenExecBody?.getAll("command")).toEqual([
+      "powershell",
       "-NoProfile",
       "-Command",
       expect.stringContaining("$env:STRIPE_KEY = 'stripe-secret'"),
     ]);
+  });
+});
+
+test("guest agent exec handles numeric exited flags and plain-text output", async () => {
+  await withProxmoxContext(async ({ keychain, proxmox }) => {
+    await keychain.setKeychainEntry({
+      name: "proxmox/direct",
+      type: "secret",
+      secret: "token-secret",
+      username: "root@pam!piclaw",
+    });
+    await keychain.setKeychainEntry({
+      name: "STRIPE_KEY",
+      type: "token",
+      secret: "stripe-secret",
+    });
+
+    proxmox.setProxmoxCurlExecutorForTests(async (command) => {
+      const url = command[command.length - 1] || "";
+      if (url.endsWith("/nodes/pve2/qemu/117/agent/exec")) {
+        return { exitCode: 0, stdout: '{"data":{"pid":123}}\n__PICLAW_PROXMOX_STATUS__:200', stderr: "" };
+      }
+      if (url.endsWith("/nodes/pve2/qemu/117/agent/exec-status?pid=123")) {
+        return { exitCode: 0, stdout: '{"data":{"exited":1,"exitcode":0,"out-data":"stripe-secret","err-data":""}}\n__PICLAW_PROXMOX_STATUS__:200', stderr: "" };
+      }
+      throw new Error(`unexpected url ${url}`);
+    });
+
+    const client = new proxmox.ProxmoxClient({
+      base_url: "https://proxmox.example.com:8006/api2/json",
+      api_token_keychain: "proxmox/direct",
+      allow_insecure_tls: true,
+    });
+
+    await expect(client.execVmAgentCommand("pve2", 117, {
+      command: "sh",
+      timeoutMs: 1000,
+      pollMs: 1,
+    })).resolves.toMatchObject({
+      pid: 123,
+      exitcode: 0,
+      out_data: "[REDACTED:STRIPE_KEY]",
+      err_data: "",
+      raw: {
+        exited: 1,
+        exitcode: 0,
+        "out-data": "[REDACTED]",
+      },
+    });
   });
 });
 

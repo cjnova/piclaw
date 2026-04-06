@@ -15,7 +15,8 @@
  */
 import { spawn } from "child_process";
 import { existsSync } from "fs";
-import { resolveKeychainEnv, resolveKeychainPlaceholders } from "../secure/keychain.js";
+import { buildInjectedShellEnv, resolveKeychainPlaceholders } from "../secure/keychain.js";
+import { createKeychainOutputRedactor } from "../secure/shell-secrets.js";
 import { killProcessTree, registerProcess, unregisterProcess } from "../utils/process-tracker.js";
 const POWERSHELL_ARGS = ["-NoProfile", "-Command"];
 const POSIX_ARGS = ["-c"];
@@ -75,9 +76,14 @@ function createTrackedShellOperations(resolveCandidates) {
                     }
                     let resolvedEnv;
                     let resolvedCommand;
+                    let outputRedactor;
                     try {
-                        resolvedEnv = env ? await resolveKeychainEnv(env) : { ...process.env };
+                        resolvedEnv = await buildInjectedShellEnv({
+                            explicitEnv: env,
+                            includeProcessEnv: true,
+                        });
                         resolvedCommand = await resolveKeychainPlaceholders(command);
+                        outputRedactor = await createKeychainOutputRedactor();
                     }
                     catch (error) {
                         reject(error);
@@ -153,11 +159,16 @@ function createTrackedShellOperations(resolveCandidates) {
                         if (spawned.pid) {
                             registerProcess(spawned.pid);
                         }
+                        let capturedOutput = "";
                         if (spawned.stdout) {
-                            spawned.stdout.on("data", onData);
+                            spawned.stdout.on("data", (chunk) => {
+                                capturedOutput += chunk.toString("utf8");
+                            });
                         }
                         if (spawned.stderr) {
-                            spawned.stderr.on("data", onData);
+                            spawned.stderr.on("data", (chunk) => {
+                                capturedOutput += chunk.toString("utf8");
+                            });
                         }
                         let shellUnavailable = false;
                         spawned.on("error", (err) => {
@@ -176,6 +187,9 @@ function createTrackedShellOperations(resolveCandidates) {
                                 unregisterProcess(spawned.pid);
                             if (shellUnavailable)
                                 return;
+                            const redactedOutput = outputRedactor.redact(capturedOutput);
+                            if (redactedOutput)
+                                onData(Buffer.from(redactedOutput, "utf8"));
                             if (aborted || signal?.aborted) {
                                 settleError(new Error("aborted"));
                                 return;

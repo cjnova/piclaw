@@ -100,6 +100,55 @@ test("container exec injects env-style keychain entries and redacts output", asy
   });
 });
 
+test("container exec decodes multiplexed Docker stream output", async () => {
+  await withPortainerContext(async ({ keychain, portainer }) => {
+    await keychain.setKeychainEntry({
+      name: "portainer/relay",
+      type: "secret",
+      username: "https://portainer.example.com:9443",
+      secret: "portainer-token",
+    });
+    await keychain.setKeychainEntry({
+      name: "STRIPE_KEY",
+      type: "token",
+      secret: "stripe-secret",
+    });
+
+    const multiplexed = Buffer.concat([
+      Buffer.from([1, 0, 0, 0, 0, 0, 0, 14]),
+      Buffer.from("stripe-secret\n", "utf8"),
+    ]).toString("utf8");
+
+    portainer.setPortainerRequestExecutorForTests(async (input) => {
+      if (input.url.endsWith("/api/endpoints/2/docker/containers/abc123/exec")) {
+        return { status: 201, statusText: "Created", bodyText: '{"Id":"exec1"}' };
+      }
+      if (input.url.endsWith("/api/endpoints/2/docker/exec/exec1/start")) {
+        return { status: 200, statusText: "OK", bodyText: multiplexed };
+      }
+      if (input.url.endsWith("/api/endpoints/2/docker/exec/exec1/json")) {
+        return { status: 200, statusText: "OK", bodyText: '{"ExitCode":0,"Running":false}' };
+      }
+      throw new Error(`unexpected url ${input.url}`);
+    });
+
+    const client = new portainer.PortainerClient({
+      base_url: "https://portainer.example.com:9443",
+      api_token_keychain: "portainer/relay",
+      allow_insecure_tls: true,
+    });
+
+    await expect(client.execContainer(2, "abc123", {
+      command: "sh",
+      command_args: ["-lc", 'printf %s "$STRIPE_KEY"'],
+    })).resolves.toEqual({
+      exec_id: "exec1",
+      output: "[REDACTED:STRIPE_KEY]\n",
+      inspect: { ExitCode: 0, Running: false },
+    });
+  });
+});
+
 test("container exec supports PowerShell wrappers", async () => {
   await withPortainerContext(async ({ keychain, portainer }) => {
     await keychain.setKeychainEntry({
@@ -891,7 +940,7 @@ test("runPortainerWorkflow supports stack pull-and-update, bounded container exe
       { workflow: "container.exec", endpoint_id: 2, name: "gitea", command: "echo", command_args: ["hello"] },
     )).resolves.toEqual({
       workflow: "container.exec",
-      result: { exec_id: "exec1", output: "hello", inspect: { ExitCode: 0, Running: false } },
+      result: { exec_id: "exec1", output: "hello\n", inspect: { ExitCode: 0, Running: false } },
     });
 
     await expect(portainer.runPortainerWorkflow(

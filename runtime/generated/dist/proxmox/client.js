@@ -1,4 +1,5 @@
-import { getKeychainEntry, listKeychainEntries } from "../secure/keychain.js";
+import { getKeychainEntry, listKeychainEntries, resolveKeychainPlaceholders } from "../secure/keychain.js";
+import { buildInjectedExecCommand, redactKeychainSecretsInText } from "../secure/shell-secrets.js";
 const DEFAULT_STATUS_MARKER = "__PICLAW_PROXMOX_STATUS__:";
 export const DEFAULT_PROXMOX_POLL_MS = 2_000;
 export const DEFAULT_PROXMOX_TIMEOUT_MS = 120_000;
@@ -323,12 +324,14 @@ export async function requestProxmoxApi(config, request) {
     command.push(url);
     const result = await curlExecutor(command);
     if (result.exitCode !== 0) {
-        throw new Error(result.stderr.trim() || `curl failed with exit code ${result.exitCode}`);
+        const stderr = result.stderr.trim() || `curl failed with exit code ${result.exitCode}`;
+        throw new Error(await redactKeychainSecretsInText(stderr));
     }
     const { bodyText, status } = splitStatusMarker(result.stdout);
     const body = parseResponseBody(bodyText);
     if (status >= 400) {
-        throw new Error(`Proxmox API ${method} ${path} failed with HTTP ${status}: ${typeof body === "string" ? body : JSON.stringify(body)}`);
+        const redactedBody = await redactKeychainSecretsInText(typeof body === "string" ? body : JSON.stringify(body));
+        throw new Error(`Proxmox API ${method} ${path} failed with HTTP ${status}: ${redactedBody}`);
     }
     return {
         status,
@@ -944,13 +947,16 @@ export class ProxmoxClient {
         return getPayloadData(response.body, response.path);
     }
     async execVmAgentCommand(node, vmid, input) {
+        const wrappedCommand = await buildInjectedExecCommand(input.shell_family ?? "posix", input.command, input.command_args || []);
+        const resolvedInputData = typeof input.input_data === "string" && input.input_data.length > 0
+            ? await resolveKeychainPlaceholders(input.input_data)
+            : undefined;
         const response = await this.request({
             method: "POST",
             path: `/nodes/${encodeURIComponent(node)}/qemu/${vmid}/agent/exec`,
             body: {
-                command: input.command,
-                ...((input.command_args || []).length > 0 ? { "extra-args": input.command_args } : {}),
-                ...(typeof input.input_data === "string" && input.input_data.length > 0 ? { "input-data": input.input_data } : {}),
+                command: [wrappedCommand.command, ...wrappedCommand.commandArgs],
+                ...(typeof resolvedInputData === "string" && resolvedInputData.length > 0 ? { "input-data": resolvedInputData } : {}),
             },
             body_mode: "form",
         });
@@ -970,12 +976,20 @@ export class ProxmoxClient {
             });
             const data = asRecord(getPayloadData(response.body, response.path) ?? {}, response.path);
             if (data.exited === true) {
+                const outData = decodeBase64Text(data["out-data"]);
+                const errData = decodeBase64Text(data["err-data"]);
+                const redactedOutData = await redactKeychainSecretsInText(outData);
+                const redactedErrData = await redactKeychainSecretsInText(errData);
                 return {
                     pid,
                     exitcode: typeof data.exitcode === "number" ? data.exitcode : null,
-                    out_data: decodeBase64Text(data["out-data"]),
-                    err_data: decodeBase64Text(data["err-data"]),
-                    raw: data,
+                    out_data: redactedOutData,
+                    err_data: redactedErrData,
+                    raw: {
+                        ...data,
+                        ...(redactedOutData !== outData ? { "out-data": "[REDACTED]" } : {}),
+                        ...(redactedErrData !== errData ? { "err-data": "[REDACTED]" } : {}),
+                    },
                 };
             }
             await sleep(input.pollMs);
@@ -1451,6 +1465,7 @@ export async function runProxmoxWorkflow(config, input) {
                     command,
                     ...(Array.isArray(input.command_args) ? { command_args: input.command_args } : {}),
                     ...(typeof input.input_data === "string" ? { input_data: input.input_data } : {}),
+                    ...(input.shell_family === "powershell" || input.shell_family === "posix" ? { shell_family: input.shell_family } : {}),
                     timeoutMs,
                     pollMs,
                 }),

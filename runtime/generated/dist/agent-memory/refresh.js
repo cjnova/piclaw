@@ -4,7 +4,6 @@ import { WORKSPACE_DIR } from "../core/config.js";
 import { getDb } from "../db.js";
 export const DAILY_NOTES_DIR = resolve(WORKSPACE_DIR, "notes/daily");
 export const AGENT_MEMORY_DIR = resolve(WORKSPACE_DIR, "notes/memory");
-export const AGENT_MEMORY_DAYS_DIR = resolve(AGENT_MEMORY_DIR, "days");
 export const AGENT_MEMORY_USER_PATH = resolve(AGENT_MEMORY_DIR, "user.md");
 export const AGENT_MEMORY_FEEDBACK_PATH = resolve(AGENT_MEMORY_DIR, "feedback.md");
 export const AGENT_MEMORY_PROJECT_PATH = resolve(AGENT_MEMORY_DIR, "project.md");
@@ -94,6 +93,17 @@ function readOptionalText(path) {
         return null;
     try {
         return compactText(readFileSync(path, "utf8"));
+    }
+    catch {
+        return null;
+    }
+}
+function readOptionalMarkdown(path) {
+    if (!existsSync(path))
+        return null;
+    try {
+        const text = readFileSync(path, "utf8").trim();
+        return text.length ? text : null;
     }
     catch {
         return null;
@@ -303,71 +313,33 @@ function buildSidecar(notePath, content) {
 }
 function formatCompactDay(sidecar) {
     const lines = [];
-    const statusBits = [
-        sidecar.state,
-        sidecar.summarised_until ? `summarised_until ${sidecar.summarised_until}` : null,
-        sidecar.messages_total !== null ? `${sidecar.messages_total} msgs` : null,
-        sidecar.session_trees !== null ? `${sidecar.session_trees} trees` : null,
-        sidecar.session_chats !== null ? `${sidecar.session_chats} chats` : null,
-    ].filter(Boolean).join(" • ");
     lines.push(`### ${sidecar.date}`);
     lines.push("");
-    lines.push(`- ${statusBits}`);
+    lines.push(`- State: ${sidecar.state}`);
+    if (sidecar.summarised_until)
+        lines.push(`- Summarised until: ${sidecar.summarised_until}`);
+    if (sidecar.messages_total !== null)
+        lines.push(`- Messages: ${sidecar.messages_total}`);
+    if (sidecar.session_trees !== null)
+        lines.push(`- Session trees: ${sidecar.session_trees}`);
+    if (sidecar.session_chats !== null)
+        lines.push(`- Session chats: ${sidecar.session_chats}`);
     if (sidecar.summary) {
         lines.push("");
-        lines.push(sidecar.summary);
+        lines.push("#### Summary");
+        lines.push("");
+        lines.push(`- ${sidecar.summary.replace(/\s+/g, " ").trim()}`);
     }
     if (sidecar.summary_updates.length > 0) {
         lines.push("");
-        lines.push("Updates:");
+        lines.push("#### Updates");
+        lines.push("");
         for (const update of sidecar.summary_updates) {
             lines.push(`- ${update.replace(/\s+/g, " ").trim()}`);
         }
     }
     lines.push("");
     return lines;
-}
-function buildDayMemoryMarkdown(day) {
-    const lines = [];
-    lines.push(`# ${day.date}`, "");
-    lines.push(`- Source note: ${day.source_note}`);
-    lines.push(`- Sidecar: ${day.sidecar_path}`);
-    if (day.summarised_until)
-        lines.push(`- Summarised until: ${day.summarised_until}`);
-    if (day.messages_total !== null)
-        lines.push(`- Messages: ${day.messages_total}`);
-    if (day.session_trees !== null)
-        lines.push(`- Session trees: ${day.session_trees}`);
-    if (day.session_chats !== null)
-        lines.push(`- Session chats: ${day.session_chats}`);
-    lines.push("");
-    lines.push("## Summary", "");
-    lines.push(day.summary || "(no summary)", "");
-    if (day.summary_updates.length > 0) {
-        lines.push("## Updates", "");
-        for (const update of day.summary_updates) {
-            lines.push(`- ${compactText(update) || update}`);
-        }
-        lines.push("");
-    }
-    if (day.transcript_signals.user_directives.length > 0 || day.transcript_signals.assistant_outcomes.length > 0) {
-        lines.push("## Transcript signals", "");
-        if (day.transcript_signals.user_directives.length > 0) {
-            lines.push("### User directives", "");
-            for (const snippet of day.transcript_signals.user_directives) {
-                lines.push(`- ${snippet}`);
-            }
-            lines.push("");
-        }
-        if (day.transcript_signals.assistant_outcomes.length > 0) {
-            lines.push("### Assistant outcomes", "");
-            for (const snippet of day.transcript_signals.assistant_outcomes) {
-                lines.push(`- ${snippet}`);
-            }
-            lines.push("");
-        }
-    }
-    return `${lines.join("\n").trimEnd()}\n`;
 }
 function uniqueSnippets(values, limit = 24) {
     const seen = new Set();
@@ -385,7 +357,7 @@ function uniqueSnippets(values, limit = 24) {
 }
 function buildUserMemoryMarkdown(currentState) {
     const lines = ["# User memory", ""];
-    const prefs = readOptionalText(resolve(WORKSPACE_DIR, "notes/preferences/agent.md"));
+    const prefs = readOptionalMarkdown(resolve(WORKSPACE_DIR, "notes/preferences/agent.md"));
     if (prefs) {
         lines.push("## Role and preferences", "", prefs, "");
     }
@@ -433,7 +405,7 @@ function buildProjectMemoryMarkdown(currentState) {
 }
 function buildReferenceMemoryMarkdown() {
     const lines = ["# Reference memory", ""];
-    const notesIndex = readOptionalText(resolve(WORKSPACE_DIR, "notes/index.md"));
+    const notesIndex = readOptionalMarkdown(resolve(WORKSPACE_DIR, "notes/index.md"));
     if (notesIndex) {
         lines.push("## Notes index", "", notesIndex, "");
     }
@@ -441,6 +413,57 @@ function buildReferenceMemoryMarkdown() {
         lines.push("- notes/index.md is missing.", "");
     }
     return `${lines.join("\n").trimEnd()}\n`;
+}
+function buildCurrentStateMarkdown(currentState) {
+    const lines = [];
+    lines.push("# Current Dream state", "");
+    lines.push(`Generated: ${currentState.generated_at}`, "");
+    lines.push("## Status", "");
+    lines.push(`- Window: last ${currentState.recent_days} days`);
+    lines.push(`- Complete days: ${currentState.complete_days.length}`);
+    lines.push(`- Partial days: ${currentState.partial_days.length}`);
+    lines.push(`- Unsummarised days: ${currentState.unsummarised_days.length}`);
+    if (currentState.latest_complete_date)
+        lines.push(`- Latest complete day: ${currentState.latest_complete_date}`);
+    lines.push("");
+    if (currentState.complete_days.length > 0) {
+        lines.push("## Complete days", "");
+        for (const day of currentState.complete_days) {
+            const summary = truncateText(day.summary, 160) || "(no summary)";
+            lines.push(`- ${day.date}`);
+            lines.push(`  - Summary: ${summary}`);
+            if (day.summarised_until)
+                lines.push(`  - Summarised until: ${day.summarised_until}`);
+            if (day.messages_total !== null)
+                lines.push(`  - Messages: ${day.messages_total}`);
+            if (day.session_trees !== null)
+                lines.push(`  - Session trees: ${day.session_trees}`);
+            if (day.session_chats !== null)
+                lines.push(`  - Session chats: ${day.session_chats}`);
+        }
+        lines.push("");
+    }
+    if (currentState.partial_days.length > 0) {
+        lines.push("## Partial days", "");
+        for (const day of currentState.partial_days) {
+            lines.push(`- ${day.date} — ${day.state}${day.summarised_until ? ` — summarised_until ${day.summarised_until}` : ""}`);
+        }
+        lines.push("");
+    }
+    if (currentState.unsummarised_days.length > 0) {
+        lines.push("## Unsummarised days", "");
+        for (const day of currentState.unsummarised_days) {
+            lines.push(`- ${day.date}`);
+        }
+        lines.push("");
+    }
+    lines.push("## Source", "");
+    lines.push(`- Daily notes directory: ${DAILY_NOTES_DIR}`);
+    return `${lines.join("\n").trimEnd()}\n`;
+}
+function resolveMemoryIndexDayLink(date) {
+    const sparseDayPath = resolve(AGENT_MEMORY_DIR, "days", `${date}.md`);
+    return existsSync(sparseDayPath) ? `days/${date}.md` : `../daily/${date}.md`;
 }
 function buildMemoryMarkdown(currentState) {
     const lines = [];
@@ -478,14 +501,16 @@ function buildMemoryMarkdown(currentState) {
         for (const day of currentState.complete_days.slice(0, currentState.recent_days)) {
             const hook = compactText(day.summary) || "(no summary)";
             const truncatedHook = hook.length > 110 ? `${hook.slice(0, 109)}…` : hook;
-            lines.push(`- [${day.date}](days/${day.date}.md) — ${truncatedHook}`);
+            lines.push(`- [${day.date}](${resolveMemoryIndexDayLink(day.date)})`);
+            lines.push(`  - ${truncatedHook}`);
         }
         lines.push("");
     }
     lines.push("## Sources", "");
-    lines.push(`- [current-state.json](current-state.json)`);
+    lines.push(`- [current-state.md](current-state.md)`);
     lines.push(`- [recent-context.md](recent-context.md)`);
     lines.push(`- Daily notes directory: ${DAILY_NOTES_DIR}`);
+    lines.push(`- Sparse day-memory directory (model-owned, optional): ${resolve(AGENT_MEMORY_DIR, "days")}`);
     while (lines.length > MEMORY_LINE_LIMIT || Buffer.byteLength(`${lines.join("\n").trimEnd()}\n`, "utf8") > MEMORY_MAX_BYTES) {
         const dailyHeaderIndex = lines.indexOf("## Recent daily memories");
         if (dailyHeaderIndex === -1)
@@ -513,13 +538,12 @@ function buildEmptyCurrentState(recentDays) {
 export function refreshAgentMemoryFromDailyNotes(options) {
     const recentDays = Math.max(1, options?.recentDays ?? 7);
     mkdirSync(AGENT_MEMORY_DIR, { recursive: true });
-    const currentStatePath = `${AGENT_MEMORY_DIR}/current-state.json`;
+    const currentStatePath = `${AGENT_MEMORY_DIR}/current-state.md`;
     const recentContextPath = `${AGENT_MEMORY_DIR}/recent-context.md`;
     const memoryPath = `${AGENT_MEMORY_DIR}/MEMORY.md`;
-    mkdirSync(AGENT_MEMORY_DAYS_DIR, { recursive: true });
     if (!existsSync(DAILY_NOTES_DIR)) {
         const currentState = buildEmptyCurrentState(recentDays);
-        writeFileSync(currentStatePath, `${JSON.stringify(currentState, null, 2)}\n`, "utf8");
+        writeFileSync(currentStatePath, buildCurrentStateMarkdown(currentState), "utf8");
         writeFileSync(recentContextPath, "# Agent-ready recent context\n\nNo daily notes found yet.\n", "utf8");
         writeFileSync(memoryPath, buildMemoryMarkdown(currentState), "utf8");
         return { sidecars: [], currentState, currentStatePath, recentContextPath, memoryPath };
@@ -529,9 +553,8 @@ export function refreshAgentMemoryFromDailyNotes(options) {
         .sort()
         .map((file) => `${DAILY_NOTES_DIR}/${file}`);
     const sidecars = notePaths.map((path) => buildSidecar(path, readFileSync(path, "utf8")));
-    for (const sidecar of sidecars) {
-        const outPath = sidecar.source_note.replace(/\.md$/i, ".agent.json");
-        writeFileSync(outPath, `${JSON.stringify(sidecar, null, 2)}\n`, "utf8");
+    for (const notePath of notePaths) {
+        rmSync(notePath.replace(/\.md$/i, ".agent.json"), { force: true });
     }
     const cutoff = new Date(Date.now() - recentDays * 86400000).toISOString().slice(0, 10);
     const recent = sortByDateDesc(sidecars.filter((sidecar) => sidecar.date >= cutoff));
@@ -554,7 +577,6 @@ export function refreshAgentMemoryFromDailyNotes(options) {
             session_trees: sidecar.session_trees,
             session_chats: sidecar.session_chats,
             source_note: sidecar.source_note,
-            sidecar_path: sidecar.source_note.replace(/\.md$/i, ".agent.json"),
             transcript_signals: collectTranscriptSignals(sidecar),
         })),
         partial_days: partial.map((sidecar) => ({
@@ -571,7 +593,7 @@ export function refreshAgentMemoryFromDailyNotes(options) {
             source_note: sidecar.source_note,
         })),
     };
-    writeFileSync(currentStatePath, `${JSON.stringify(currentState, null, 2)}\n`, "utf8");
+    writeFileSync(currentStatePath, buildCurrentStateMarkdown(currentState), "utf8");
     const summaryLines = [];
     summaryLines.push("# Agent-ready recent context", "");
     summaryLines.push(`Generated: ${currentState.generated_at}`, "");
@@ -606,15 +628,10 @@ export function refreshAgentMemoryFromDailyNotes(options) {
         }
     }
     writeFileSync(recentContextPath, `${summaryLines.join("\n").trimEnd()}\n`, "utf8");
-    const wantedDayFiles = new Set(currentState.complete_days.map((day) => `${day.date}.md`));
-    for (const existing of readdirSync(AGENT_MEMORY_DAYS_DIR).filter((file) => file.endsWith(".md"))) {
-        if (!wantedDayFiles.has(existing)) {
-            rmSync(resolve(AGENT_MEMORY_DAYS_DIR, existing), { force: true });
-        }
-    }
-    for (const day of currentState.complete_days) {
-        writeFileSync(resolve(AGENT_MEMORY_DAYS_DIR, `${day.date}.md`), buildDayMemoryMarkdown(day), "utf8");
-    }
+    rmSync(`${AGENT_MEMORY_DIR}/current-state.json`, { force: true });
+    // Runtime no longer materializes `notes/memory/days/` from `notes/daily/`.
+    // That subtree is model-owned and should remain sparse/optional rather than
+    // acting as a mirrored shadow tree of every complete daily note.
     writeFileSync(AGENT_MEMORY_USER_PATH, buildUserMemoryMarkdown(currentState), "utf8");
     writeFileSync(AGENT_MEMORY_FEEDBACK_PATH, buildFeedbackMemoryMarkdown(currentState), "utf8");
     writeFileSync(AGENT_MEMORY_PROJECT_PATH, buildProjectMemoryMarkdown(currentState), "utf8");
