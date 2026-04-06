@@ -98,6 +98,7 @@ RUN /tmp/build-piclaw-package.sh && \
     PI_CLI="$(readlink -f /usr/local/lib/bun/bin/pi)" && \
     sed -i '1s/env node/env bun/' "$PI_CLI" && \
     chmod +x "$PI_CLI" && \
+    rm -rf /home/agent/piclaw/node_modules && \
     rm -f /tmp/install-agent-runtime.sh /tmp/install-restic-release.sh /tmp/build-piclaw-package.sh
 
 # Layer 5: Save skeleton
