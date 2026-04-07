@@ -10,6 +10,8 @@ set -euo pipefail
 MARKER_FILE="/home/agent/.container_initialized"
 HOME_DIR="/home/agent"
 SKEL_DIR="/etc/skel.agent"
+WORKSPACE_SKEL_DIR="/usr/local/share/piclaw/workspace-skel"
+AGENT_SKILLS_SEED_DIR="/usr/local/share/piclaw/agent-skills"
 DEFAULT_SUPERVISOR_CONF="/etc/supervisor/supervisord.conf"
 SUPERVISOR_CONF_ENV_SET="${SUPERVISOR_CONF+x}"
 SUPERVISOR_CONF="${SUPERVISOR_CONF:-$DEFAULT_SUPERVISOR_CONF}"
@@ -169,7 +171,7 @@ if [ -x /usr/bin/dircolors ]; then
 fi
 alias ll='ls -alF'
 alias la='ls -A'
-[ -d /home/linuxbrew/.linuxbrew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+[ -x /home/linuxbrew/.linuxbrew/bin/brew ] && eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv bash)"
 export BUN_INSTALL="/usr/local/lib/bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
 BASHRC
@@ -198,17 +200,25 @@ ensure_config_link .gitconfig
 chown -R agent:agent /config/.pi 2>/dev/null || true
 chown agent:agent /config/.gitconfig 2>/dev/null || true
 
+if [ -d "$AGENT_SKILLS_SEED_DIR" ]; then
+    mkdir -p /config/.pi/agent/skills
+    if [ -z "$(find /config/.pi/agent/skills -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+        cp -a "$AGENT_SKILLS_SEED_DIR/." /config/.pi/agent/skills/
+        chown -R agent:agent /config/.pi 2>/dev/null || true
+    fi
+fi
+
 if [ -d "/workspace" ] && [ ! -f "/workspace/AGENTS.md" ]; then
-    if [ -f "$HOME_DIR/workspace-skel/AGENTS.md" ]; then
-        cp "$HOME_DIR/workspace-skel/AGENTS.md" /workspace/AGENTS.md
+    if [ -f "$WORKSPACE_SKEL_DIR/AGENTS.md" ]; then
+        cp "$WORKSPACE_SKEL_DIR/AGENTS.md" /workspace/AGENTS.md
         chown agent:agent /workspace/AGENTS.md
     fi
 fi
 
 if [ -d "/workspace" ] && [ ! -d "/workspace/.pi/skills" ]; then
-    if [ -d "$HOME_DIR/workspace-skel/.pi/skills" ]; then
+    if [ -d "$WORKSPACE_SKEL_DIR/.pi/skills" ]; then
         mkdir -p /workspace/.pi
-        cp -a "$HOME_DIR/workspace-skel/.pi/skills" /workspace/.pi/skills
+        cp -a "$WORKSPACE_SKEL_DIR/.pi/skills" /workspace/.pi/skills
         chown -R agent:agent /workspace/.pi
     fi
 fi

@@ -171,6 +171,7 @@ function isImplicitKeychainUnavailableError(error) {
     if (!(error instanceof Error))
         return false;
     return error.message.includes("Keychain is disabled")
+        || error.message.includes("Database not initialized")
         || error.message.includes("Cannot use a closed database")
         || error.message.includes("no such table: keychain_entries");
 }

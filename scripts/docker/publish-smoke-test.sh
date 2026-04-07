@@ -13,7 +13,7 @@ Environment:
   STATIC_TIMEOUT_SEC   Timeout for one-shot binary/executable checks (default: 120)
   HTTP_TIMEOUT_SEC     Timeout for booting the web runtime and serving /login (default: 90)
   CURL_MAX_TIME_SEC    Per-request curl timeout while polling HTTP (default: 5)
-  PICLAW_HTTP_PATH     HTTP path to probe after startup (default: /login)
+  PICLAW_HTTP_PATH     HTTP path to probe after startup (default: /)
   PICLAW_CONTAINER_PORT Internal container port to publish (default: 8080)
 EOF
 }
@@ -30,7 +30,7 @@ EXPECTED_RESTIC_VERSION="$4"
 STATIC_TIMEOUT_SEC="${STATIC_TIMEOUT_SEC:-120}"
 HTTP_TIMEOUT_SEC="${HTTP_TIMEOUT_SEC:-90}"
 CURL_MAX_TIME_SEC="${CURL_MAX_TIME_SEC:-5}"
-PICLAW_HTTP_PATH="${PICLAW_HTTP_PATH:-/login}"
+PICLAW_HTTP_PATH="${PICLAW_HTTP_PATH:-/}"
 PICLAW_CONTAINER_PORT="${PICLAW_CONTAINER_PORT:-8080}"
 
 STATIC_OUTPUT="$(mktemp)"
@@ -72,7 +72,7 @@ timeout -k 10s "${STATIC_TIMEOUT_SEC}s" \
     set -e
     echo "=== Bun ===" && bun --version
     echo "=== Restic ===" && restic version
-    echo "=== Restic Azure ===" && strings "$(command -v restic)" | grep -qi azure.Config && echo "ok"
+    echo "=== Restic Azure ===" && if command -v strings >/dev/null 2>&1; then strings "$(command -v restic)" | grep -qi azure.Config && echo "ok"; else echo "skipped (strings missing)"; fi
     echo "=== Pi CLI ===" && test -x "$(command -v pi)" && echo "ok"
     echo "=== Piclaw CLI ===" && test -x "$(command -v piclaw)" && echo "ok"
   ' | tee "$STATIC_OUTPUT"
@@ -135,8 +135,17 @@ fi
 echo "[smoke] HTTP startup ok"
 
 echo "[smoke] verifying supervisord is running"
-if ! docker exec "$CONTAINER_NAME" sh -c 'pgrep -af supervisord >/dev/null && supervisorctl status >/dev/null'; then
-  echo "[smoke] supervisord or supervisorctl status check failed" >&2
+SUPERVISOR_READY=0
+SUPERVISOR_DEADLINE=$((SECONDS + 30))
+while [ "$SECONDS" -lt "$SUPERVISOR_DEADLINE" ]; do
+  if docker exec "$CONTAINER_NAME" sh -c 'pgrep -af supervisord >/dev/null && supervisorctl -c /workspace/.piclaw/supervisor/supervisord.conf status piclaw | grep -q RUNNING'; then
+    SUPERVISOR_READY=1
+    break
+  fi
+  sleep 2
+done
+if [ "$SUPERVISOR_READY" -ne 1 ]; then
+  echo "[smoke] supervisord or piclaw supervisor status check failed" >&2
   print_container_logs
   exit 1
 fi
