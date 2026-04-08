@@ -149,6 +149,7 @@ function MainApp({ locationParams, navigate }) {
         environment: {
             isRenameBranchFormOpen: surface.isRenameBranchFormOpen,
             renameBranchNameInputRef: surface.renameBranchNameInputRef,
+            appShellRef: surface.appShellRef,
             setIsWebAppMode: surface.setIsWebAppMode,
             workspaceOpen: surface.workspaceOpen,
             setWorkspaceOpen: surface.setWorkspaceOpen,

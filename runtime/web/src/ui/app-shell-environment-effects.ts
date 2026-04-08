@@ -8,7 +8,7 @@ import {
 } from './workspace-visibility.js';
 import { initTheme } from './theme.js';
 import { useTimestampRefresh } from './app-helpers.js';
-import { watchStandaloneWebAppMode } from './app-resume.js';
+import { watchReturnToApp, watchStandaloneWebAppMode } from './app-resume.js';
 import { installStandaloneMobileViewportFix } from './mobile-viewport.js';
 import { BTW_SESSION_KEY } from './app-shell-state.js';
 
@@ -16,9 +16,15 @@ interface RefBox<T> {
   current: T;
 }
 
+export const RESUME_LAYOUT_SETTLING_CLASS = 'resume-layout-settling';
+export const RESUME_LAYOUT_SETTLING_MS = 220;
+
+const resumeLayoutSettlingTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+
 export interface UseAppShellEnvironmentEffectsOptions {
   isRenameBranchFormOpen: boolean;
   renameBranchNameInputRef: RefBox<any>;
+  appShellRef: RefBox<HTMLElement | null>;
   setIsWebAppMode: (next: boolean) => void;
   workspaceOpen: boolean;
   setWorkspaceOpen: (next: boolean) => void;
@@ -57,10 +63,51 @@ export function shouldApplyBrandingDocumentTitle(options: {
   return !/(?:^|[?&])pane_popout=1(?:&|$)/.test(search);
 }
 
+export function scheduleResumeLayoutSettling(
+  element: HTMLElement | null | undefined,
+  options: {
+    durationMs?: number;
+    scheduleTimeout?: typeof setTimeout;
+    clearScheduledTimeout?: typeof clearTimeout;
+  } = {},
+): () => void {
+  if (!element) return () => {};
+
+  const {
+    durationMs = RESUME_LAYOUT_SETTLING_MS,
+    scheduleTimeout = setTimeout,
+    clearScheduledTimeout = clearTimeout,
+  } = options;
+
+  const previous = resumeLayoutSettlingTimers.get(element);
+  if (previous) {
+    clearScheduledTimeout(previous);
+  }
+
+  element.classList.add(RESUME_LAYOUT_SETTLING_CLASS);
+  const timer = scheduleTimeout(() => {
+    if (resumeLayoutSettlingTimers.get(element) === timer) {
+      element.classList.remove(RESUME_LAYOUT_SETTLING_CLASS);
+      resumeLayoutSettlingTimers.delete(element);
+    }
+  }, durationMs);
+  resumeLayoutSettlingTimers.set(element, timer);
+
+  return () => {
+    const current = resumeLayoutSettlingTimers.get(element);
+    if (current) {
+      clearScheduledTimeout(current);
+      resumeLayoutSettlingTimers.delete(element);
+    }
+    element.classList.remove(RESUME_LAYOUT_SETTLING_CLASS);
+  };
+}
+
 export function useAppShellEnvironmentEffects(options: UseAppShellEnvironmentEffectsOptions) {
   const {
     isRenameBranchFormOpen,
     renameBranchNameInputRef,
+    appShellRef,
     setIsWebAppMode,
     workspaceOpen,
     setWorkspaceOpen,
@@ -90,6 +137,19 @@ export function useAppShellEnvironmentEffects(options: UseAppShellEnvironmentEff
   useEffect(() => initTheme(), []);
 
   useEffect(() => watchStandaloneWebAppMode(setIsWebAppMode), [setIsWebAppMode]);
+
+  useEffect(() => {
+    let disposeSettling = () => {};
+    const stopWatching = watchReturnToApp(() => {
+      disposeSettling();
+      disposeSettling = scheduleResumeLayoutSettling(appShellRef.current);
+    });
+
+    return () => {
+      stopWatching();
+      disposeSettling();
+    };
+  }, [appShellRef]);
 
   const workspaceLayoutBucketRef = useRef(resolveWorkspaceLayoutBucket());
 

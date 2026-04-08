@@ -24,6 +24,13 @@
     margin: 0 auto;
 }
 
+.app-shell.resume-layout-settling > .workspace-sidebar,
+.app-shell.resume-layout-settling > .workspace-splitter,
+.app-shell.resume-layout-settling > .container,
+.app-shell.resume-layout-settling > .editor-pane-container {
+    transition: none !important;
+}
+
 .chat-window-header {
     display: flex;
     align-items: center;

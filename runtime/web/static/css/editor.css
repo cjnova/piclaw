@@ -1260,6 +1260,16 @@
         margin: 0 auto;
     }
 
+    .app-shell.workspace-collapsed:not(.editor-open):not(.chat-only):not(.pane-popout) {
+        justify-content: center;
+    }
+
+    .app-shell.workspace-collapsed:not(.editor-open):not(.chat-only):not(.pane-popout) > .container {
+        flex: 0 1 auto;
+        width: min(100%, var(--chat-max-width, 900px));
+        margin: 0;
+    }
+
     .container {
         max-width: 100%;
         margin: 0;
