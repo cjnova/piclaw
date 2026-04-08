@@ -58,6 +58,7 @@
     gap: var(--spacing-sm);
     align-items: flex-start;
     position: relative;
+    border-radius: var(--chat-surface-radius);
     animation: fadeSlideIn 0.3s ease-out backwards;
     transition: background-color var(--ui-transition-fast), opacity 0.18s ease, transform 0.18s ease;
 }
