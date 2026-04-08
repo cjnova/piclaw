@@ -169,7 +169,7 @@ function compactText(value: string | null | undefined): string | null {
   return compact || null;
 }
 
-function readOptionalText(path: string): string | null {
+function _readOptionalText(path: string): string | null {
   if (!existsSync(path)) return null;
   try {
     return compactText(readFileSync(path, "utf8"));
@@ -252,7 +252,7 @@ interface MemoryCandidate {
   date: string;
 }
 
-function curateMemoryCandidates(candidates: MemoryCandidate[], limit = 24): string[] {
+function _curateMemoryCandidates(candidates: MemoryCandidate[], limit = 24): string[] {
   const curated: Array<{ text: string; signature: string }> = [];
 
   for (const candidate of candidates) {

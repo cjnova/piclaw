@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import "../../helpers.js";
 import {
   clearExtensionRoutes,
@@ -6,6 +6,10 @@ import {
   handleExtensionRoutes,
   registerExtensionRoute,
 } from "../../../src/channels/web/http/extension-routes.js";
+
+beforeEach(() => {
+  clearExtensionRoutes();
+});
 
 afterEach(() => {
   clearExtensionRoutes();

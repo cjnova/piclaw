@@ -285,13 +285,11 @@ export async function runDreamAgentTurn(options: { chatJid: string; days?: numbe
   }
 
   let lockFd: number | null = null;
-  let backupPath: string | null = null;
-  let dailyNotesRefreshed = false;
   const dreamChatJid = buildDreamChatJid(chatJid, mode);
   try {
     lockFd = acquireDreamLock();
-    backupPath = createDreamBackup(chatJid, mode, days);
-    dailyNotesRefreshed = refreshDailyNotes(chatJid, days);
+    const backupPath = createDreamBackup(chatJid, mode, days);
+    const dailyNotesRefreshed = refreshDailyNotes(chatJid, days);
     const out = await options.agentPool.runAgent(buildDreamPrompt({ mode, days }), dreamChatJid);
     if (out.status === "error") {
       throw new Error(out.error || "Dream agent run failed.");
@@ -357,10 +355,9 @@ export async function runDreamMaintenance(options?: { chatJid?: string; days?: n
   }
 
   let lockFd: number | null = null;
-  let backupPath: string | null = null;
   try {
     lockFd = acquireDreamLock();
-    backupPath = createDreamBackup(chatJid, mode, days);
+    const backupPath = createDreamBackup(chatJid, mode, days);
     const dailyNotesRefreshed = refreshDailyNotes(chatJid, days);
     const refresh = refreshAgentMemoryFromDailyNotes({ recentDays: days });
     const workspaceIndexRefreshed = await refreshWorkspaceSearchIndex();

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { extractPackedFiles, findBlockedPackEntries, findMissingRequiredPackEntries } from "../../scripts/pack-hygiene.ts";
+import {
+  REQUIRED_PACK_ENTRIES,
+  extractPackedFiles,
+  findBlockedPackEntries,
+  findMissingRequiredPackEntries,
+} from "../../scripts/pack-hygiene.ts";
 
 describe("pack-hygiene", () => {
   test("extractPackedFiles parses bun pack output", () => {
@@ -40,10 +45,10 @@ describe("pack-hygiene", () => {
   });
 
   test("findMissingRequiredPackEntries flags missing drawio runtime assets", () => {
-    const files = [
-      "runtime/extensions/viewers/drawio-editor/index.ts",
-      "runtime/extensions/viewers/drawio-editor/vendor/index.html",
-    ];
+    const files = REQUIRED_PACK_ENTRIES.filter((entry) =>
+      entry !== "runtime/extensions/viewers/drawio-editor/vendor/js/app.min.js"
+      && entry !== "runtime/extensions/viewers/drawio-editor/vendor/drawio.meta.json"
+    );
 
     expect(findMissingRequiredPackEntries(files)).toEqual([
       "runtime/extensions/viewers/drawio-editor/vendor/js/app.min.js",
@@ -52,13 +57,6 @@ describe("pack-hygiene", () => {
   });
 
   test("findMissingRequiredPackEntries accepts complete drawio runtime assets", () => {
-    const files = [
-      "runtime/extensions/viewers/drawio-editor/index.ts",
-      "runtime/extensions/viewers/drawio-editor/vendor/index.html",
-      "runtime/extensions/viewers/drawio-editor/vendor/js/app.min.js",
-      "runtime/extensions/viewers/drawio-editor/vendor/drawio.meta.json",
-    ];
-
-    expect(findMissingRequiredPackEntries(files)).toEqual([]);
+    expect(findMissingRequiredPackEntries([...REQUIRED_PACK_ENTRIES])).toEqual([]);
   });
 });

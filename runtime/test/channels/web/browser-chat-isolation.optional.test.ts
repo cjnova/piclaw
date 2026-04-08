@@ -168,18 +168,21 @@ function createStubAgentPool(db: any) {
 
 async function launchDedicatedInstance(): Promise<DedicatedWebTestInstance> {
   let seededDb: any;
+  const agentPoolStub: any = {
+    getContextUsageForChat: async () => null,
+  };
+
   instance = await startDedicatedWebTestInstance({
     prefix: "piclaw-browser-isolation-",
     seed: (db) => {
       seededDb = db;
       seedBranchFamily(db);
     },
-    agentPool: {
-      getContextUsageForChat: async () => null,
-    },
+    agentPool: agentPoolStub,
   });
-  const stubAgentPool = createStubAgentPool(seededDb);
-  instance.web.agentPool = stubAgentPool;
+
+  Object.assign(agentPoolStub, createStubAgentPool(seededDb));
+  instance.web.agentPool = agentPoolStub;
   return instance;
 }
 
@@ -204,6 +207,32 @@ async function waitForBodyText(page: Page, token: string) {
 
 async function getBodyText(page: Page): Promise<string> {
   return (await page.locator("body").textContent()) || "";
+}
+
+async function postJsonFromPage(page: Page, pathname: string, body: Record<string, unknown>) {
+  return await page.evaluate(async ({ pathname, body }) => {
+    const response = await fetch(pathname, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return {
+      ok: response.ok,
+      status: response.status,
+      text: await response.text(),
+    };
+  }, { pathname, body });
+}
+
+async function getJsonFromPage(page: Page, pathname: string) {
+  return await page.evaluate(async ({ pathname }) => {
+    const response = await fetch(pathname);
+    return {
+      ok: response.ok,
+      status: response.status,
+      json: await response.json(),
+    };
+  }, { pathname });
 }
 
 optionalBrowserTest("optional browser isolation: windows stay isolated across live turns, rename, and prune flows", async () => {
@@ -251,21 +280,17 @@ optionalBrowserTest("optional browser isolation: windows stay isolated across li
   expect(branchAFinal).not.toContain("DRAFT_B_ISOLATION_TOKEN");
   expect(branchAFinal).not.toContain("REPLY_B_ISOLATION_TOKEN");
 
-  const renameResponse = await fetch(`${dedicated.baseUrl}/agent/branch-rename`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: dedicated.baseUrl,
-    },
-    body: JSON.stringify({
-      chat_jid: "web:branch-a",
-      agent_name: "alpha-renamed",
-    }),
+  const renameResponse = await postJsonFromPage(pageA, "/agent/branch-rename", {
+    chat_jid: "web:branch-a",
+    agent_name: "alpha-renamed",
   });
   expect(renameResponse.ok).toBe(true);
 
-  const renameCheck = await fetch(`${dedicated.baseUrl}/agent/branches?root_chat_jid=${encodeURIComponent("web:default")}`);
-  const renamePayload = await renameCheck.json();
+  const renameCheck = await getJsonFromPage(
+    pageA,
+    `/agent/branches?root_chat_jid=${encodeURIComponent("web:default")}`
+  );
+  const renamePayload = renameCheck.json;
   const renamedBranch = Array.isArray(renamePayload?.chats)
     ? renamePayload.chats.find((branch: any) => branch?.chat_jid === "web:branch-a")
     : null;
@@ -274,20 +299,16 @@ optionalBrowserTest("optional browser isolation: windows stay isolated across li
   expect(pageA.url()).toContain("chat_jid=web%3Abranch-a");
   expect(pageB.url()).toContain("chat_jid=web%3Abranch-b");
 
-  const pruneResponse = await fetch(`${dedicated.baseUrl}/agent/branch-prune`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: dedicated.baseUrl,
-    },
-    body: JSON.stringify({ chat_jid: "web:branch-a" }),
-  });
+  const pruneResponse = await postJsonFromPage(pageB, "/agent/branch-prune", { chat_jid: "web:branch-a" });
   expect(pruneResponse.ok).toBe(true);
   expect(pageB.url()).toContain("chat_jid=web%3Abranch-b");
 
-  const branchesResponse = await fetch(`${dedicated.baseUrl}/agent/branches?root_chat_jid=${encodeURIComponent("web:default")}`);
+  const branchesResponse = await getJsonFromPage(
+    pageB,
+    `/agent/branches?root_chat_jid=${encodeURIComponent("web:default")}`
+  );
   expect(branchesResponse.ok).toBe(true);
-  const branchesPayload = await branchesResponse.json();
+  const branchesPayload = branchesResponse.json;
   const branchChatIds = Array.isArray(branchesPayload?.chats)
     ? branchesPayload.chats.map((branch: any) => branch?.chat_jid).filter(Boolean)
     : [];

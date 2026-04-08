@@ -2,7 +2,7 @@
 
 const BLOCKED_PREFIXES = ["coverage/", "test/", "dist/", "runtime/generated/"];
 const BLOCKED_EXACT = new Set(["coverage/lcov.info", "runtime/generated/coverage/lcov.info"]);
-const REQUIRED_PACK_ENTRIES = [
+export const REQUIRED_PACK_ENTRIES = [
   "runtime/extensions/viewers/drawio-editor/index.ts",
   "runtime/extensions/viewers/drawio-editor/vendor/index.html",
   "runtime/extensions/viewers/drawio-editor/vendor/js/app.min.js",

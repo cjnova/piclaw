@@ -159,6 +159,12 @@ const groupDefinitions: GroupDefinition[] = [
     match: (relativePath) => relativePath.startsWith("agent-pool/"),
   },
   {
+    id: "agent-memory",
+    label: "agent memory and daily-note refresh",
+    notes: "Dream memory refresh, daily-note summarisation, and sparse memory sidecar coverage.",
+    match: (relativePath) => relativePath.startsWith("agent-memory/"),
+  },
+  {
     id: "channels-web-agent-flow",
     label: "channels web agent flow",
     notes: "Agent dispatch, queueing, streaming, recovery, timeline, and chat-flow behavior in the web channel.",
@@ -252,6 +258,7 @@ const groupDefinitions: GroupDefinition[] = [
         "http-rate-limit.test.ts",
         "http-route-classification.test.ts",
         "channel-endpoint-facade-service.test.ts",
+        "extension-routes.test.ts",
         "manifest.test.ts",
         "server-lifecycle-gateway-service.test.ts",
         "ui-context.test.ts",
@@ -382,6 +389,7 @@ const groupDefinitions: GroupDefinition[] = [
           "kanban-editor-source.test.ts",
           "markdown-live-preview-gating.test.ts",
           "markdown-rendering.test.ts",
+          "post-copy-markdown.test.ts",
           "mindmap-history.test.ts",
           "mindmap-layout-utils.test.ts",
           "mindmap-pane-source.test.ts",
@@ -391,6 +399,7 @@ const groupDefinitions: GroupDefinition[] = [
           "pane-live-transfer.test.ts",
           "pane-popout-contracts.test.ts",
           "pane-registry.test.ts",
+          "tab-compare-saved.test.ts",
           "terminal-pane.test.ts",
           "video-viewer-pane.test.ts",
         ])
