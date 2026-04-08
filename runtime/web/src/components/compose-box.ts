@@ -863,7 +863,7 @@ export function ComposeBox({
             } catch {
                 /* expected: background model refresh should not block command completion. */
             }
-            onPost?.();
+            onPost?.(response);
             return true;
         } catch (error) {
             console.error('Failed to switch model:', error);
@@ -1016,7 +1016,7 @@ export function ComposeBox({
                     mediaFiles: capturedMediaFiles,
                 });
                 if (intercepted) {
-                    onPost?.();
+                    onPost?.(intercepted);
                     return;
                 }
 
@@ -1058,7 +1058,7 @@ export function ComposeBox({
                     }
                 }
 
-                onPost?.();
+                onPost?.(response);
             } catch (error) {
                 if (clearAfterSubmit) {
                     restoreDraft();
