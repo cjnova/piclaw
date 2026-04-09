@@ -29,7 +29,7 @@ function isImplicitKeychainUnavailableError(error: unknown): boolean {
 }
 
 function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `"'"'`)}'`;
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 function powerShellQuote(value: string): string {

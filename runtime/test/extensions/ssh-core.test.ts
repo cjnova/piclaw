@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { EventEmitter } from "node:events";
+import { execFileSync } from "node:child_process";
+import { PassThrough, Writable } from "node:stream";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import sshCoreExtension, {
@@ -12,7 +15,12 @@ import sshCoreExtension, {
   setSshConnectionResolverForTests,
   unregisterLiveChatSshSession,
 } from "../../extensions/integrations/ssh-core/index.ts";
-import { buildScopedBashCommand } from "../../src/extensions/ssh-core.js";
+import {
+  buildScopedBashCommand,
+  PersistentRemoteShell,
+  setPersistentSshInterruptGraceMsForTests,
+  setPersistentSshSpawnForTests,
+} from "../../src/extensions/ssh-core.js";
 
 type FakeState = {
   tools: Map<string, any>;
@@ -58,6 +66,45 @@ function createFakeApi(): { api: ExtensionAPI; state: FakeState } {
   return { api, state };
 }
 
+class FakeSshChild extends EventEmitter {
+  stdinWrites: string[] = [];
+  stdout = new PassThrough();
+  stderr = new PassThrough();
+  killed = false;
+  killCalls = 0;
+  stdin = new Writable({
+    write: (chunk, _encoding, callback) => {
+      this.stdinWrites.push(Buffer.isBuffer(chunk) ? chunk.toString("utf8") : String(chunk));
+      callback();
+    },
+  });
+
+  kill(): boolean {
+    this.killed = true;
+    this.killCalls += 1;
+    queueMicrotask(() => this.emit("close", null));
+    return true;
+  }
+}
+
+const fakeConnection = {
+  sshTarget: "agent@example.com",
+  port: 22,
+  remoteCwd: "/srv/project",
+  remoteHome: "/home/agent",
+  localCwd: "/workspace",
+  localHome: "/home/agent",
+  privateKeyPath: "/tmp/test-key",
+  controlPath: "/tmp/test-control",
+  strictHostKeyChecking: "yes" as const,
+  tempDir: "/tmp/piclaw-ssh-test",
+};
+
+afterEach(() => {
+  setPersistentSshSpawnForTests(null);
+  setPersistentSshInterruptGraceMsForTests(null);
+});
+
 describe("ssh-core helpers", () => {
   test("parseSshFlag handles remote host and explicit remote path", () => {
     expect(parseSshFlag("user@example.com")).toEqual({ remote: "user@example.com" });
@@ -79,6 +126,12 @@ describe("ssh-core helpers", () => {
     );
   });
 
+  test("buildScopedBashCommand preserves commands that contain single quotes", () => {
+    const scoped = buildScopedBashCommand("printf 'ok:%s' 'quoted'");
+    const output = execFileSync("bash", ["-lc", `if true; then ${scoped}; fi`], { encoding: "utf8" });
+    expect(output).toBe("ok:quoted");
+  });
+
   test("parseSshPort and host key mode validate inputs", () => {
     expect(parseSshPort(undefined)).toBe(22);
     expect(parseSshPort("2222")).toBe(2222);
@@ -86,6 +139,36 @@ describe("ssh-core helpers", () => {
     expect(parseStrictHostKeyCheckingMode("accept-new")).toBe("accept-new");
     expect(() => parseSshPort("0")).toThrow();
     expect(() => parseStrictHostKeyCheckingMode("maybe")).toThrow();
+  });
+});
+
+describe("ssh-core persistent shell", () => {
+  test("hard-stops a wedged command after timeout", async () => {
+    const child = new FakeSshChild();
+    setPersistentSshSpawnForTests(() => child as unknown as any);
+    setPersistentSshInterruptGraceMsForTests(10);
+
+    const shell = new PersistentRemoteShell(fakeConnection as any);
+    const result = shell.exec("sleep 99", "/workspace", { onData() {}, timeout: 0.01 });
+
+    await expect(result).rejects.toThrow("timeout:0.01");
+    expect(child.stdinWrites.some((value) => value.includes("\x03"))).toBe(true);
+    expect(child.killCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  test("hard-stops a wedged command after abort", async () => {
+    const child = new FakeSshChild();
+    setPersistentSshSpawnForTests(() => child as unknown as any);
+    setPersistentSshInterruptGraceMsForTests(10);
+
+    const shell = new PersistentRemoteShell(fakeConnection as any);
+    const controller = new AbortController();
+    const result = shell.exec("sleep 99", "/workspace", { onData() {}, signal: controller.signal, timeout: 60 });
+    controller.abort();
+
+    await expect(result).rejects.toThrow("aborted");
+    expect(child.stdinWrites.some((value) => value.includes("\x03"))).toBe(true);
+    expect(child.killCalls).toBeGreaterThanOrEqual(1);
   });
 });
 

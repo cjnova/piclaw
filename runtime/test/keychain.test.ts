@@ -187,6 +187,11 @@ test("builds injected POSIX and PowerShell exec commands and redacts secret valu
       type: "token",
       secret: "stripe-secret",
     });
+    await keychain.setKeychainEntry({
+      name: "QUOTE_KEY",
+      type: "token",
+      secret: "it'" + 's-secret',
+    });
 
     const shellSecrets = await import("../src/secure/shell-secrets.js");
     const wrapped = await shellSecrets.buildInjectedPosixCommand("echo", ["$STRIPE_KEY", "keychain:STRIPE_KEY"]);
@@ -194,6 +199,8 @@ test("builds injected POSIX and PowerShell exec commands and redacts secret valu
     expect(wrapped.commandArgs).toHaveLength(2);
     expect(wrapped.commandArgs[0]).toBe("-lc");
     expect(wrapped.commandArgs[1]).toContain("STRIPE_KEY='stripe-secret' exec 'echo' '$STRIPE_KEY' 'stripe-secret'");
+
+    const wrappedWithQuote = await shellSecrets.buildInjectedPosixCommand("printf", ["%s", "keychain:QUOTE_KEY"]);
 
     const wrappedPowerShell = await shellSecrets.buildInjectedPowerShellCommand("Write-Output", ["$env:STRIPE_KEY", "keychain:STRIPE_KEY"]);
     expect(wrappedPowerShell.command).toBe("powershell");
@@ -215,6 +222,19 @@ test("builds injected POSIX and PowerShell exec commands and redacts secret valu
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
     expect(stdout.trim()).toBe("$STRIPE_KEY stripe-secret");
+
+    const procQuoted = Bun.spawn([wrappedWithQuote.command, ...wrappedWithQuote.commandArgs], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdoutQuoted, stderrQuoted, exitCodeQuoted] = await Promise.all([
+      new Response(procQuoted.stdout).text(),
+      new Response(procQuoted.stderr).text(),
+      procQuoted.exited,
+    ]);
+    expect(exitCodeQuoted).toBe(0);
+    expect(stderrQuoted).toBe("");
+    expect(stdoutQuoted).toBe("it's-secret");
 
     await expect(shellSecrets.redactKeychainSecretsInText("value=stripe-secret")).resolves.toBe("value=[REDACTED:STRIPE_KEY]");
   });
