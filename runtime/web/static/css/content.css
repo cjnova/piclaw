@@ -88,7 +88,7 @@
 @keyframes post-entry-fade {
     from {
         opacity: 0;
-        box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--search-highlight-color) 70%, transparent);
+        box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--bg-hover) 88%, transparent);
     }
     to {
         opacity: 1;

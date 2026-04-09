@@ -123,7 +123,7 @@ PACK_DIR ?= /tmp/piclaw-pack
 pack: build-piclaw ## Pack piclaw into a .tgz (outside the repo)
 	rm -rf $(PACK_DIR) && mkdir -p $(PACK_DIR)
 	bun pm pack --destination $(PACK_DIR)
-	@ls -lh $(PACK_DIR)/piclaw-*.tgz
+	@ls -lh $(PACK_DIR)/piclaw-*.tgz || true
 
 restart: ## Restart piclaw (auto-detects supervisor or systemd)
 	@if command -v supervisorctl >/dev/null 2>&1 && \
