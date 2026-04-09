@@ -1,10 +1,11 @@
 ---
 id: workspace-fts-indexing-status-feedback
 title: Add workspace FTS indexing status and feedback in the UI
-status: doing
+status: done
 priority: medium
 created: 2026-03-12
-updated: 2026-04-08
+updated: 2026-04-09
+completed: 2026-04-09
 estimate: M
 risk: medium
 tags:
@@ -53,14 +54,14 @@ search results are fresh, incomplete, or still being indexed.
 
 ## Acceptance Criteria
 
-- [ ] Workspace explorer header exposes a clear indexing state.
-- [ ] Supported states include: never indexed, indexing, ready, stale, and failed.
-- [ ] The backend exposes a small status snapshot for workspace FTS indexing (at minimum current state, last successful index time, and scope/root coverage).
-- [ ] A visible refresh/reindex action exists and shows visible state changes while running.
-- [ ] Failure/stale states are distinguishable from "no matches found".
-- [ ] Search surfaces show a small inline warning when results may be incomplete due to indexing state. *(May ship after the initial status endpoint if dedicated workspace-search UI is still absent.)*
-- [ ] Status text stays plain and user-facing.
-- [ ] No regressions in existing workspace search behavior.
+- [x] Workspace explorer header exposes a clear indexing state.
+- [x] Supported states include: never indexed, indexing, ready, stale, and failed.
+- [x] The backend exposes a small status snapshot for workspace FTS indexing (at minimum current state, last successful index time, and scope/root coverage).
+- [x] A visible refresh/reindex action exists and shows visible state changes while running.
+- [x] Failure/stale states are distinguishable from "no matches found".
+- [x] Search surfaces show a small inline warning when results may be incomplete due to indexing state. *(May ship after the initial status endpoint if dedicated workspace-search UI is still absent.)*
+- [x] Status text stays plain and user-facing.
+- [x] No regressions in existing workspace search behavior.
 
 ## Relevant Areas
 
@@ -249,6 +250,17 @@ This should **not** block the header-status MVP.
 - broad search UX overhaul beyond the header status + manual reindex control
 
 ## Updates
+
+### 2026-04-09
+- Lane change: `20-doing` → `50-done`.
+- Marked complete after implementation landed and user confirmed the indexing-status work is done.
+- Final delivered shape includes:
+  - persisted backend status seam for workspace indexing state
+  - workspace explorer header status chip
+  - visible reindex/refresh control
+  - state transitions covering never indexed, indexing, ready, stale, and failed
+  - small warning surface for incomplete search-state cases
+- Quality: ★★★★★ 9/10 (problem: 2, scope: 2, test: 2, deps: 1, risk: 2)
 
 ### 2026-04-08
 - Lane change: `10-next` → `20-doing`.

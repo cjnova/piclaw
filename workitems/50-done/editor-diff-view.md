@@ -1,10 +1,11 @@
 ---
 id: editor-diff-view
 title: Add a diff view in the editor
-status: doing
+status: done
 priority: medium
 created: 2026-03-13
-updated: 2026-04-08
+updated: 2026-04-09
+completed: 2026-04-09
 target_release: next
 estimate: M
 risk: medium
@@ -76,14 +77,14 @@ For the first implementation slice, lock the ticket to:
 
 ## Acceptance Criteria
 
-- [ ] Dirty text files in the generic web editor can open a diff view.
-- [ ] V1 comparison source is explicitly limited to **current buffer vs saved/on-disk content for the same file**.
-- [ ] The open affordance for v1 is defined and implemented as an editor-tab context-menu action.
-- [ ] The diff renders inside the existing editor surface rather than requiring an external page/tool.
-- [ ] Saved baseline content is read-only while the current-buffer side remains editable.
-- [ ] Closing/toggling the diff returns to normal editor mode without losing unsaved state.
-- [ ] Normal editor behavior for non-diff tabs remains unchanged.
-- [ ] Minimal regression coverage exists for open, render, edit-preservation, and close behavior.
+- [x] Dirty text files in the generic web editor can open a diff view.
+- [x] V1 comparison source is explicitly limited to **current buffer vs saved/on-disk content for the same file**.
+- [x] The open affordance for v1 is defined and implemented as an editor-tab context-menu action.
+- [x] The diff renders inside the existing editor surface rather than requiring an external page/tool.
+- [x] Saved baseline content is read-only while the current-buffer side remains editable.
+- [x] Closing/toggling the diff returns to normal editor mode without losing unsaved state.
+- [x] Normal editor behavior for non-diff tabs remains unchanged.
+- [x] Minimal regression coverage exists for open, render, edit-preservation, and close behavior.
 
 ## Implementation Paths
 
@@ -157,31 +158,48 @@ quickly.
   - [ ] Restore / reconnect matrix test
   - [ ] Pane / viewer contract test
   - [ ] Real-browser smoke test
-- [ ] Existing tests to rerun are listed:
-  - [ ] editor-pane / editor-extension tests
-  - [ ] tab-strip context-menu tests
-- [ ] New regression coverage to add is listed:
-  - [ ] dirty text tab exposes `Compare to Saved`
-  - [ ] diff opens using current buffer vs saved baseline
-  - [ ] baseline side is read-only
-  - [ ] editing remains possible on the current-buffer side
-  - [ ] closing diff restores normal editor mode without losing unsaved edits
-  - [ ] non-dirty or unsupported tabs do not expose the action
-- [ ] Real-browser smoke pass required? If yes, record the surface:
-  - [ ] generic text editor tab with unsaved edits
+- [x] Existing tests to rerun are listed:
+  - [x] editor-pane / editor-extension tests
+  - [x] tab-strip context-menu tests
+- [x] New regression coverage to add is listed:
+  - [x] dirty text tab exposes `Compare to Saved`
+  - [x] diff opens using current buffer vs saved baseline
+  - [x] baseline side is read-only
+  - [x] editing remains possible on the current-buffer side
+  - [x] closing diff restores normal editor mode without losing unsaved edits
+  - [x] non-dirty or unsupported tabs do not expose the action
+- [x] Real-browser smoke pass required? If yes, record the surface:
+  - [x] generic text editor tab with unsaved edits
 
 ## Definition of Done
 
-- [ ] All acceptance criteria satisfied and verified
-- [ ] Tests added or updated — passing locally
-- [ ] Type check clean
-- [ ] Docs and notes updated with links to ticket
-- [ ] Operational impact assessed
-- [ ] Follow-up tickets created for deferred scope
-- [ ] Update history complete with evidence
-- [ ] Ticket front matter updated
+- [x] All acceptance criteria satisfied and verified
+- [x] Tests added or updated — passing locally
+- [x] Type check clean
+- [x] Docs and notes updated with links to ticket
+- [x] Operational impact assessed
+- [x] Follow-up tickets created for deferred scope
+- [x] Update history complete with evidence
+- [x] Ticket front matter updated
 
 ## Updates
+
+### 2026-04-09
+- Lane change: `20-doing` → `50-done`.
+- Marked complete after implementation landed, local validation passed, and user confirmed the feature is done.
+- Final delivered shape:
+  - tab context-menu action for eligible dirty generic-editor tabs
+  - editor-owned side-by-side diff using CodeMirror `MergeView`
+  - saved baseline on the left, editable current buffer on the right
+  - theme-tinted diff styling using the active PiClaw color scheme
+  - tab-level diff-open state with host-transfer support for pane popout/reattach
+  - popout overflow can hide an active diff
+- Validation evidence:
+  - `PICLAW_DB_IN_MEMORY=1 bun test runtime/test/web/tab-compare-saved.test.ts runtime/test/web/app-pane-state.test.ts runtime/test/web/app-pane-mode-render.test.ts runtime/test/web/app-main-render-composition.test.ts runtime/test/web/app-main-shell-composition.test.ts`
+  - `bun run typecheck`
+  - `bun run build:web`
+  - user confirmation that the feature is complete
+- Quality: ★★★★★ 9/10 (problem: 2, scope: 2, test: 2, deps: 1, risk: 2)
 
 ### 2026-04-08
 - Lane change: `10-next` → `20-doing` by implementation start.
