@@ -41,36 +41,36 @@ test('shouldUseStandaloneMobileViewportFix enables for mobile runtimes and skips
   })).toBe(false);
 });
 
-test('readViewportHeight uses the visible viewport bottom when available', () => {
+test('readViewportHeight uses innerHeight by default and can include offsetTop when requested', () => {
   expect(readViewportHeight({
     window: {
       visualViewport: { height: 612.4 },
       innerHeight: 900,
     },
-  })).toBe(612);
+  })).toBe(900);
 
   expect(readViewportHeight({
     window: {
       visualViewport: { height: 612.4, offsetTop: 28.2 },
       innerHeight: 900,
     },
-  })).toBe(641);
+  })).toBe(900);
 
   expect(readViewportHeight({
     window: {
-      visualViewport: { height: 844, offsetTop: 34 },
-      innerHeight: 512,
+      visualViewport: { height: 612.4, offsetTop: 28.2 },
+      innerHeight: 900,
     },
-  })).toBe(878);
+  }, { includeOffsetTop: true })).toBe(641);
 
   expect(readViewportHeight({
     window: {
-      innerHeight: 844,
+      visualViewport: { height: 612.4 },
     },
-  })).toBe(844);
+  })).toBe(612);
 });
 
-test('syncStandaloneMobileViewport writes app height without resetting page scroll by default', () => {
+test('syncStandaloneMobileViewport writes full innerHeight when no text entry is focused', () => {
   const cssVars = new Map<string, string>();
   const windowScrolls: Array<[number, number]> = [];
   const scrollingElement = { scrollTop: 91, scrollLeft: 17 };
@@ -83,6 +83,7 @@ test('syncStandaloneMobileViewport writes app height without resetting page scro
     },
   };
   const body = { scrollTop: 19, scrollLeft: 7 };
+  const activeElement = { tagName: 'DIV', isContentEditable: false };
 
   const height = syncStandaloneMobileViewport({
     navigator: {
@@ -92,7 +93,7 @@ test('syncStandaloneMobileViewport writes app height without resetting page scro
     },
     window: {
       matchMedia: () => ({ matches: true }),
-      visualViewport: { height: 701.9 },
+      visualViewport: { height: 701.9, offsetTop: 28.2 },
       innerHeight: 900,
       scrollTo: (x: number, y: number) => windowScrolls.push([x, y]),
     },
@@ -100,11 +101,12 @@ test('syncStandaloneMobileViewport writes app height without resetting page scro
       documentElement,
       body,
       scrollingElement,
+      activeElement,
     },
   });
 
-  expect(height).toBe(702);
-  expect(cssVars.get('--app-height')).toBe('702px');
+  expect(height).toBe(900);
+  expect(cssVars.get('--app-height')).toBe('900px');
   expect((documentElement as any).dataset.mobileViewport).toBe('dynamic');
   expect(windowScrolls).toEqual([]);
   expect(scrollingElement.scrollTop).toBe(91);
@@ -115,7 +117,7 @@ test('syncStandaloneMobileViewport writes app height without resetting page scro
   expect(body.scrollLeft).toBe(7);
 });
 
-test('syncStandaloneMobileViewport can reset page scroll when explicitly requested', () => {
+test('syncStandaloneMobileViewport can include offsetTop for focused text entry and reset scroll when explicitly requested', () => {
   const cssVars = new Map<string, string>();
   const windowScrolls: Array<[number, number]> = [];
   const scrollingElement = { scrollTop: 91, scrollLeft: 17 };
@@ -128,6 +130,7 @@ test('syncStandaloneMobileViewport can reset page scroll when explicitly request
     },
   };
   const body = { scrollTop: 19, scrollLeft: 7 };
+  const activeElement = { tagName: 'TEXTAREA', isContentEditable: false };
 
   const height = syncStandaloneMobileViewport({
     navigator: {
@@ -137,7 +140,7 @@ test('syncStandaloneMobileViewport can reset page scroll when explicitly request
     },
     window: {
       matchMedia: () => ({ matches: true }),
-      visualViewport: { height: 701.9 },
+      visualViewport: { height: 701.9, offsetTop: 28.2 },
       innerHeight: 900,
       scrollTo: (x: number, y: number) => windowScrolls.push([x, y]),
     },
@@ -145,11 +148,12 @@ test('syncStandaloneMobileViewport can reset page scroll when explicitly request
       documentElement,
       body,
       scrollingElement,
+      activeElement,
     },
   }, { resetScroll: true });
 
-  expect(height).toBe(702);
-  expect(cssVars.get('--app-height')).toBe('702px');
+  expect(height).toBe(730);
+  expect(cssVars.get('--app-height')).toBe('730px');
   expect((documentElement as any).dataset.mobileViewport).toBe('dynamic');
   expect(windowScrolls).toEqual([[0, 0]]);
   expect(scrollingElement.scrollTop).toBe(0);

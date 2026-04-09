@@ -13,8 +13,8 @@ export function OobePanel({
   const isProviderMissing = kind === 'provider-missing';
   const title = isProviderMissing ? 'Connect an AI provider' : 'You’re ready to chat';
   const body = isProviderMissing
-    ? 'PiClaw is running, but it needs an AI provider before it can answer requests. Use /login to connect a provider or add an API key. This sets up provider access, not web-app sign-in.'
-    : 'A provider is available. Next, pick a model or explore the workspace to decide what you want PiClaw to work on.';
+    ? 'The workspace is running, but it needs an AI provider before it can answer requests. Use /login to connect a provider or add an API key.'
+    : 'An AI provider is available. You can use /model to select a model to use or explore the workspace to decide what you want to work on.';
 
   return html`
     <section class=${`oobe-panel oobe-panel-${kind}`} aria-label="Getting started">
