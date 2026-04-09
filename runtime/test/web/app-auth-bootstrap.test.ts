@@ -5,6 +5,7 @@ import {
   handleMessageResponseRefresh,
   loadAgentsBootstrap,
   refreshActiveChatAgents,
+  refreshModelState,
   updateAgentProfileFromEvent,
 } from '../../web/src/ui/app-auth-bootstrap.js';
 
@@ -107,6 +108,22 @@ test('applyModelStatePayload only applies present model fields', () => {
     supportsThinking: true,
     providerUsage: { prompt: 100 },
   });
+});
+
+test('refreshModelState applies the initial payload when the active-chat ref has not been primed yet', async () => {
+  const applied: any[] = [];
+
+  refreshModelState({
+    currentChatJid: 'web:default',
+    getAgentModels: async () => ({ current: null, models: [], model_options: [] }),
+    activeChatJidRef: { current: '' },
+    applyModelState: (payload) => {
+      applied.push(payload);
+    },
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(applied).toEqual([{ current: null, models: [], model_options: [] }]);
 });
 
 test('handleMessageResponseRefresh triggers queue refresh only for queued responses', () => {

@@ -141,7 +141,7 @@ export function refreshModelState(options: RefreshModelStateOptions): void {
   const targetChatJid = currentChatJid;
   getAgentModels(targetChatJid)
     .then((payload) => {
-      if (activeChatJidRef.current !== targetChatJid) return;
+      if (activeChatJidRef.current && activeChatJidRef.current !== targetChatJid) return;
       if (payload) applyModelState(payload);
     })
     .catch(() => {

@@ -7,8 +7,17 @@ import { buildInjectedShellEnv, getKeychainEntry, resolveKeychainPlaceholders } 
 import { createKeychainOutputRedactor, createStreamingTextRedactor } from "../secure/shell-secrets.js";
 const DEFAULT_EXEC_TIMEOUT_SECONDS = 300;
 const PERSISTENT_WRITE_MAX_BYTES = 256 * 1024;
+const DEFAULT_PERSISTENT_INTERRUPT_GRACE_MS = 3000;
+let persistentSshSpawn = (args, options) => spawn("ssh", args, options);
+let persistentInterruptGraceMs = DEFAULT_PERSISTENT_INTERRUPT_GRACE_MS;
+export function setPersistentSshSpawnForTests(factory) {
+    persistentSshSpawn = factory ?? ((args, options) => spawn("ssh", args, options));
+}
+export function setPersistentSshInterruptGraceMsForTests(value) {
+    persistentInterruptGraceMs = value == null ? DEFAULT_PERSISTENT_INTERRUPT_GRACE_MS : Math.max(0, value);
+}
 function shellQuote(value) {
-    return `'${value.replace(/'/g, `"'"'`)}'`;
+    return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 function escapeRegex(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -189,7 +198,7 @@ async function sshExec(connection, remoteCommand, options = {}) {
     }
     return result.stdout;
 }
-class PersistentRemoteShell {
+export class PersistentRemoteShell {
     connection;
     child = null;
     running = null;
@@ -218,19 +227,37 @@ class PersistentRemoteShell {
             throw new Error("Remote shell is disposed");
         if (this.child && !this.child.killed)
             return;
-        const child = spawn("ssh", [...buildSshBaseArgs(this.connection), "-tt", this.connection.sshTarget], {
+        const child = persistentSshSpawn([...buildSshBaseArgs(this.connection), "-tt", this.connection.sshTarget], {
             stdio: ["pipe", "pipe", "pipe"],
         });
         child.on("error", (error) => {
             if (this.running) {
-                this.running.reject(error instanceof Error ? error : new Error(String(error)));
+                const running = this.running;
                 this.cleanupRunning();
+                if (running.timedOut) {
+                    running.reject(new Error(`timeout:${running.timeout}`));
+                }
+                else if (running.aborted) {
+                    running.reject(new Error("aborted"));
+                }
+                else {
+                    running.reject(error instanceof Error ? error : new Error(String(error)));
+                }
             }
         });
         child.on("close", () => {
             if (this.running) {
-                this.running.reject(new Error("SSH shell closed unexpectedly"));
+                const running = this.running;
                 this.cleanupRunning();
+                if (running.timedOut) {
+                    running.reject(new Error(`timeout:${running.timeout}`));
+                }
+                else if (running.aborted) {
+                    running.reject(new Error("aborted"));
+                }
+                else {
+                    running.reject(new Error("SSH shell closed unexpectedly"));
+                }
             }
             this.child = null;
         });
@@ -348,6 +375,8 @@ class PersistentRemoteShell {
             return;
         if (this.running.timeoutHandle)
             clearTimeout(this.running.timeoutHandle);
+        if (this.running.hardStopHandle)
+            clearTimeout(this.running.hardStopHandle);
         if (this.running.signal && this.running.abortHandler) {
             this.running.signal.removeEventListener("abort", this.running.abortHandler);
         }
@@ -356,7 +385,23 @@ class PersistentRemoteShell {
     interruptCurrentCommand() {
         if (!this.child || this.child.killed)
             return;
-        this.child.stdin.write("\x03");
+        try {
+            this.child.stdin.write("\x03");
+        }
+        catch {
+            // ignore broken stdin while the hard-stop fallback tears down the shell
+        }
+    }
+    scheduleHardStop() {
+        const running = this.running;
+        if (!running || running.hardStopHandle || persistentInterruptGraceMs <= 0)
+            return;
+        running.hardStopHandle = setTimeout(() => {
+            if (this.running !== running)
+                return;
+            if (this.child && !this.child.killed)
+                this.child.kill();
+        }, persistentInterruptGraceMs);
     }
     async execOne(command, cwd, options) {
         await this.ensureStarted();
@@ -397,24 +442,27 @@ class PersistentRemoteShell {
                 resolve,
                 reject,
             };
+            this.running = running;
             if (effectiveTimeout > 0) {
                 running.timeoutHandle = setTimeout(() => {
                     running.timedOut = true;
                     this.interruptCurrentCommand();
+                    this.scheduleHardStop();
                 }, effectiveTimeout * 1000);
             }
             if (options.signal) {
                 running.abortHandler = () => {
                     running.aborted = true;
                     this.interruptCurrentCommand();
+                    this.scheduleHardStop();
                 };
                 if (options.signal.aborted)
                     running.abortHandler();
                 else
                     options.signal.addEventListener("abort", running.abortHandler, { once: true });
             }
-            this.running = running;
-            this.child?.stdin.write(`${wrappedCommand}\n`);
+            if (!running.aborted)
+                this.child?.stdin.write(`${wrappedCommand}\n`);
         });
     }
 }

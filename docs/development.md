@@ -86,6 +86,43 @@ PICLAW_DB_IN_MEMORY=1 bun test \
   runtime/test/workspace-search.test.ts
 ```
 
+### OOBE local container + Playwright smoke
+
+A realistic OOBE browser pass can be run against a local Docker container rather
+than only against the in-process dedicated web test instance.
+
+Default command:
+
+```bash
+bun run test:oobe:local-container
+```
+
+What it does:
+
+- ensures Playwright Chromium is available
+- builds a local image (`piclaw-oobe-test:local`) unless skipped
+- starts a temporary local Piclaw container on a random localhost port
+- runs Playwright against the live web UI
+- validates:
+  - provider-missing OOBE panel copy
+  - `/login` compose prefill
+  - dismiss persistence after reload
+  - provider-ready OOBE state
+  - `/model` compose prefill
+  - ready-state completion persistence after reload
+
+Useful flags/env:
+
+```bash
+PICLAW_OOBE_TEST_SKIP_BUILD=1 bun run test:oobe:local-container
+PICLAW_OOBE_TEST_IMAGE=pibox:latest bun run test:oobe:local-container
+PICLAW_OOBE_TEST_HEADLESS=0 bun run test:oobe:local-container
+```
+
+Implementation surface:
+
+- `runtime/scripts/playwright/oobe-local-container.ts`
+
 ## Layout
 
 See [architecture.md](architecture.md) for the full source layout and module boundaries.

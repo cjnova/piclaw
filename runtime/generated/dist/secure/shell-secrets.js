@@ -9,7 +9,7 @@ function isImplicitKeychainUnavailableError(error) {
     return typeof error === "object" && error !== null && String(error.name || "") === "OperationError";
 }
 function shellQuote(value) {
-    return `'${value.replace(/'/g, `"'"'`)}'`;
+    return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 function powerShellQuote(value) {
     return `'${value.replace(/'/g, "''")}'`;
