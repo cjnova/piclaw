@@ -1,10 +1,10 @@
 ---
 id: workspace-upload-progress-ui
 title: Large file upload fails silently in workspace explorer (320MB+)
-status: inbox
+status: review
 priority: medium
 created: 2026-03-11
-updated: 2026-03-12
+updated: 2026-04-10
 tags:
   - work-item
   - kanban
@@ -58,11 +58,11 @@ chunking) **and** the UI gives zero feedback either way.
 
 - [ ] 320MB file upload completes successfully end-to-end.
 - [ ] Root cause of silent failure identified and fixed.
-- [ ] Upload-in-progress strip appears below the workspace header while uploads are active.
-- [ ] Strip shows filename (or count for multi-file) during upload.
-- [ ] Percentage progress is shown when possible; otherwise an indeterminate spinner is shown.
-- [ ] Error state is displayed with file name, reason, and a suggested next step where possible.
-- [ ] Indicator auto-hides after completion with a brief "Done" flash.
+- [x] Upload-in-progress strip appears below the workspace header while uploads are active.
+- [x] Strip shows filename (or count for multi-file) during upload.
+- [x] Percentage progress is shown when possible; otherwise an indeterminate spinner is shown.
+- [x] Error state is displayed with file name, reason, and a suggested next step where possible.
+- [x] Indicator auto-hides after completion with a brief "Done" flash.
 - [ ] No UX regression for small/fast uploads (indicator shouldn't flash annoyingly).
 
 ## Implementation Notes
@@ -76,6 +76,16 @@ chunking) **and** the UI gives zero feedback either way.
 - Verify `maxBodySize` in config actually propagates to the HTTP server.
 
 ## Updates
+
+### 2026-04-10
+- Implemented the UX half of this ticket and moved it to review.
+- Landed in `cf3fe76a`:
+  - client-side 256 MB upload guard with explicit error message
+  - `XMLHttpRequest` upload progress path with percentage callbacks
+  - workspace upload progress strip showing filename/count, progress, error, and brief done state
+- Large-file reliability beyond the 256 MB guard remains open and was split into:
+  - `implement-streaming-chunked-workspace-uploads`
+- Follow-up audit found one race in the initial progress-strip auto-hide timers; fixed in a follow-up commit before review.
 
 ### 2026-03-12
 - Board quality review: ticket already had strong bug framing and rough acceptance criteria; kept in inbox pending prioritization against other web work.

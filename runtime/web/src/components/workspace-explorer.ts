@@ -623,6 +623,7 @@ export function WorkspaceExplorer({
     const renameInputRef  = useRef(null);
     const uploadInputRef  = useRef(null);
     const uploadTargetRef = useRef('.');
+    const uploadProgressTimerRef = useRef(0);
     const longPressTimerRef = useRef(null);
     const touchDragRef     = useRef({ path: null, dragging: false, startX: 0, startY: 0 });
     const mouseDragRef     = useRef({ path: null, dragging: false, startX: 0, startY: 0 });
@@ -660,6 +661,14 @@ export function WorkspaceExplorer({
     useEffect(() => { visibleRef.current = visible; }, [visible]);
     useEffect(() => { activeRef.current = active ?? visible; }, [active, visible]);
     useEffect(() => { dropTargetRef.current = dropTarget; }, [dropTarget]);
+
+    const clearUploadProgressTimer = useCallback(() => {
+        if (!uploadProgressTimerRef.current) return;
+        clearTimeout(uploadProgressTimerRef.current);
+        uploadProgressTimerRef.current = 0;
+    }, []);
+
+    useEffect(() => () => clearUploadProgressTimer(), [clearUploadProgressTimer]);
 
     useEffect(() => {
         if (typeof window === 'undefined') return undefined;
@@ -1883,6 +1892,7 @@ export function WorkspaceExplorer({
         if (list.length === 0) return;
         const target = targetPath && targetPath !== '' ? targetPath : '.';
         const targetLabel = target !== '.' ? target : 'workspace root';
+        clearUploadProgressTimer();
         setUploading(true);
         setUploadProgress({ current: 0, total: list.length, name: '', percent: 0, done: false, error: null });
         try {
@@ -1914,15 +1924,23 @@ export function WorkspaceExplorer({
             loadSubtreeRef.current?.(target);
             refreshWorkspaceIndexStatus();
             setUploadProgress((prev) => ({ ...prev, done: true }));
-            setTimeout(() => setUploadProgress(null), 1500);
+            clearUploadProgressTimer();
+            uploadProgressTimerRef.current = window.setTimeout(() => {
+                uploadProgressTimerRef.current = 0;
+                setUploadProgress(null);
+            }, 1500);
         } catch (err) {
             setError(err.message || 'Failed to upload file');
             setUploadProgress((prev) => prev ? { ...prev, error: err.message || 'Upload failed' } : null);
-            setTimeout(() => setUploadProgress(null), 4000);
+            clearUploadProgressTimer();
+            uploadProgressTimerRef.current = window.setTimeout(() => {
+                uploadProgressTimerRef.current = 0;
+                setUploadProgress(null);
+            }, 4000);
         } finally {
             setUploading(false);
         }
-    }, []);
+    }, [clearUploadProgressTimer]);
 
     const moveEntryToTarget = useCallback(async (sourcePath, targetPath) => {
         if (!sourcePath) return;
