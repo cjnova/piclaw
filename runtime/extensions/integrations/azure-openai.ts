@@ -1161,6 +1161,22 @@ function streamAzureOpenAIResponses(model: any, context: any, options: any) {
       // reconstructed ResponseInput so gpt-5.3-codex sees the same phases on replay.
       const phaseById = collectMessagePhases(context.messages || []);
       const rawMessages = convertResponsesMessages(model, context, TOOL_CALL_PROVIDERS);
+
+      // Sanitize function_call items: Azure Responses API requires `arguments` to be
+      // a non-empty string. convertResponsesMessages may produce undefined arguments
+      // when the stored toolCall.arguments is undefined (e.g. cross-provider replay,
+      // empty-arg tool calls, or compaction artifacts). This causes silent
+      // response.failed with error=null in streaming mode.
+      for (const item of rawMessages) {
+        if ((item as any).type === "function_call") {
+          const args = (item as any).arguments;
+          if (args === undefined || args === null) {
+            (item as any).arguments = "{}";
+          } else if (typeof args !== "string") {
+            (item as any).arguments = JSON.stringify(args);
+          }
+        }
+      }
       applyPhasesToResponseInput(rawMessages as Array<any>, phaseById);
       const toolCallLimit = MODEL_TOOL_CALL_LIMITS[model.id] ?? TOOL_CALL_LIMIT;
       const toolCallTrim = applyToolCallLimit(rawMessages as Array<any>, {

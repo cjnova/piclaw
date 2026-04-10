@@ -115,3 +115,52 @@ describe("Slice 2: Tool-flow reasoning cap", () => {
     expect(capToolFlowReasoning("gpt-99", "high", true)).toBe("high");
   });
 });
+
+describe("Function call arguments sanitization", () => {
+  // The sanitization happens inside streamAzureOpenAIResponses which is hard to
+  // unit test directly. Instead we export a helper and test the pattern inline.
+  // These tests verify the logic that should be applied after convertResponsesMessages.
+
+  function sanitizeFunctionCallArguments(items: any[]): void {
+    for (const item of items) {
+      if (item.type === "function_call") {
+        const args = item.arguments;
+        if (args === undefined || args === null) {
+          item.arguments = "{}";
+        } else if (typeof args !== "string") {
+          item.arguments = JSON.stringify(args);
+        }
+      }
+    }
+  }
+
+  test("undefined arguments become '{}'", () => {
+    const items = [{ type: "function_call", call_id: "c1", name: "bash", arguments: undefined }];
+    sanitizeFunctionCallArguments(items);
+    expect(items[0].arguments).toBe("{}");
+  });
+
+  test("null arguments become '{}'", () => {
+    const items = [{ type: "function_call", call_id: "c1", name: "bash", arguments: null }];
+    sanitizeFunctionCallArguments(items);
+    expect(items[0].arguments).toBe("{}");
+  });
+
+  test("object arguments are JSON-stringified", () => {
+    const items = [{ type: "function_call", call_id: "c1", name: "bash", arguments: { command: "ls" } }];
+    sanitizeFunctionCallArguments(items);
+    expect(items[0].arguments).toBe('{"command":"ls"}');
+  });
+
+  test("string arguments are preserved as-is", () => {
+    const items = [{ type: "function_call", call_id: "c1", name: "bash", arguments: '{"command":"ls"}' }];
+    sanitizeFunctionCallArguments(items);
+    expect(items[0].arguments).toBe('{"command":"ls"}');
+  });
+
+  test("non-function_call items are not modified", () => {
+    const items = [{ type: "message", role: "assistant", content: [] }];
+    sanitizeFunctionCallArguments(items);
+    expect((items[0] as any).arguments).toBeUndefined();
+  });
+});
