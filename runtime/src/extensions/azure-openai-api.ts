@@ -5,11 +5,36 @@
  * does not depend directly on fragile deep implementation paths.
  */
 
-import {
+import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const OPENAI_RESPONSES_SHARED_RELATIVE_PATH = join(
+  "@mariozechner",
+  "pi-ai",
+  "dist",
+  "providers",
+  "openai-responses-shared.js",
+);
+
+export function resolvePiAiResponsesSharedModulePath(startDir: string = __dirname): string {
+  let dir = startDir;
+  for (let i = 0; i < 10; i += 1) {
+    const candidate = join(dir, "node_modules", OPENAI_RESPONSES_SHARED_RELATIVE_PATH);
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  throw new Error(`Unable to resolve ${OPENAI_RESPONSES_SHARED_RELATIVE_PATH} from ${startDir}`);
+}
+
+const {
   convertResponsesMessages,
   convertResponsesTools,
   processResponsesStream,
-} from "@mariozechner/pi-ai/dist/providers/openai-responses-shared.js";
+} = await import(pathToFileURL(resolvePiAiResponsesSharedModulePath()).href);
 
 export { applyToolCallLimit } from "../utils/azure-tool-call-limit.js";
 

@@ -918,11 +918,18 @@ async function generateFoundryImage(model: string, args: ImageArgs) {
   return images;
 }
 
-function saveImages(prefix: string, prompt: string, images: Array<{ b64_json?: string }>) {
+export type SavedImageFile = {
+  absPath: string;
+  relPath: string;
+  rawUrl: string;
+  alt: string;
+};
+
+function saveImages(prefix: string, prompt: string, images: Array<{ b64_json?: string }>): SavedImageFile[] {
   const outDir = join("/workspace", "exports", "images");
   mkdirSync(outDir, { recursive: true });
 
-  const lines: string[] = [];
+  const files: SavedImageFile[] = [];
   images.forEach((image, idx) => {
     const b64 = image.b64_json;
     if (!b64) return;
@@ -931,11 +938,70 @@ function saveImages(prefix: string, prompt: string, images: Array<{ b64_json?: s
     const relPath = join("exports", "images", filename).replace(/\\/g, "/");
     const absPath = join("/workspace", relPath);
     writeFileSync(absPath, buffer);
-    const url = `/workspace/raw?path=${encodeURIComponent(relPath)}`;
-    lines.push(`![${prompt}](${url})`);
-    lines.push(`Download: ${url}`);
+    files.push({
+      absPath,
+      relPath,
+      rawUrl: `/workspace/raw?path=${encodeURIComponent(relPath)}`,
+      alt: prompt,
+    });
   });
-  return lines;
+  return files;
+}
+
+export function formatGeneratedImageMessage(caption: string, files: SavedImageFile[]): string {
+  const lines: string[] = [caption];
+  if (files.length > 0) lines.push("");
+  for (const file of files) {
+    lines.push(`![${file.alt}](${file.rawUrl})`);
+  }
+  if (files.length > 0) {
+    lines.push("", "Files:");
+    for (const file of files) {
+      lines.push(`- ${file.absPath}`);
+    }
+  }
+  return lines.join("\n").trim();
+}
+
+export function formatImageGenerationError(providerLabel: string, error: unknown): string {
+  const prefix = `❌ Image generation failed (${providerLabel})`;
+  if (error instanceof Error) {
+    const raw = error.message || String(error);
+    if (/(^|\b)(connection error|unable to connect|fetch failed|econnrefused|econnreset|enotfound|etimedout|timed out|timeout)(\b|$)/i.test(raw)) {
+      return `${prefix}: Unable to connect to the configured proxy or upstream endpoint.`;
+    }
+    // Try to extract structured API error details
+    const jsonMatch = raw.match(/\{[\s\S]*"error"[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        const err = parsed.error || parsed;
+        const code = err.code || err.statusCode || "";
+        const msg = err.message || err.error || raw;
+        return `${prefix}: ${code ? `[${code}] ` : ""}${msg}`;
+      } catch { /* fall through */ }
+    }
+    // Extract HTTP status prefix like "400 ..." or "500 ..."
+    const httpMatch = raw.match(/^(\d{3})\s+(.+)/s);
+    if (httpMatch) {
+      const [, status, body] = httpMatch;
+      // Try parsing body as JSON
+      try {
+        const parsed = JSON.parse(body);
+        const err = parsed.error || parsed;
+        const code = err.code || status;
+        const msg = err.message || body;
+        return `${prefix}: [${code}] ${msg}`;
+      } catch { /* fall through */ }
+      return `${prefix}: HTTP ${status} — ${body.slice(0, 300)}`;
+    }
+    // ZlibError or other named errors
+    if (raw.includes("ZlibError")) {
+      return `${prefix}: Response decompression failed (ZlibError). The upstream response may be too large or corrupt.`;
+    }
+    return `${prefix}: ${raw.slice(0, 500)}`;
+  }
+  return `${prefix}: ${String(error).slice(0, 500)}`;
 }
 
 const PICLAW_PORT = process.env.PICLAW_WEB_PORT || process.env.PICLAW_PORT || "8080";
@@ -1430,42 +1496,6 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
-  function formatError(prefix: string, error: unknown): string {
-    if (error instanceof Error) {
-      const raw = error.message || String(error);
-      // Try to extract structured API error details
-      const jsonMatch = raw.match(/\{[\s\S]*"error"[\s\S]*\}/);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0]);
-          const err = parsed.error || parsed;
-          const code = err.code || err.statusCode || "";
-          const msg = err.message || err.error || raw;
-          return `❌ ${prefix}: ${code ? `[${code}] ` : ""}${msg}`;
-        } catch { /* fall through */ }
-      }
-      // Extract HTTP status prefix like "400 ..." or "500 ..."
-      const httpMatch = raw.match(/^(\d{3})\s+(.+)/s);
-      if (httpMatch) {
-        const [, status, body] = httpMatch;
-        // Try parsing body as JSON
-        try {
-          const parsed = JSON.parse(body);
-          const err = parsed.error || parsed;
-          const code = err.code || status;
-          const msg = err.message || body;
-          return `❌ ${prefix}: [${code}] ${msg}`;
-        } catch { /* fall through */ }
-        return `❌ ${prefix}: HTTP ${status} — ${body.slice(0, 300)}`;
-      }
-      // ZlibError or other named errors
-      if (raw.includes("ZlibError")) {
-        return `❌ ${prefix}: Response decompression failed (ZlibError). The upstream response may be too large or corrupt.`;
-      }
-      return `❌ ${prefix}: ${raw.slice(0, 500)}`;
-    }
-    return `❌ ${prefix}: ${String(error).slice(0, 500)}`;
-  }
 
   pi.registerCommand("image", {
     description: "Generate an image with Azure OpenAI",
@@ -1492,12 +1522,11 @@ export default function (pi: ExtensionAPI) {
       void (async () => {
         try {
           const images = await generateImage(BASE_URL, AOAI_IMAGE_MODEL_ID, parsed, true);
-          const lines = saveImages("azure-image", parsed.prompt, images);
+          const files = saveImages("azure-image", parsed.prompt, images);
           const caption = `Azure image (${AOAI_IMAGE_MODEL_ID}, ${snappedSize}) — ${parsed.prompt}`;
-          const message = [caption, "", ...lines].join("\n");
-          await deliver("image", placeholderId, message);
+          await deliver("image", placeholderId, formatGeneratedImageMessage(caption, files));
         } catch (error) {
-          await deliver("image", placeholderId, formatError("Image generation failed", error));
+          await deliver("image", placeholderId, formatImageGenerationError("Azure OpenAI", error));
         }
       })();
     },
@@ -1527,12 +1556,11 @@ export default function (pi: ExtensionAPI) {
       void (async () => {
         try {
           const images = await generateFoundryImage(FOUNDRY_IMAGE_MODEL_ID, parsed);
-          const lines = saveImages("foundry-image", parsed.prompt, images);
+          const files = saveImages("foundry-image", parsed.prompt, images);
           const caption = `Foundry image (${FOUNDRY_IMAGE_MODEL_ID}, ${size.width}×${size.height}) — ${parsed.prompt}`;
-          const message = [caption, "", ...lines].join("\n");
-          await deliver("flux", placeholderId, message);
+          await deliver("flux", placeholderId, formatGeneratedImageMessage(caption, files));
         } catch (error) {
-          await deliver("flux", placeholderId, formatError("Foundry image generation failed", error));
+          await deliver("flux", placeholderId, formatImageGenerationError("Azure Foundry", error));
         }
       })();
     },
