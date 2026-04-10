@@ -50,7 +50,7 @@ describe("audit-baseline-quality-deterministic", () => {
     expect(lines).toContain("channels-web-http-routes\t29\tchannels web http and route surfaces");
     expect(lines).toContain("channels-web-media-workspace-remote\t15\tchannels web media, workspace, and remote surfaces");
     expect(lines).toContain("web-ui-interaction-and-state\t65\tweb ui interaction and state");
-    expect(lines).toContain("web-ui-rendering-and-panes\t47\tweb ui rendering and panes");
+    expect(lines).toContain("web-ui-rendering-and-panes\t49\tweb ui rendering and panes");
     expect(lines).toContain("web-ui-remote-and-workspace\t9\tweb ui remote and workspace");
   });
 

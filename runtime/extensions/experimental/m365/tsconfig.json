@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "types": ["node"],
+    "allowImportingTsExtensions": true,
+    "ignoreDeprecations": "5.0",
+    "strict": false,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": [
+    "index.ts",
+    "shared.ts",
+    "tests/**/*.ts",
+    "pi-coding-agent.d.ts"
+  ]
+}

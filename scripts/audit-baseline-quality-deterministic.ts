@@ -403,7 +403,9 @@ const groupDefinitions: GroupDefinition[] = [
           "pane-registry.test.ts",
           "tab-compare-saved.test.ts",
           "terminal-pane.test.ts",
+          "theme.test.ts",
           "video-viewer-pane.test.ts",
+          "zip-preview.test.ts",
         ])
         || isAppRenderingPaneTest(relativePath)
       ),

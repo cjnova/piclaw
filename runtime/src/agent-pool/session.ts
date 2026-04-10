@@ -67,6 +67,7 @@ const OPTIONAL_EXTENSIONS: { path: string; envGate?: string }[] = [
   { path: resolve(EXTENSIONS_DIR, "viewers", "office-viewer", "index.ts") },
   { path: resolve(EXTENSIONS_DIR, "integrations", "office-tools", "index.ts") },
   { path: resolve(EXTENSIONS_DIR, "viewers", "drawio-editor", "index.ts") },
+  { path: resolve(EXTENSIONS_DIR, "experimental", "m365", "index.ts"), envGate: "PICLAW_ENABLE_M365_EXPERIMENTAL" },
 ];
 
 const PACKAGED_EXTENSION_ENTRIES = [
