@@ -239,6 +239,10 @@ export class AgentPool {
     return this.runtimeFacade.getContextUsageForChat(chatJid);
   }
 
+  getSessionTreeForChat(chatJid: string): { leafId: string | null; nodes: unknown[] } | null {
+    return this.runtimeFacade.getSessionTreeForChat(chatJid);
+  }
+
   /**
    * Save the current session tree position so it can be restored later.
    * Used by the scheduler to isolate task execution in a side branch.
