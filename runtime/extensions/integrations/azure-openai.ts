@@ -1407,8 +1407,11 @@ function streamAzureOpenAIResponses(model: any, context: any, options: any) {
                 streamErrorDetail = `Azure response failed (status: ${resp.status})`;
               } else {
                 // response.failed with error:null and empty output is the
-                // fingerprint of Azure streaming TPM exhaustion. Flag it so
-                // the retry loop uses a longer backoff.
+                // fingerprint of Azure streaming TPM exhaustion. Azure may
+                // emit response.failed with error=null and no output instead
+                // of a normal HTTP 429 / Retry-After in streaming mode. Flag
+                // it so the retry loop uses a longer backoff and can surface
+                // clearer user-facing feedback.
                 const hasOutput = Array.isArray(resp?.output) && resp.output.length > 0;
                 if (!hasOutput) {
                   looksLikeRateLimit = true;
@@ -1469,8 +1472,10 @@ function streamAzureOpenAIResponses(model: any, context: any, options: any) {
         console.error(`[azure-openai] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed (${detail})${looksLikeRateLimit ? " [rate-limit backoff]" : ""}, retrying in ${delayMs}ms...`);
 
         // Push a visible status message into the stream so the user sees
-        // what is happening instead of a silent hang. The text block is
-        // cleared when the retry resets output.content on the next attempt.
+        // what is happening instead of a silent hang. Without this, Azure's
+        // silent streaming failure shape looks like the model simply stalled.
+        // The text block is intentionally transient and is cleared when the
+        // retry resets output.content on the next attempt.
         if (streamStarted) {
           const delaySec = Math.round(delayMs / 1000);
           const retryMsg = looksLikeRateLimit
