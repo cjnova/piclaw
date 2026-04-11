@@ -79,27 +79,3 @@ export interface RuntimeTimingConfig {
   ipcPollIntervalMs: number;
   timezone: string;
 }
-
-// ---------------------------------------------------------------------------
-// Tool output retention settings – used by db/tool-outputs.ts.
-// ---------------------------------------------------------------------------
-
-/** Typed tool-output retention settings grouped for runtime startup wiring. */
-export interface ToolOutputConfig {
-  retentionDays: number;
-  cleanupIntervalMs: number;
-}
-
-/** Grouped tool-output retention settings. */
-export const TOOL_OUTPUT_CONFIG = Object.freeze<ToolOutputConfig>({
-  retentionDays: parseInt(process.env.PICLAW_TOOL_OUTPUT_RETENTION_DAYS || "30", 10),
-  cleanupIntervalMs: parseInt(
-    process.env.PICLAW_TOOL_OUTPUT_CLEANUP_INTERVAL_MS || String(12 * 60 * 60 * 1000),
-    10
-  ),
-});
-
-/** Return the grouped tool-output settings for startup wiring and tests. */
-export function getToolOutputConfig(): Readonly<ToolOutputConfig> {
-  return TOOL_OUTPUT_CONFIG;
-}

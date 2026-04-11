@@ -16,7 +16,7 @@ describe("send_dashboard_widget tool", () => {
 
     try {
       sendDashboardWidget({
-        on(event: string, handler: (event: any) => Promise<any>) {},
+        on(_event: string, _handler: (event: any) => Promise<any>) {},
         registerTool(def: any) { tools.set(def.name, def); },
       } as any);
 
