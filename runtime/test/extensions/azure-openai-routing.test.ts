@@ -7,7 +7,14 @@
  * - Slice 3: Foundry compat flags on model registration
  */
 import { expect, test, describe } from "bun:test";
-import { registerAzureProviders, capToolFlowReasoning, getAzureMaxEstimatedInputTokens } from "../../extensions/integrations/azure-openai.ts";
+import {
+  registerAzureProviders,
+  capToolFlowReasoning,
+  getAzureContextInputBudget,
+  getAzureMaxEstimatedInputTokens,
+  getAzureResponsesReasoningConfig,
+  getAzureResponsesTextConfig,
+} from "../../extensions/integrations/azure-openai.ts";
 
 describe("Slice 1: Responses-only routing", () => {
   test("gpt-5-4-pro is registered with the Responses API name", () => {
@@ -83,12 +90,59 @@ describe("Slice 3: Foundry compat flags", () => {
 });
 
 describe("Proactive token-budget guard", () => {
-  test("gpt-5-4 uses a conservative share of its TPM budget", () => {
-    expect(getAzureMaxEstimatedInputTokens("gpt-5-4")).toBe(65000);
+  test("gpt-5-4 falls back to a context-aware budget when only default TPM is known", () => {
+    expect(getAzureContextInputBudget("gpt-5-4")).toBe(900000);
+    expect(getAzureMaxEstimatedInputTokens("gpt-5-4")).toBe(900000);
   });
 
   test("unknown models fall back to the absolute cap", () => {
+    expect(getAzureContextInputBudget("unknown-model")).toBe(120000);
     expect(getAzureMaxEstimatedInputTokens("unknown-model")).toBe(120000);
+  });
+});
+
+describe("Responses text config", () => {
+  test("defaults Azure GPT-5 text verbosity to medium", () => {
+    expect(getAzureResponsesTextConfig()).toEqual({
+      format: { type: "text" },
+      verbosity: "medium",
+    });
+  });
+
+  test("preserves supported verbosity overrides", () => {
+    expect(getAzureResponsesTextConfig("low").verbosity).toBe("low");
+    expect(getAzureResponsesTextConfig("high").verbosity).toBe("high");
+  });
+
+  test("clamps unsupported verbosity to medium", () => {
+    expect(getAzureResponsesTextConfig("weird").verbosity).toBe("medium");
+  });
+});
+
+describe("Responses reasoning config", () => {
+  test("defaults reasoning summary to detailed when omitted", () => {
+    expect(getAzureResponsesReasoningConfig("gpt-5-4", { reasoningEffort: "high" }, false)).toEqual({
+      effort: "high",
+      summary: "detailed",
+    });
+  });
+
+  test("preserves supported reasoning summary overrides", () => {
+    expect(getAzureResponsesReasoningConfig("gpt-5-4", { reasoningEffort: "medium", reasoningSummary: "concise" }, false)).toEqual({
+      effort: "medium",
+      summary: "concise",
+    });
+  });
+
+  test("applies tool-flow effort cap without dropping the summary", () => {
+    expect(getAzureResponsesReasoningConfig("gpt-5-mini", { reasoningEffort: "high" }, true)).toEqual({
+      effort: "medium",
+      summary: "detailed",
+    });
+  });
+
+  test("returns null when reasoning is fully disabled", () => {
+    expect(getAzureResponsesReasoningConfig("gpt-5-4", undefined, false)).toBeNull();
   });
 });
 

@@ -176,24 +176,76 @@ export function capToolFlowReasoning(modelId: string, effort: string, hasTools: 
 // Preflight input-budget guard:
 // We proactively trim replayed tool history before sending when the estimated
 // input size would consume too much of the deployment's per-minute TPM budget.
-// The estimate is intentionally conservative: a false positive only trims more
-// history, while a false negative still risks Azure returning a silent
-// response.failed throttle/error in streaming mode.
+// When live deployment TPM is unavailable (common in proxy/static-key mode),
+// do not let stale baked-in TPM defaults collapse a million-token model into a
+// 65k replay budget. In that case, fall back to the model's registered context
+// window with a reserved output headroom.
 const MAX_TPM_SHARE = Math.min(0.95, Math.max(0.1, Number(process.env.AOAI_MAX_TPM_SHARE || "0.65")));
 const ABSOLUTE_INPUT_TOKEN_CAP = Math.max(16000, Number(process.env.AOAI_ABSOLUTE_INPUT_TOKEN_CAP || "120000"));
+const CONTEXT_AWARE_INPUT_TOKEN_CAP = Math.max(
+  ABSOLUTE_INPUT_TOKEN_CAP,
+  Number(process.env.AOAI_CONTEXT_AWARE_INPUT_TOKEN_CAP || "900000")
+);
+const CONTEXT_OUTPUT_RESERVE = Math.max(16000, Number(process.env.AOAI_CONTEXT_OUTPUT_RESERVE || "65536"));
+
+/**
+ * Derive a context-window-based replay budget for Azure models.
+ *
+ * This is used when live deployment TPM is unavailable or untrustworthy, such
+ * as proxy/static-key mode. It keeps a chunk of output headroom while allowing
+ * long-context models to actually use their advertised window.
+ */
+export function getAzureContextInputBudget(modelId: string): number {
+  const spec = MODEL_SPECS[modelId];
+  if (!spec?.contextWindow) return ABSOLUTE_INPUT_TOKEN_CAP;
+  const maxTokens = spec.maxTokens || DEFAULT_AZURE_SPEC.maxTokens;
+  const reserve = Math.max(16000, Math.min(CONTEXT_OUTPUT_RESERVE, maxTokens || CONTEXT_OUTPUT_RESERVE));
+  return Math.max(16000, Math.min(CONTEXT_AWARE_INPUT_TOKEN_CAP, spec.contextWindow - reserve));
+}
 
 /**
  * Derive the proactive preflight budget for one Azure model.
  *
- * Prefer live deployment TPM caps when available, otherwise fall back to a
- * conservative absolute ceiling. This budget is applied only to reconstructed
- * request input, not output tokens, because the goal is to avoid replaying a
- * massive history that will immediately consume the turn's TPM headroom.
+ * Prefer live deployment TPM caps when available. When we only have baked-in
+ * fallback rate defaults, prefer the model's context window instead of an
+ * artificially tiny TPM-derived budget.
  */
 export function getAzureMaxEstimatedInputTokens(modelId: string): number {
+  const contextBudget = getAzureContextInputBudget(modelId);
   const tpm = MODEL_RATE_LIMITS[modelId]?.tpm;
-  if (!tpm || !Number.isFinite(tpm) || tpm <= 0) return ABSOLUTE_INPUT_TOKEN_CAP;
-  return Math.max(16000, Math.min(ABSOLUTE_INPUT_TOKEN_CAP, Math.floor(tpm * MAX_TPM_SHARE)));
+  const rateLimitSource = MODEL_RATE_LIMIT_SOURCES[modelId];
+  if (rateLimitSource !== "live") return contextBudget;
+  if (!tpm || !Number.isFinite(tpm) || tpm <= 0) return contextBudget;
+  return Math.max(16000, Math.min(contextBudget, Math.floor(tpm * MAX_TPM_SHARE)));
+}
+
+export function getAzureResponsesTextConfig(textVerbosity?: string): { format: { type: "text" }; verbosity: "low" | "medium" | "high" } {
+  const verbosity = textVerbosity === "low" || textVerbosity === "high" || textVerbosity === "medium"
+    ? textVerbosity
+    : "medium";
+  return {
+    format: { type: "text" },
+    verbosity,
+  };
+}
+
+export function getAzureResponsesReasoningConfig(
+  modelId: string,
+  options?: { reasoningEffort?: string | null; reasoningSummary?: string | null },
+  toolsEnabled = false,
+): { effort: string; summary: "auto" | "concise" | "detailed" } | null {
+  if (!options?.reasoningEffort && !options?.reasoningSummary) return null;
+
+  let effort = options.reasoningEffort || "medium";
+  effort = capToolFlowReasoning(modelId, effort, toolsEnabled);
+
+  const summary = options.reasoningSummary === "auto"
+    || options.reasoningSummary === "concise"
+    || options.reasoningSummary === "detailed"
+    ? options.reasoningSummary
+    : "detailed";
+
+  return { effort, summary };
 }
 const DISABLE_REASONING_MODELS = new Set(
   (process.env.AOAI_DISABLE_REASONING_MODELS || "")
@@ -246,6 +298,8 @@ type RateLimit = {
   tpm?: number;
 };
 
+type RateLimitSource = "default" | "live";
+
 const MODEL_RATE_LIMIT_DEFAULTS: Record<string, RateLimit> = {
   "gpt-4o": { rpm: 100, tpm: 100000 },
   "gpt-4o-mini": { rpm: 1000, tpm: 100000 },
@@ -261,6 +315,9 @@ const MODEL_RATE_LIMIT_DEFAULTS: Record<string, RateLimit> = {
 let MODEL_SPECS = { ...BASE_MODEL_SPECS };
 const MODEL_CAPABILITIES: Record<string, ModelCapability> = {};
 const MODEL_RATE_LIMITS: Record<string, RateLimit> = { ...MODEL_RATE_LIMIT_DEFAULTS };
+const MODEL_RATE_LIMIT_SOURCES: Record<string, RateLimitSource> = Object.fromEntries(
+  Object.keys(MODEL_RATE_LIMIT_DEFAULTS).map((id) => [id, "default"])
+) as Record<string, RateLimitSource>;
 const DEFAULT_AZURE_SPEC = { contextWindow: 400000, maxTokens: 128000, reasoning: true };
 const DEFAULT_FOUNDRY_SPEC = { contextWindow: 200000, maxTokens: 64000, reasoning: false };
 let extensionLogged = false;
@@ -545,6 +602,9 @@ function applyAzureModelCaps(models: any[], deployments: any[]): number {
     }
     if (ratesChanged) {
       MODEL_RATE_LIMITS[deploymentName] = nextRates;
+    }
+    if (rpm !== undefined || tpm !== undefined) {
+      MODEL_RATE_LIMIT_SOURCES[deploymentName] = "live";
     }
     if (specChanged || capsChanged || ratesChanged) {
       updated += 1;
@@ -1382,7 +1442,7 @@ function streamAzureOpenAIResponses(model: any, context: any, options: any) {
       // Only include OpenAI-specific params for models that support them
       if (reasoningEnabled) {
         params.prompt_cache_key = options?.sessionId;
-        params.text = { format: { type: "text" } };
+        params.text = getAzureResponsesTextConfig(options?.textVerbosity);
       }
 
       if (options?.maxTokens) {
@@ -1412,18 +1472,20 @@ function streamAzureOpenAIResponses(model: any, context: any, options: any) {
       }
 
       if (reasoningEnabled) {
-        if (options?.reasoningEffort || options?.reasoningSummary) {
-          // Azure OpenAI only supports a minimal reasoning payload.
-          // Unsupported fields like `summary` and `include` cause silent
-          // failures (response.failed with error: null). Some models
-          // (e.g. gpt-5.3-chat) also restrict effort to "medium" only.
-          // We send effort but omit summary and include for Azure.
-          let effort = options?.reasoningEffort || "medium";
-
-          // Slice 2: cap reasoning for tool-heavy flows on unstable models.
-          effort = capToolFlowReasoning(model.id, effort, toolsEnabled && context.tools?.length > 0);
-
-          params.reasoning = { effort };
+        const reasoning = getAzureResponsesReasoningConfig(
+          model.id,
+          {
+            reasoningEffort: options?.reasoningEffort ?? null,
+            reasoningSummary: options?.reasoningSummary ?? null,
+          },
+          toolsEnabled && context.tools?.length > 0,
+        );
+        if (reasoning) {
+          // Azure accepts reasoning.summary, but include=encryped_content has
+          // historically triggered silent response.failed behavior in this
+          // runtime path. Keep include disabled here unless a replay proves it
+          // safe for our proxy/deployment mix.
+          params.reasoning = reasoning;
         }
       }
       // Delay client creation until attempt time so refreshed tokens and any

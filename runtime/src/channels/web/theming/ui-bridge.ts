@@ -106,18 +106,21 @@ export class UiBridge {
         reload: () => session.reload(),
       },
       onError: (error) => {
+        const errorRecord = error && typeof error === "object"
+          ? error as unknown as Record<string, unknown>
+          : null;
         const formattedError = error instanceof Error
           ? error.message
-          : error && typeof error === "object"
+          : errorRecord
             ? [
-                typeof (error as Record<string, unknown>).error === "string"
-                  ? (error as Record<string, unknown>).error
+                typeof errorRecord.error === "string"
+                  ? errorRecord.error
                   : null,
-                typeof (error as Record<string, unknown>).event === "string"
-                  ? `during ${(error as Record<string, unknown>).event}`
+                typeof errorRecord.event === "string"
+                  ? `during ${errorRecord.event}`
                   : null,
-                typeof (error as Record<string, unknown>).extensionPath === "string"
-                  ? `in ${(error as Record<string, unknown>).extensionPath}`
+                typeof errorRecord.extensionPath === "string"
+                  ? `in ${errorRecord.extensionPath}`
                   : null,
               ].filter(Boolean).join(" ") || String(error)
             : String(error);
