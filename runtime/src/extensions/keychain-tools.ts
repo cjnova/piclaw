@@ -83,6 +83,7 @@ function buildInjectedBashEnvHint(): string {
     return [
       "## Bash secret env",
       "Keychain entries whose names are valid shell env vars are auto-injected into local bash and SSH bash environments when present.",
+      "Never fetch a keychain secret and paste it into a bash command. Use $ENTRY_NAME instead.",
     ].join("\n");
   }
 
@@ -90,9 +91,9 @@ function buildInjectedBashEnvHint(): string {
   const more = names.length > 20 ? `\n- … ${names.length - 20} more` : "";
   return [
     "## Bash secret env",
-    "The following keychain entries are auto-injected into local bash and SSH bash environments:",
+    "The following keychain entries are auto-injected as environment variables into local bash and SSH bash environments:",
     `${preview}${more}`,
-    "Use the env var names directly in bash commands; the values stay in keychain storage.",
+    "Reference these as $VAR_NAME in bash commands. Do NOT call keychain get and inline the secret into the command.",
   ].join("\n");
 }
 
@@ -120,8 +121,8 @@ export const keychainTools: ExtensionFactory = (pi: ExtensionAPI) => {
   pi.registerTool({
     name: "keychain",
     label: "keychain",
-    description: "List keychain entries, retrieve values, store/update entries, or delete entries.",
-    promptSnippet: "keychain: list/get/set/delete secure keychain entries by name.",
+    description: "List keychain entries, retrieve values, store/update entries, or delete entries. Entries whose names are valid shell identifiers are automatically injected as environment variables into bash and SSH commands — do NOT fetch secrets and inline them into shell commands; just reference $ENTRY_NAME directly.",
+    promptSnippet: "keychain: list/get/set/delete secure keychain entries by name. Secrets are auto-injected as env vars into bash — never inline them into commands.",
     parameters: KeychainToolSchema,
     async execute(_toolCallId, params) {
       if (params.action === "list") {
@@ -135,8 +136,12 @@ export const keychainTools: ExtensionFactory = (pi: ExtensionAPI) => {
         }
 
         const lines = entries.map((entry) => `• ${entry.name} (${entry.type})`);
+        const injectable = listInjectableKeychainEnvNames();
+        const envNote = injectable.length > 0
+          ? `\n\nEntries with shell-safe names are auto-injected as env vars into bash. Use $NAME in commands instead of inlining secrets.`
+          : '';
         return {
-          content: [{ type: "text", text: `Keychain entries (${entries.length}):\n${lines.join("\n")}` }],
+          content: [{ type: "text", text: `Keychain entries (${entries.length}):\n${lines.join("\n")}${envNote}` }],
           details: { count: entries.length, entries, name: "", field: "", type: "" },
         };
       }
