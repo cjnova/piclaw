@@ -387,7 +387,7 @@
     flex: 1;
     min-height: 0;
     background: var(--bg-primary, #0f1117);
-    overflow: auto;
+    overflow: hidden;
 }
 
 .floating-widget-frame {
@@ -411,9 +411,10 @@
 .session-tree-widget {
     display: flex;
     flex-direction: column;
-    min-height: 100%;
+    height: 100%;
     background: var(--bg-primary);
     color: var(--text-primary);
+    overflow: hidden;
 }
 
 .session-tree-toolbar {
@@ -449,6 +450,7 @@
     grid-template-columns: minmax(0, 1fr) 320px;
     min-height: 0;
     flex: 1;
+    overflow: hidden;
 }
 
 .session-tree-list {

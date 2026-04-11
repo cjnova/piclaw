@@ -25,6 +25,8 @@ function buildTreeFromFlat(flatNodes) {
         if (parent) parent.children.push(current);
         else roots.push(current);
     }
+    // Compute depths iteratively — only increase depth after a branch point
+    // (a node with more than one child). Linear chains stay at the same depth.
     const stack = [];
     for (let i = roots.length - 1; i >= 0; i--) {
         roots[i].depth = 0;
@@ -32,8 +34,9 @@ function buildTreeFromFlat(flatNodes) {
     }
     while (stack.length > 0) {
         const node = stack.pop();
+        const isBranch = node.children.length > 1;
         for (let i = node.children.length - 1; i >= 0; i--) {
-            node.children[i].depth = node.depth + 1;
+            node.children[i].depth = isBranch ? node.depth + 1 : node.depth;
             stack.push(node.children[i]);
         }
     }
