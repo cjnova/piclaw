@@ -61,7 +61,9 @@ You can extend that baseline with `.piclaw/config.json`:
 - `open_office_viewer` — open an Office document (`.docx`, `.xlsx`, `.pptx`, `.odt`, `.ods`, `.odp`) in the built-in JS Office viewer (`/office-viewer/*`)
 - `open_drawio_editor` — open a `.drawio` diagram file in the self-hosted draw.io editor (creates the file if it doesn't exist)
 - `send_adaptive_card` — post an agent-owned Adaptive Card message in the web UI timeline
-- `send_dashboard_widget` — post an interactive widget with agent-authored HTML to the web timeline (opens in floating pane with piclawWidget bridge; vendored libs: Babylon.js, ECharts, D3)
+- `send_dashboard_widget` — post an interactive widget with agent-authored HTML to the web timeline (opens in floating pane with piclawWidget bridge; vendored libs: Babylon.js, ECharts, D3). See [vendored-widget-libraries.md](vendored-widget-libraries.md) for API reference.
+
+  ![ECharts treemap widget example](echarts-treemap-widget.png)
 - `open_workspace_file` — ask the active web UI to open a workspace file in an editor tab or popout window; popout requests are blocked on small viewports so the agent does not force unusable layouts
 - `exec_batch` — run multiple shell commands and return concise summaries for each
 - `powershell` — Windows-only replacement for the default shell tool; active instead of `bash` on Windows hosts

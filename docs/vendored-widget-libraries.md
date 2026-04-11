@@ -43,6 +43,8 @@ Rich charting library: bar, line, pie, scatter, radar, heatmap, treemap,
 sunburst, sankey, graph, geographic maps, candlestick, boxplot, and more.
 Dark theme built in.
 
+![ECharts treemap widget — source code visualization](echarts-treemap-widget.png)
+
 ```html
 <div id="chart" style="width:100%;height:400px"></div>
 <script src="/static/js/vendor/echarts/echarts.min.js"></script>
