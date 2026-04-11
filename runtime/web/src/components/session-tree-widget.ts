@@ -163,6 +163,8 @@ export function SessionTreeWidget({ widget, onWidgetEvent }) {
                                 <span class="session-tree-indent" style=${`width:${(node.depth || 0) * 16 + 8}px`}></span>
                                 <span class=${`session-tree-dot${node.active ? ' active' : hasBranch ? ' branch-point' : ''}`}></span>
                                 <span class="session-tree-preview">${node.preview || `[${node.type || 'entry'}]`}</span>
+                                ${node.hasThinking && html`<span class="session-tree-badge thinking">thinking</span>`}
+                                ${node.contentLength > 5000 && html`<span class="session-tree-badge">${formatSize(node.contentLength)}</span>`}
                                 ${node.label && html`<span class="session-tree-label">${node.label}</span>`}
                                 ${node.active && html`<span class="session-tree-active-marker">active</span>`}
                                 <span class="session-tree-id">${String(node.id || '').slice(0, 8)}</span>

@@ -41,6 +41,30 @@ function getToolCallName(content: unknown): string | null {
   return null;
 }
 
+function getEntryMeta(entry: Record<string, unknown>): Record<string, unknown> {
+  const meta: Record<string, unknown> = {};
+  if (entry.type !== "message") return meta;
+  const msg = (entry.message && typeof entry.message === "object")
+    ? (entry.message as Record<string, unknown>)
+    : {};
+  const role = typeof msg.role === "string" ? msg.role : null;
+  if (role) meta.role = role;
+  if (role === "toolResult" && typeof msg.toolName === "string") meta.toolName = msg.toolName;
+  const toolCallName = getToolCallName(msg.content);
+  if (toolCallName) meta.toolName = toolCallName;
+  const text = extractTextPreview(msg.content);
+  if (text) meta.contentLength = text.length;
+  const thinking = (msg as any).thinking;
+  if (thinking) {
+    const thinkingText = typeof thinking === "string" ? thinking : extractTextPreview(thinking);
+    if (thinkingText && thinkingText.length > 0) {
+      meta.hasThinking = true;
+      meta.thinkingLength = thinkingText.length;
+    }
+  }
+  return meta;
+}
+
 function describeTreeEntry(entry: Record<string, unknown>): string {
   switch (entry.type) {
     case "message": {
@@ -197,6 +221,7 @@ export class AgentRuntimeFacade {
         active: node.entry.id === leafId,
         preview: describeTreeEntry(node.entry),
         childCount: (node.children || []).length,
+        ...getEntryMeta(node.entry as Record<string, unknown>),
       });
       const children = node.children || [];
       for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
