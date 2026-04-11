@@ -4,7 +4,7 @@ title: Harden Azure / Foundry model routing and stability
 status: review
 priority: high
 created: 2026-03-10
-updated: 2026-04-10
+updated: 2026-04-11
 target_release: next
 estimate: M
 risk: medium
@@ -208,6 +208,14 @@ production port hostage to the larger refactor.
 - [ ] Ticket moved to `50-done/`
 
 ## Updates
+
+### 2026-04-11
+- Lane change: `10-next` → `40-review`.
+- Review-ready after the Azure / Foundry routing and stability pass landed, including GPT-5.4 routing fixes, Azure Responses replay/schema sanitization, silent-throttle handling, proactive request-budget trimming, and extension/documentation cleanup.
+- Evidence: commits `a88e5e36` and `5882e0ab`.
+- Validation: `bun test runtime/test/extensions/azure-openai-tool-call-limit.test.ts runtime/test/extensions/azure-openai-routing.test.ts`; `bun run quality` passed.
+- Quality: ★★★★☆ 8/10 (problem: 2, scope: 2, test: 2, deps: 1, risk: 1)
+- Gap: review should confirm the live Azure behavior remains stable under real long, tool-heavy turns after deployment.
 
 ### 2026-04-06
 - Refinement pass completed to lock the first production-port slice instead of leaving the Azure / Foundry work as one blended next-up item.
