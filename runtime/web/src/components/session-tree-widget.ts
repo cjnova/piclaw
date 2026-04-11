@@ -174,19 +174,27 @@ export function SessionTreeWidget({ widget, onWidgetEvent }) {
                             <div class="session-tree-sidebar-label">Type</div>
                             <div class="session-tree-sidebar-value">${selectedNode.role || selectedNode.type || 'entry'}${selectedNode.toolName ? ` → ${selectedNode.toolName}` : ''}</div>
                         </div>
+                        ${selectedNode.toolInput && html`
+                            <div class="session-tree-sidebar-section">
+                                <div class="session-tree-sidebar-label">${selectedNode.toolName === 'bash' ? 'Command' : 'Input'}</div>
+                                <pre class="session-tree-sidebar-code">${selectedNode.toolInput}</pre>
+                            </div>
+                        `}
                         ${selectedNode.timestamp && html`
                             <div class="session-tree-sidebar-section">
                                 <div class="session-tree-sidebar-label">Time</div>
                                 <div class="session-tree-sidebar-value">${new Date(selectedNode.timestamp).toLocaleString()}</div>
                             </div>
                         `}
-                        <div class="session-tree-sidebar-section">
-                            <div class="session-tree-sidebar-label">Preview</div>
-                            <div class="session-tree-sidebar-preview">${selectedNode.preview || `[${selectedNode.type || 'entry'}]`}</div>
-                        </div>
+                        ${selectedNode.detail && html`
+                            <div class="session-tree-sidebar-section">
+                                <div class="session-tree-sidebar-label">${selectedNode.role === 'toolResult' ? 'Output' : 'Content'}</div>
+                                <pre class="session-tree-sidebar-code">${selectedNode.detail}</pre>
+                            </div>
+                        `}
                         ${(selectedNode.contentLength > 0 || selectedNode.hasThinking) && html`
                             <div class="session-tree-sidebar-section">
-                                <div class="session-tree-sidebar-label">Details</div>
+                                <div class="session-tree-sidebar-label">Size</div>
                                 <div class="session-tree-sidebar-badges">
                                     ${selectedNode.contentLength > 0 && html`<span class="session-tree-badge">${formatSize(selectedNode.contentLength)} content</span>`}
                                     ${selectedNode.hasThinking && html`<span class="session-tree-badge thinking">${formatSize(selectedNode.thinkingLength)} thinking</span>`}

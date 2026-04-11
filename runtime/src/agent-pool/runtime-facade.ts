@@ -41,6 +41,32 @@ function getToolCallName(content: unknown): string | null {
   return null;
 }
 
+function getToolCallInput(content: unknown): string | null {
+  if (!Array.isArray(content)) return null;
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const b = block as Record<string, unknown>;
+    if (b.type === "toolCall" && b.input && typeof b.input === "object") {
+      const input = b.input as Record<string, unknown>;
+      // bash: show command
+      if (typeof input.command === "string") return input.command.slice(0, 500);
+      // read/write: show path
+      if (typeof input.path === "string") {
+        let s = input.path;
+        if (typeof input.offset === "number") s += `:${input.offset}`;
+        if (typeof input.limit === "number") s += `-${input.offset ? (input.offset as number) + (input.limit as number) : input.limit}`;
+        return s;
+      }
+      // edit: show path + short old/new
+      if (typeof input.file === "string") return input.file;
+      // generic: JSON summary
+      const keys = Object.keys(input);
+      if (keys.length > 0) return keys.map(k => `${k}: ${String(input[k]).slice(0, 80)}`).join(', ').slice(0, 500);
+    }
+  }
+  return null;
+}
+
 function getEntryMeta(entry: Record<string, unknown>): Record<string, unknown> {
   const meta: Record<string, unknown> = {};
   if (entry.type !== "message") return meta;
@@ -52,8 +78,15 @@ function getEntryMeta(entry: Record<string, unknown>): Record<string, unknown> {
   if (role === "toolResult" && typeof msg.toolName === "string") meta.toolName = msg.toolName;
   const toolCallName = getToolCallName(msg.content);
   if (toolCallName) meta.toolName = toolCallName;
+  // Tool call input (command, path, etc.)
+  const toolInput = getToolCallInput(msg.content);
+  if (toolInput) meta.toolInput = toolInput;
   const text = extractTextPreview(msg.content);
-  if (text) meta.contentLength = text.length;
+  if (text) {
+    meta.contentLength = text.length;
+    // Longer detail excerpt for sidebar (up to 500 chars)
+    meta.detail = text.length > 500 ? text.slice(0, 500) + "…" : text;
+  }
   const thinking = (msg as any).thinking;
   if (thinking) {
     const thinkingText = typeof thinking === "string" ? thinking : extractTextPreview(thinking);
