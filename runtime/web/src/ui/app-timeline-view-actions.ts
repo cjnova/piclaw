@@ -104,6 +104,25 @@ export function useTimelineViewActions(options: UseTimelineViewActionsOptions) {
     });
   }, [currentChatJid, currentRootChatJid, searchPosts, searchScope, setCurrentHashtag, setHasMore, setPosts, setSearchQuery, setSearchScope]);
 
+  const handleSearchScopeChange = useCallback((newScope: string) => {
+    setSearchScope(newScope);
+    // Re-run search with the new scope if there's an active query
+    if (searchQuery && searchQuery.trim()) {
+      void searchTimeline({
+        query: searchQuery,
+        scope: newScope,
+        currentChatJid,
+        currentRootChatJid,
+        searchPosts,
+        setSearchScope,
+        setSearchQuery,
+        setCurrentHashtag,
+        setPosts,
+        setHasMore,
+      });
+    }
+  }, [currentChatJid, currentRootChatJid, searchPosts, searchQuery, setCurrentHashtag, setHasMore, setPosts, setSearchQuery, setSearchScope]);
+
   const enterSearchMode = useCallback(() => {
     setSearchOpen(true);
     setSearchQuery(null);
@@ -142,6 +161,7 @@ export function useTimelineViewActions(options: UseTimelineViewActionsOptions) {
     handleHashtagClick,
     handleBackToTimeline,
     handleSearch,
+    handleSearchScopeChange,
     enterSearchMode,
     exitSearchMode,
     isMainTimelineView,

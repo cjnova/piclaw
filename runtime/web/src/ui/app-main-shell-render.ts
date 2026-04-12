@@ -215,6 +215,7 @@ export function renderMainShell(options: MainShellRenderOptions): any {
     scrollToBottom,
     searchScope,
     handleSearch,
+    handleSearchScopeChange,
     setSearchScope,
     enterSearchMode,
     exitSearchMode,
@@ -573,7 +574,7 @@ export function renderMainShell(options: MainShellRenderOptions): any {
           searchMode=${searchOpen}
           searchScope=${searchScope}
           onSearch=${handleSearch}
-          onSearchScopeChange=${setSearchScope}
+          onSearchScopeChange=${handleSearchScopeChange || setSearchScope}
           onEnterSearch=${enterSearchMode}
           onExitSearch=${exitSearchMode}
           fileRefs=${fileRefs}
