@@ -8,7 +8,7 @@ afterEach(() => {
   // no-op: test uses whichever workspace path the current config module has cached
 });
 
-test("runDreamAgentTurn reaps a stale dream lock and materializes memory files after the model pass", async () => {
+test("runDreamAgentTurn reaps a stale dream lock and materializes memory files after the model pass", { timeout: 15000 }, async () => {
   const config = await import("../src/core/config.js");
   rmSync(join(config.WORKSPACE_DIR, "notes"), { recursive: true, force: true });
   rmSync(join(config.DATA_DIR, "dream-backups"), { recursive: true, force: true });

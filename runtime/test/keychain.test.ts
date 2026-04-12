@@ -172,11 +172,18 @@ test("auto-injects env-style keychain entries for shell use", async () => {
 
     expect(keychain.isInjectableKeychainEnvName("STRIPE_KEY")).toBe(true);
     expect(keychain.isInjectableKeychainEnvName("ssh/prod")).toBe(false);
-    expect(keychain.listInjectableKeychainEnvNames()).toEqual(["STRIPE_KEY"]);
-    await expect(keychain.loadAutoInjectedKeychainEnv()).resolves.toEqual({ STRIPE_KEY: "stripe-secret" });
+    expect(keychain.toShellEnvName("ssh/prod")).toBe("SSH_PROD");
+    expect(keychain.listInjectableKeychainEnvNames()).toEqual(["STRIPE_KEY", "SSH_PROD"]);
+    await expect(keychain.loadAutoInjectedKeychainEnv()).resolves.toEqual({
+      STRIPE_KEY: "stripe-secret",
+      SSH_PROD: "PRIVATE_KEY_DATA",
+    });
 
     const env = await keychain.buildInjectedShellEnv({ includeProcessEnv: false });
-    expect(env).toEqual({ STRIPE_KEY: "stripe-secret" });
+    expect(env).toEqual({
+      STRIPE_KEY: "stripe-secret",
+      SSH_PROD: "PRIVATE_KEY_DATA",
+    });
   });
 });
 

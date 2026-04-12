@@ -9,103 +9,13 @@
 
 import type { AgentSession } from "@mariozechner/pi-coding-agent";
 import type { AgentControlCommand, AgentControlResult } from "../agent-control-types.js";
-import { extractTextFromContent, formatCompactNumber, truncateText } from "../agent-control-helpers.js";
+import { extractTextFromContent, truncateText } from "../agent-control-helpers.js";
 
 type TreeCommand = Extract<AgentControlCommand, { type: "tree" }>;
 type LabelCommand = Extract<AgentControlCommand, { type: "label" }>;
 type LabelsCommand = Extract<AgentControlCommand, { type: "labels" }>;
 type SessionTreeNode = ReturnType<AgentSession["sessionManager"]["getTree"]>[number];
 type SessionTreeEntry = SessionTreeNode["entry"];
-
-function getToolCallName(content: unknown): string | null {
-  if (!Array.isArray(content)) return null;
-  for (const block of content) {
-    if (!block || typeof block !== "object") continue;
-    const candidate = block as { type?: unknown; name?: unknown };
-    if (candidate.type === "toolCall" && typeof candidate.name === "string") {
-      return candidate.name;
-    }
-  }
-  return null;
-}
-
-function getEntryMeta(entry: SessionTreeEntry): Record<string, unknown> {
-  const meta: Record<string, unknown> = {};
-  if (entry.type !== "message") return meta;
-  const msg = (entry.message && typeof entry.message === "object")
-    ? (entry.message as unknown as Record<string, unknown>)
-    : {};
-  const role = typeof msg.role === "string" ? msg.role : null;
-  if (role) meta.role = role;
-
-  // Tool name for toolResult or toolCall
-  if (role === "toolResult" && typeof msg.toolName === "string") {
-    meta.toolName = msg.toolName;
-  }
-  const toolCallName = getToolCallName(msg.content);
-  if (toolCallName) meta.toolName = toolCallName;
-
-  // Content length
-  const text = extractTextFromContent(msg.content);
-  if (text) meta.contentLength = text.length;
-
-  // Thinking flag
-  const thinking = (msg as any).thinking;
-  if (thinking) {
-    const thinkingText = typeof thinking === "string" ? thinking : extractTextFromContent(thinking);
-    if (thinkingText && thinkingText.length > 0) {
-      meta.hasThinking = true;
-      meta.thinkingLength = thinkingText.length;
-    }
-  }
-
-  // Tool result output size
-  if (role === "toolResult") {
-    meta.contentLength = text ? text.length : 0;
-  }
-
-  return meta;
-}
-
-function describeEntry(entry: SessionTreeEntry): string {
-  switch (entry.type) {
-    case "message": {
-      const msg = (entry.message && typeof entry.message === "object")
-        ? (entry.message as unknown as Record<string, unknown>)
-        : {};
-      const role = typeof msg.role === "string" ? msg.role : "message";
-      if (role === "toolResult") {
-        const toolName = typeof msg.toolName === "string" ? msg.toolName : "tool";
-        return `toolResult: ${toolName}`;
-      }
-      const content = msg.content;
-      const text = extractTextFromContent(content);
-      if (text) {
-        return `${role}: "${truncateText(text, 80)}"`;
-      }
-      const toolCallName = getToolCallName(content);
-      if (toolCallName) return `${role}: [tool ${toolCallName}]`;
-      return role;
-    }
-    case "compaction":
-      return `[compaction: ${formatCompactNumber(entry.tokensBefore)} tokens]`;
-    case "branch_summary":
-      return `[branch summary from ${entry.fromId}]`;
-    case "thinking_level_change":
-      return `[thinking ${entry.thinkingLevel}]`;
-    case "model_change":
-      return `[model ${entry.provider}/${entry.modelId}]`;
-    case "custom":
-      return `[custom ${entry.customType}]`;
-    case "custom_message":
-      return `[custom message ${entry.customType}]`;
-    case "label":
-      return `[label ${entry.label || "clear"}]`;
-    case "session_info":
-      return `[session name ${entry.name || "none"}]`;
-  }
-  return "[entry]";
-}
 
 /** Handle /tree: render the session message tree in text format. */
 export async function handleTree(session: AgentSession, command: TreeCommand): Promise<AgentControlResult> {

@@ -213,7 +213,11 @@ test("agent control session and tree commands", async () => {
   expect(exportHtml.message).toContain("Exported session");
 
   const tree = await applyControlCommand(runtime as any, registry, { type: "tree", raw: "/tree" });
-  expect(tree.message).toContain("Session tree:");
+  expect(tree.message).toBe("");
+  expect(tree.contentBlocks?.[0]).toMatchObject({
+    type: "generated_widget",
+    artifact: { kind: "session_tree" },
+  });
 
   const treeNav = await applyControlCommand(runtime as any, registry, { type: "tree", targetId: "entry-1", raw: "/tree entry-1" });
   expect(treeNav.message).toContain("Navigation complete");
