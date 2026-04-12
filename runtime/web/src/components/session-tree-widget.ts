@@ -134,6 +134,8 @@ export function SessionTreeWidget({ widget, onWidgetEvent }) {
     const chatJid = (typeof widget?.originChatJid === 'string' && widget.originChatJid.trim()) ? widget.originChatJid.trim() : null;
     const [state, setState] = useState(() => ({ loading: !initialTree, error: null, data: initialTree }));
     const [selectedId, setSelectedId] = useState(null);
+    const [searchFilter, setSearchFilter] = useState('');
+    const searchInputRef = useRef(null);
     const activeRowRef = useRef(null);
 
     const loadTree = async () => {
@@ -157,9 +159,22 @@ export function SessionTreeWidget({ widget, onWidgetEvent }) {
         return flattenTree(data.flat ? buildTreeFromFlat(data.nodes) : data.nodes);
     }, [state.data]);
 
-    const selectedNode = useMemo(() => flatRows.find((n) => n.id === selectedId) || null, [flatRows, selectedId]);
+    const filteredRows = useMemo(() => {
+        const q = (searchFilter || '').trim().toLowerCase();
+        if (!q) return flatRows;
+        return flatRows.filter((node) => {
+            const fields = [
+                node.preview, node.toolInput, node.toolInputFull,
+                node.detail, node.toolName, node.role, node.id,
+                node.resultDetail, node.type, node.label,
+            ];
+            return fields.some(f => typeof f === 'string' && f.toLowerCase().includes(q));
+        });
+    }, [flatRows, searchFilter]);
 
-    useEffect(() => { if (activeRowRef.current) activeRowRef.current.scrollIntoView({ block: 'center', behavior: 'auto' }); }, [flatRows.length]);
+    const selectedNode = useMemo(() => filteredRows.find((n) => n.id === selectedId) || null, [filteredRows, selectedId]);
+
+    useEffect(() => { if (activeRowRef.current) activeRowRef.current.scrollIntoView({ block: 'center', behavior: 'auto' }); }, [filteredRows.length]);
 
     const submitNavigation = (summarize = false) => {
         const targetId = selectedNode?.id;
@@ -172,6 +187,13 @@ export function SessionTreeWidget({ widget, onWidgetEvent }) {
             <div class="session-tree-toolbar">
                 <div class="session-tree-toolbar-left">
                     <button class="session-tree-btn" type="button" onClick=${() => loadTree()} disabled=${state.loading}>${state.loading ? 'Loading\u2026' : 'Refresh'}</button>
+                    <input ref=${searchInputRef}
+                        class="st-search-input" type="text" placeholder="Filter\u2026"
+                        value=${searchFilter}
+                        onInput=${(e) => setSearchFilter(e.currentTarget.value)}
+                        onKeyDown=${(e) => { if (e.key === 'Escape') { setSearchFilter(''); e.currentTarget.blur(); } }}
+                    />
+                    ${searchFilter && html`<span class="session-tree-meta">${filteredRows.length} match${filteredRows.length !== 1 ? 'es' : ''}</span>`}
                     ${state.error && html`<span class="session-tree-error-inline">${state.error}</span>`}
                 </div>
                 <div class="session-tree-toolbar-right">
@@ -182,9 +204,10 @@ export function SessionTreeWidget({ widget, onWidgetEvent }) {
 
             <div class="session-tree-content">
                 <div class="session-tree-list" role="tree" aria-label="Session tree">
-                    ${state.loading && flatRows.length === 0 && html`<div class="session-tree-empty">Loading session tree\u2026</div>`}
-                    ${!state.loading && flatRows.length === 0 && html`<div class="session-tree-empty">Session tree is empty.</div>`}
-                    ${flatRows.map((node) => {
+                    ${state.loading && filteredRows.length === 0 && !searchFilter && html`<div class="session-tree-empty">Loading session tree\u2026</div>`}
+                    ${!state.loading && filteredRows.length === 0 && !searchFilter && html`<div class="session-tree-empty">Session tree is empty.</div>`}
+                    ${!state.loading && filteredRows.length === 0 && searchFilter && html`<div class="session-tree-empty">No entries match \u201c${searchFilter}\u201d</div>`}
+                    ${filteredRows.map((node) => {
                         const sel = selectedId === node.id;
                         const rowClass = `st-row${node.active ? ' active' : ''}${sel ? ' selected' : ''}`;
                         const hasBranch = (node.children || []).length > 1;
