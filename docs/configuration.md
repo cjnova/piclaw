@@ -18,9 +18,9 @@ This document covers all `piclaw` configuration options: environment variables, 
 | `PICLAW_WEB_PORT` | `8080` | Web UI port |
 | `PICLAW_WEB_HOST` | `0.0.0.0` | Bind address |
 | `PICLAW_WEB_IDLE_TIMEOUT` | `0` (disabled) | Drop idle clients after this many seconds |
-| `PICLAW_WEB_TERMINAL_ENABLED` | `0` | Enable the authenticated web terminal backend/pane; disabled by default for security |
+| `PICLAW_WEB_TERMINAL_ENABLED` | `1` on Linux/macOS, `0` on Windows | Enable or disable the authenticated web terminal backend/pane |
 | `PICLAW_WEB_VNC_TARGETS` | _(empty)_ | JSON allowlist for VNC targets (or use `PICLAW_VNC_TARGETS`). Supports array or object form. |
-| `PICLAW_WEB_VNC_ALLOW_DIRECT` | `0` | Allow direct VNC targets supplied at runtime (`PICLAW_VNC_ALLOW_DIRECT` alias) |
+| `PICLAW_WEB_VNC_ALLOW_DIRECT` | `1` on Linux/macOS/Windows | Allow or disable direct VNC targets supplied at runtime (`PICLAW_VNC_ALLOW_DIRECT` alias) |
 | `PICLAW_WEB_TLS_CERT` | _(empty)_ | Path to TLS certificate; enables HTTPS |
 | `PICLAW_WEB_TLS_KEY` | _(empty)_ | Path to TLS private key; enables HTTPS |
 | `PICLAW_WEB_MAX_CONTENT_CHARS` | `262144` | Max message size in characters; oversized messages are truncated with metadata |
@@ -43,6 +43,22 @@ export PICLAW_WEB_VNC_TARGETS='{ "lab": { "id": "lab", "host": "192.168.1.50", "
 ```
 
 When direct-connect is allowed, the UI accepts inputs like `server` + `port` from the VNC target picker and connects to `<host>:<port>` directly.
+
+Direct-connect is enabled by default on Linux, macOS, and Windows. Disable it explicitly with:
+
+```bash
+PICLAW_WEB_VNC_ALLOW_DIRECT=0
+```
+
+Or in `.piclaw/config.json`:
+
+```json
+{
+  "web": {
+    "vncAllowDirect": false
+  }
+}
+```
 
 When direct-connect is disabled and no saved targets exist, the VNC pane now shows an explicit empty-state message instead of suggesting a direct connection path that the host will reject anyway.
 
@@ -79,13 +95,21 @@ Leave this disabled for direct/non-proxied deployments.
 
 ## Web terminal
 
-The authenticated web terminal is **disabled by default**. Enable it with:
+The authenticated web terminal is **enabled by default on Linux and macOS** and **disabled by default on Windows**.
+
+To disable it explicitly:
+
+```bash
+PICLAW_WEB_TERMINAL_ENABLED=0
+```
+
+To force-enable it explicitly on any platform:
 
 ```bash
 PICLAW_WEB_TERMINAL_ENABLED=1
 ```
 
-Pass this as an environment variable to `docker run`, `docker-compose.yml`, or `make up`.
+Pass this as an environment variable to `docker run`, `docker-compose.yml`, or `make up`, or set the nested config key `.piclaw/config.json -> web.terminalEnabled`.
 
 Once enabled:
 

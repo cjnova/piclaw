@@ -79,7 +79,8 @@ PiClaw is single-user, mobile-friendly, and streams updates over SSE.
 - Ghostty-based web terminal — a real shell in the browser, not a simulation
 - Runs as a dock panel or a standalone tab
 - Detachable into popout windows with live session transfer
-- Disabled by default; enable with `PICLAW_WEB_TERMINAL_ENABLED=1`
+- Enabled by default on Linux and macOS; disable with `PICLAW_WEB_TERMINAL_ENABLED=0`
+- Still disabled by default on Windows
 
 ### Viewers
 
@@ -90,7 +91,7 @@ PiClaw is single-user, mobile-friendly, and streams updates over SSE.
 - **Text/code attachments** — syntax-highlighted timeline preview modal for common code/config formats
 - **Kanban boards** — `*.kanban.md` in a drag-and-drop board editor (Obsidian Kanban compatible)
 - **Mindmaps** — `*.mindmap.yaml` in a D3/SVG visual editor
-- **VNC remote display** — connect to allowlisted targets from a tab, with optional direct-connect mode when the host enables it (experimental)
+- **VNC remote display** — connect to allowlisted targets from a tab, with direct-connect enabled by default on Linux, macOS, and Windows (experimental); disable with `PICLAW_WEB_VNC_ALLOW_DIRECT=0`
 
 ### Automation
 
@@ -107,7 +108,8 @@ Key environment variables:
 | Variable | Default | Purpose |
 |---|---|---|
 | `PICLAW_WEB_PORT` | `8080` | Web UI port |
-| `PICLAW_WEB_TERMINAL_ENABLED` | `0` | Enable the authenticated Ghostty-based web terminal |
+| `PICLAW_WEB_TERMINAL_ENABLED` | `1` on Linux/macOS, `0` on Windows | Enable or disable the authenticated Ghostty-based web terminal |
+| `PICLAW_WEB_VNC_ALLOW_DIRECT` | `1` on Linux/macOS/Windows | Allow or disable direct VNC targets supplied at runtime |
 | `PICLAW_WEB_TOTP_SECRET` | _(empty)_ | Base32 TOTP secret; enables login gate (or initialize with `/totp`) |
 | `PICLAW_WEB_PASSKEY_MODE` | `totp-fallback` | `totp-fallback`, `passkey-only`, or `totp-only` |
 | `PICLAW_ASSISTANT_NAME` | `PiClaw` | Display name in the UI |

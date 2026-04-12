@@ -25,6 +25,37 @@ interface RefBox<T> {
   current: T;
 }
 
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  const value = typeof text === 'string' ? text : '';
+  if (!value) return false;
+
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Fall through to execCommand fallback.
+    }
+  }
+
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.pointerEvents = 'none';
+    document.body.appendChild(textarea);
+    textarea.select();
+    textarea.setSelectionRange(0, textarea.value.length);
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
 export function resetFloatingWidgetStateForChatChange(options: {
   dismissedLiveWidgetKeysRef: RefBox<Set<string>>;
   setFloatingWidget: StateSetter<any>;
@@ -139,7 +170,10 @@ export function useSidepanelOrchestration(options: UseSidepanelOrchestrationOpti
         currentChatJid,
         stopAutoresearch,
         dismissAutoresearch,
-        writeClipboard: (text) => navigator.clipboard.writeText(text),
+        writeClipboard: async (text) => {
+          const copied = await copyTextToClipboard(text);
+          if (!copied) throw new Error('Clipboard access is unavailable.');
+        },
       });
       if (result.refreshAutoresearchStatus) {
         void refreshAutoresearchStatus();

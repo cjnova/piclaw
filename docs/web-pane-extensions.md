@@ -110,7 +110,7 @@ create TCP socket]
 - `vnc` pane is path-based (`piclaw://vnc`, `piclaw://vnc/<target>`); the target is parsed from the path.
 - VNC targets are resolved from:
   1. `PICLAW_WEB_VNC_TARGETS` / `PICLAW_VNC_TARGETS` allow-list (JSON array or map)
-  2. Optional direct-connect when `PICLAW_WEB_VNC_ALLOW_DIRECT` / `PICLAW_VNC_ALLOW_DIRECT` is enabled
+  2. Direct-connect when `PICLAW_WEB_VNC_ALLOW_DIRECT` / `PICLAW_VNC_ALLOW_DIRECT` is enabled (default on Linux, macOS, and Windows)
 - When neither saved targets nor direct-connect are available, the pane renders explicit empty-state copy that tells the user direct connect is disabled instead of pretending the manual entry flow still exists.
 - `WebSocketTcpBridge` is protocol-agnostic:
   - forwards binary traffic between websocket clients and TCP sockets
@@ -326,9 +326,9 @@ Verify no leaked listeners or DOM nodes after pane lifecycle:
 | `pdf-viewer` | tabs | 10 | `web/src/panes/pdf-viewer-pane.ts` | Inline PDF viewer for `.pdf` files; workspace preview promotes via **Open in Tab**. |
 | `image-viewer` | tabs | 10 | `web/src/panes/image-viewer-pane.ts` | Inline image viewer with zoom for common image formats; workspace preview promotes via **Open in Tab**. |
 | `workspace-preview` | tabs | — | `web/src/panes/workspace-preview-pane.ts` | Default workspace preview surface for the explorer sidebar; generic text previews rely on the explorer header's editor action instead of pane-body CTA duplication. |
-| `terminal` | dock | — | `web/src/panes/terminal-pane.ts` | Terminal dock pane. Feature-flagged behind `PICLAW_WEB_TERMINAL_ENABLED`. |
+| `terminal` | dock | — | `web/src/panes/terminal-pane.ts` | Terminal dock pane. Enabled by default on Linux/macOS; controlled by `PICLAW_WEB_TERMINAL_ENABLED`. |
 | `terminal-tab` | tabs | 10_000 | `web/src/panes/terminal-pane.ts` | Same terminal implementation opened by explicit path `piclaw://terminal` from the pane registry. |
-| `vnc-viewer` | tabs | 9_000 | `web/src/panes/vnc-pane.ts` | VNC viewer tab (`piclaw://vnc`, optional `/target`) with allowlist and optional direct-connect mode. |
+| `vnc-viewer` | tabs | 9_000 | `web/src/panes/vnc-pane.ts` | VNC viewer tab (`piclaw://vnc`, optional `/target`) with allowlist and direct-connect mode enabled by default on Linux/macOS/Windows. |
 
 ### Editor extension architecture
 

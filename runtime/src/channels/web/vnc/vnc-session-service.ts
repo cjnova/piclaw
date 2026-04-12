@@ -2,6 +2,7 @@ import { createConnection, type Socket } from "node:net";
 import type { ServerWebSocket } from "bun";
 
 import { DEFAULT_WEB_USER_ID, getWebSession } from "../../../db.js";
+import { getWebRuntimeConfig } from "../../../core/config.js";
 import { createLogger, debugSuppressedError } from "../../../utils/logger.js";
 import { WebSocketTcpBridge } from "../remote-display/websocket-tcp-bridge.js";
 import { getSessionTokenFromRequest } from "../auth/session-auth.js";
@@ -70,11 +71,6 @@ function toPort(value: unknown): number | null {
   const port = typeof value === "number" ? value : parseInt(String(value || ""), 10);
   if (!Number.isFinite(port) || port <= 0 || port > 65535) return null;
   return port;
-}
-
-function isTruthyFlag(value: unknown): boolean {
-  const text = String(value || "").trim().toLowerCase();
-  return text === "1" || text === "true" || text === "yes" || text === "on";
 }
 
 function parseTargetRecord(input: unknown, fallbackId?: string): VncTargetRecord | null {
@@ -207,13 +203,14 @@ export class VncSessionService {
    * @param options Optional target, timeout, and socket-factory overrides.
    */
   constructor(options: VncSessionServiceOptions = {}) {
-    const configured = options.targets || parseVncTargets(process.env.PICLAW_WEB_VNC_TARGETS || process.env.PICLAW_VNC_TARGETS || "");
+    const webRuntimeConfig = getWebRuntimeConfig();
+    const configured = options.targets || parseVncTargets(webRuntimeConfig.vncTargetsRaw || "");
     for (const target of configured) {
       this.targets.set(target.id, target);
     }
     this.allowDirectTargets = typeof options.allowDirectTargets === "boolean"
       ? options.allowDirectTargets
-      : isTruthyFlag(process.env.PICLAW_WEB_VNC_ALLOW_DIRECT || process.env.PICLAW_VNC_ALLOW_DIRECT);
+      : webRuntimeConfig.vncAllowDirect;
     this.createSocket = options.createSocket || defaultCreateSocket;
     this.connectTimeoutMs = Number.isFinite(options.connectTimeoutMs)
       ? Math.max(1, Number(options.connectTimeoutMs))

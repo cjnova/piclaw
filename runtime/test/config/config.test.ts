@@ -181,9 +181,9 @@ test("config and env fallback chains handle booleans and session settings", () =
         sessionTtl: 60,
         internalSecret: "config-secret",
         passkeyMode: "PASSKEY-ONLY",
+        terminalEnabled: true,
         trustProxy: true,
       },
-      webTerminalEnabled: true,
       debugCardSubmissions: false,
       sessionMaxSizeMb: 8,
       sessionAutoRotate: true,
@@ -198,6 +198,10 @@ test("config and env fallback chains handle booleans and session settings", () =
         PICLAW_WEB_INTERNAL_SECRET: "env-secret",
         PICLAW_TRUST_PROXY: "0",
         PICLAW_WEB_TERMINAL_ENABLED: "false",
+        PICLAW_WEB_VNC_ALLOW_DIRECT: undefined,
+        PICLAW_VNC_ALLOW_DIRECT: undefined,
+        PICLAW_WEB_VNC_TARGETS: undefined,
+        PICLAW_VNC_TARGETS: undefined,
         PICLAW_DEBUG_CARD_SUBMISSIONS: "yes",
         PICLAW_SESSION_AUTO_ROTATE: "off",
       },
@@ -210,6 +214,8 @@ test("config and env fallback chains handle booleans and session settings", () =
       internalSecret: "env-secret",
       passkeyMode: "passkey-only",
       terminalEnabled: false,
+      vncAllowDirect: process.platform === "linux" || process.platform === "darwin" || process.platform === "win32",
+      vncTargetsRaw: "",
       debugCardSubmissions: true,
       trustProxy: false,
     });
@@ -509,6 +515,10 @@ test("web runtime config getter groups auth/session/proxy settings", async () =>
       PICLAW_WEB_INTERNAL_SECRET: "env-secret",
       PICLAW_TRUST_PROXY: "0",
       PICLAW_WEB_TERMINAL_ENABLED: "false",
+      PICLAW_WEB_VNC_ALLOW_DIRECT: undefined,
+      PICLAW_VNC_ALLOW_DIRECT: undefined,
+      PICLAW_WEB_VNC_TARGETS: undefined,
+      PICLAW_VNC_TARGETS: undefined,
       PICLAW_DEBUG_CARD_SUBMISSIONS: "yes",
     },
     async (ws) => {
@@ -519,9 +529,10 @@ test("web runtime config getter groups auth/session/proxy settings", async () =>
           sessionTtl: 60,
           internalSecret: "config-secret",
           passkeyMode: "PASSKEY-ONLY",
+          terminalEnabled: true,
+          vncAllowDirect: false,
           trustProxy: true,
         },
-        webTerminalEnabled: true,
         debugCardSubmissions: false,
       });
 
@@ -536,9 +547,36 @@ test("web runtime config getter groups auth/session/proxy settings", async () =>
         internalSecret: "env-secret",
         passkeyMode: "passkey-only",
         terminalEnabled: false,
+        vncAllowDirect: false,
+        vncTargetsRaw: "",
         debugCardSubmissions: true,
         trustProxy: false,
       });
+    },
+  );
+});
+
+test("legacy top-level web terminal and VNC config keys still map into web runtime config", async () => {
+  await withTempWorkspaceEnv(
+    "piclaw-config-",
+    {
+      PICLAW_WEB_VNC_ALLOW_DIRECT: undefined,
+      PICLAW_VNC_ALLOW_DIRECT: undefined,
+      PICLAW_WEB_VNC_TARGETS: undefined,
+      PICLAW_VNC_TARGETS: undefined,
+    },
+    async (ws) => {
+      writeWorkspaceConfig(ws.workspace, {
+        webTerminalEnabled: false,
+        webVncAllowDirect: false,
+        webVncTargets: '[{"id":"lab","host":"10.0.0.10","port":5901}]',
+      });
+
+      const cfg = await importFresh<typeof import("../../src/core/config.js")>("../src/core/config.js");
+
+      expect(cfg.WEB_RUNTIME_CONFIG.terminalEnabled).toBe(false);
+      expect(cfg.WEB_RUNTIME_CONFIG.vncAllowDirect).toBe(false);
+      expect(cfg.WEB_RUNTIME_CONFIG.vncTargetsRaw).toBe('[{"id":"lab","host":"10.0.0.10","port":5901}]');
     },
   );
 });
@@ -608,6 +646,10 @@ test("in-process module init handles deprecated env warnings, argv parsing, and 
       PICLAW_WEB_TLS_CERT: "/env-cert-runtime.pem",
       PICLAW_WEB_TLS_KEY: "/env-key-runtime.pem",
       PICLAW_WEB_TERMINAL_ENABLED: "yes",
+      PICLAW_WEB_VNC_ALLOW_DIRECT: undefined,
+      PICLAW_VNC_ALLOW_DIRECT: undefined,
+      PICLAW_WEB_VNC_TARGETS: undefined,
+      PICLAW_VNC_TARGETS: undefined,
       PICLAW_DEBUG_CARD_SUBMISSIONS: "off",
       PICLAW_SESSION_MAX_SIZE_MB: "64",
       PICLAW_SESSION_AUTO_ROTATE: "on",
@@ -660,6 +702,8 @@ test("in-process module init handles deprecated env warnings, argv parsing, and 
           internalSecret: "",
           passkeyMode: "totp-fallback",
           terminalEnabled: true,
+          vncAllowDirect: true,
+          vncTargetsRaw: "",
           debugCardSubmissions: false,
           trustProxy: false,
         });

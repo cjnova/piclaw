@@ -43,6 +43,17 @@ async function withFreshConfig(
 }
 
 describe("core config", () => {
+  test("platform helpers expose the documented default remote-surface policy", async () => {
+    await withFreshConfig({}, async ({ config }) => {
+      expect(config.isDefaultWebTerminalEnabled("linux")).toBe(true);
+      expect(config.isDefaultWebTerminalEnabled("darwin")).toBe(true);
+      expect(config.isDefaultWebTerminalEnabled("win32")).toBe(false);
+      expect(config.isDefaultWebVncDirectEnabled("linux")).toBe(true);
+      expect(config.isDefaultWebVncDirectEnabled("darwin")).toBe(true);
+      expect(config.isDefaultWebVncDirectEnabled("win32")).toBe(true);
+    });
+  });
+
   test("loads grouped settings from env, .env, and config file using the documented precedence", async () => {
     await withFreshConfig(
       {
@@ -50,6 +61,10 @@ describe("core config", () => {
           PICLAW_ASSISTANT_NAME: "Env Assistant",
           PICLAW_WEB_PASSKEY_MODE: "totp-only",
           PICLAW_WEB_TERMINAL_ENABLED: "0",
+          PICLAW_WEB_VNC_ALLOW_DIRECT: undefined,
+          PICLAW_VNC_ALLOW_DIRECT: undefined,
+          PICLAW_WEB_VNC_TARGETS: undefined,
+          PICLAW_VNC_TARGETS: undefined,
           PICLAW_TRUST_PROXY: "0",
         },
         dotEnv: [
@@ -72,6 +87,7 @@ describe("core config", () => {
             totpWindow: 3,
             internalSecret: "cfg-secret",
             terminalEnabled: true,
+            vncAllowDirect: false,
             trustProxy: true,
           },
           debugCardSubmissions: true,
@@ -106,6 +122,8 @@ describe("core config", () => {
           totpWindow: 3,
           internalSecret: "cfg-secret",
           terminalEnabled: false,
+          vncAllowDirect: false,
+          vncTargetsRaw: "",
           debugCardSubmissions: true,
           trustProxy: false,
         });

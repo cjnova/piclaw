@@ -57,6 +57,10 @@ const envConfig = readEnvFile([
   "PICLAW_WEB_INTERNAL_SECRET",
   "PICLAW_WEB_PASSKEY_MODE",
   "PICLAW_WEB_TERMINAL_ENABLED",
+  "PICLAW_WEB_VNC_ALLOW_DIRECT",
+  "PICLAW_VNC_ALLOW_DIRECT",
+  "PICLAW_WEB_VNC_TARGETS",
+  "PICLAW_VNC_TARGETS",
   "PICLAW_DEBUG_CARD_SUBMISSIONS",
   "PICLAW_TRUST_PROXY",
   "PICLAW_SESSION_MAX_SIZE_MB",
@@ -456,12 +460,28 @@ export interface WebRuntimeConfig {
   internalSecret: string;
   passkeyMode: string;
   terminalEnabled: boolean;
+  vncAllowDirect: boolean;
+  vncTargetsRaw: string;
   debugCardSubmissions: boolean;
   trustProxy: boolean;
 }
 
-const webTerminalEnabled = pickBoolean(piclawConfig, ["webTerminalEnabled", "PICLAW_WEB_TERMINAL_ENABLED"]);
+export function isDefaultWebTerminalEnabled(platform = process.platform): boolean {
+  return platform === "linux" || platform === "darwin";
+}
+
+export function isDefaultWebVncDirectEnabled(platform = process.platform): boolean {
+  return platform === "linux" || platform === "darwin" || platform === "win32";
+}
+
+const nestedWebTerminalEnabled = pickBoolean(webConfig, ["terminalEnabled", "webTerminalEnabled", "PICLAW_WEB_TERMINAL_ENABLED"]);
+const legacyWebTerminalEnabled = pickBoolean(piclawConfig, ["webTerminalEnabled"]);
 const envWebTerminalEnabled = pickBoolean({ PICLAW_WEB_TERMINAL_ENABLED: process.env.PICLAW_WEB_TERMINAL_ENABLED ?? envConfig.PICLAW_WEB_TERMINAL_ENABLED }, ["PICLAW_WEB_TERMINAL_ENABLED"]);
+const nestedWebVncAllowDirect = pickBoolean(webConfig, ["vncAllowDirect", "vnc_allow_direct", "webVncAllowDirect", "PICLAW_WEB_VNC_ALLOW_DIRECT", "PICLAW_VNC_ALLOW_DIRECT"]);
+const legacyWebVncAllowDirect = pickBoolean(piclawConfig, ["webVncAllowDirect"]);
+const envWebVncAllowDirect = pickBoolean({ PICLAW_WEB_VNC_ALLOW_DIRECT: process.env.PICLAW_WEB_VNC_ALLOW_DIRECT ?? envConfig.PICLAW_WEB_VNC_ALLOW_DIRECT ?? process.env.PICLAW_VNC_ALLOW_DIRECT ?? envConfig.PICLAW_VNC_ALLOW_DIRECT }, ["PICLAW_WEB_VNC_ALLOW_DIRECT"]);
+const nestedWebVncTargets = pickString(webConfig, ["vncTargets", "vnc_targets", "webVncTargets", "PICLAW_WEB_VNC_TARGETS", "PICLAW_VNC_TARGETS"]);
+const legacyWebVncTargets = pickString(piclawConfig, ["webVncTargets"]);
 const debugCards = pickBoolean(piclawConfig, ["debugCardSubmissions", "PICLAW_DEBUG_CARD_SUBMISSIONS"]);
 const envDebugCards = pickBoolean({ PICLAW_DEBUG_CARD_SUBMISSIONS: process.env.PICLAW_DEBUG_CARD_SUBMISSIONS ?? envConfig.PICLAW_DEBUG_CARD_SUBMISSIONS }, ["PICLAW_DEBUG_CARD_SUBMISSIONS"]);
 const envTrustProxyRaw = process.env.PICLAW_TRUST_PROXY ?? envConfig.PICLAW_TRUST_PROXY;
@@ -499,7 +519,16 @@ export const WEB_RUNTIME_CONFIG: WebRuntimeConfig = Object.seal({
     configWebPasskeyMode ||
     "totp-fallback"
   ).toLowerCase(),
-  terminalEnabled: envWebTerminalEnabled ?? webTerminalEnabled ?? false,
+  terminalEnabled: envWebTerminalEnabled ?? nestedWebTerminalEnabled ?? legacyWebTerminalEnabled ?? isDefaultWebTerminalEnabled(),
+  vncAllowDirect: envWebVncAllowDirect ?? nestedWebVncAllowDirect ?? legacyWebVncAllowDirect ?? isDefaultWebVncDirectEnabled(),
+  vncTargetsRaw:
+    process.env.PICLAW_WEB_VNC_TARGETS ||
+    envConfig.PICLAW_WEB_VNC_TARGETS ||
+    process.env.PICLAW_VNC_TARGETS ||
+    envConfig.PICLAW_VNC_TARGETS ||
+    nestedWebVncTargets ||
+    legacyWebVncTargets ||
+    "",
   debugCardSubmissions: envDebugCards ?? debugCards ?? false,
   trustProxy: envTrustProxy ?? configTrustProxy ?? false,
 });

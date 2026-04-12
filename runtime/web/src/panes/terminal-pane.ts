@@ -156,6 +156,54 @@ function readThemeVar(name, fallback = '', runtimeDocument = typeof document !==
     return value || fallback;
 }
 
+function parseThemeColor(input) {
+    const raw = String(input || '').trim();
+    if (!raw) return null;
+    const hex = raw.startsWith('#') ? raw.slice(1) : raw;
+    if (/^[0-9a-fA-F]{3}$/.test(hex) || /^[0-9a-fA-F]{6}$/.test(hex)) {
+        const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+        const int = parseInt(full, 16);
+        return {
+            r: (int >> 16) & 255,
+            g: (int >> 8) & 255,
+            b: int & 255,
+        };
+    }
+    const rgbMatch = raw.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (rgbMatch) {
+        return {
+            r: parseInt(rgbMatch[1], 10),
+            g: parseInt(rgbMatch[2], 10),
+            b: parseInt(rgbMatch[3], 10),
+        };
+    }
+    return null;
+}
+
+function relativeLuminance(color) {
+    const toLinear = (value) => {
+        const s = value / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * toLinear(color.r) + 0.7152 * toLinear(color.g) + 0.0722 * toLinear(color.b);
+}
+
+function contrastRatio(a, b) {
+    const l1 = relativeLuminance(a);
+    const l2 = relativeLuminance(b);
+    const lighter = Math.max(l1, l2);
+    const darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+}
+
+function getHighestContrastTextColor(background) {
+    const bg = parseThemeColor(background);
+    if (!bg) return '#ffffff';
+    const white = { r: 255, g: 255, b: 255 };
+    const black = { r: 0, g: 0, b: 0 };
+    return contrastRatio(bg, white) >= contrastRatio(bg, black) ? '#ffffff' : '#000000';
+}
+
 function withAlpha(hexColor, alphaHex) {
     if (!hexColor || !hexColor.startsWith('#')) return hexColor;
     const value = hexColor.slice(1);
@@ -168,11 +216,11 @@ function withAlpha(hexColor, alphaHex) {
     return hexColor;
 }
 
-function buildTerminalTheme(runtimeWindow = typeof window !== 'undefined' ? window : null, runtimeDocument = typeof document !== 'undefined' ? document : null) {
+export function buildTerminalTheme(runtimeWindow = typeof window !== 'undefined' ? window : null, runtimeDocument = typeof document !== 'undefined' ? document : null) {
     const isDark = detectDarkTheme(runtimeWindow, runtimeDocument);
     const palette = isDark ? DARK_TERMINAL_PALETTE : LIGHT_TERMINAL_PALETTE;
     const background = readThemeVar('--bg-primary', isDark ? '#000000' : '#ffffff', runtimeDocument);
-    const foreground = readThemeVar('--text-primary', isDark ? '#e7e9ea' : '#0f1419', runtimeDocument);
+    const foreground = getHighestContrastTextColor(background);
     const secondary = readThemeVar('--text-secondary', isDark ? '#71767b' : '#536471', runtimeDocument);
     const accent = readThemeVar('--accent-color', '#1d9bf0', runtimeDocument);
     const danger = readThemeVar('--danger-color', isDark ? '#ff7b72' : '#cf222e', runtimeDocument);
@@ -203,7 +251,7 @@ function buildTerminalTheme(runtimeWindow = typeof window !== 'undefined' ? wind
         brightBlue: palette.brightBlue,
         brightMagenta: palette.brightMagenta,
         brightCyan: palette.brightCyan,
-        brightWhite: border,
+        brightWhite: foreground,
     };
 }
 

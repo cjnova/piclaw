@@ -4,7 +4,7 @@
 
 import { describe, expect, test, beforeEach } from "bun:test";
 
-import { relocateTerminalPaneRoot } from '../../web/src/panes/terminal-pane.js';
+import { buildTerminalTheme, relocateTerminalPaneRoot } from '../../web/src/panes/terminal-pane.js';
 
 // --- Inline types (same as pane-types.ts, for Bun test runner) ---
 
@@ -155,6 +155,50 @@ const terminalExt: WebPaneExtension = {
 };
 
 // --- Tests ---
+
+test('buildTerminalTheme clamps terminal foreground to the highest-contrast variant against the background', () => {
+    const originalGetComputedStyle = globalThis.getComputedStyle;
+    const fakeDocument: any = {
+        documentElement: {
+            getAttribute: () => 'light',
+            classList: { contains: () => false },
+        },
+        body: {
+            classList: { contains: () => false },
+        },
+    };
+    const fakeWindow: any = {
+        matchMedia: () => ({ matches: false }),
+    };
+
+    globalThis.getComputedStyle = (() => ({
+        getPropertyValue(name: string) {
+            const vars: Record<string, string> = {
+                '--bg-primary': '#ffe082',
+                '--text-primary': '#7a4f00',
+                '--text-secondary': '#8a6b2f',
+                '--accent-color': '#ffb300',
+                '--danger-color': '#f4212e',
+                '--success-color': '#00ba7c',
+                '--bg-hover': '#f9d76a',
+                '--border-color': '#d2b55b',
+                '--accent-soft-strong': 'rgba(255,179,0,0.2)',
+            };
+            return vars[name] || '';
+        },
+    })) as any;
+
+    try {
+        const theme = buildTerminalTheme(fakeWindow, fakeDocument);
+        expect(theme.background).toBe('#ffe082');
+        expect(theme.foreground).toBe('#000000');
+        expect(theme.white).toBe('#000000');
+        expect(theme.brightWhite).toBe('#000000');
+        expect(theme.selectionForeground).toBe('#000000');
+    } finally {
+        globalThis.getComputedStyle = originalGetComputedStyle;
+    }
+});
 
 test('relocateTerminalPaneRoot moves the existing terminal shell into a new host container', () => {
     const root = { id: 'terminal-root' } as any;
