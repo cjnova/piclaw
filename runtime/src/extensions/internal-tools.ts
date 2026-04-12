@@ -68,7 +68,7 @@ export const internalTools: ExtensionFactory = (pi: ExtensionAPI) => {
             activation,
             kind: cap.kind,
             weight: cap.weight,
-            summary: cap.summary,
+            summary: cap.summary || summarizeDescription(tool.description),
             toolsets: getToolsetsForTool(tool.name),
           };
         })

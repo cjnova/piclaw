@@ -11,7 +11,6 @@ describe("tool-capabilities registry", () => {
     const bash = getToolCapability("bash");
     expect(bash.kind).toBe("mutating");
     expect(bash.weight).toBe("standard");
-    expect(bash.summary).toBeTruthy();
 
     const read = getToolCapability("read");
     expect(read.kind).toBe("read-only");
@@ -23,13 +22,23 @@ describe("tool-capabilities registry", () => {
     const exitProcess = getToolCapability("exit_process");
     expect(exitProcess.kind).toBe("mutating");
     expect(exitProcess.weight).toBe("lightweight");
+
+    // upstream core tools
+    const find = getToolCapability("find");
+    expect(find.kind).toBe("read-only");
+
+    const grep = getToolCapability("grep");
+    expect(grep.kind).toBe("read-only");
+
+    const ls = getToolCapability("ls");
+    expect(ls.kind).toBe("read-only");
   });
 
   test("unknown tools get sensible defaults", () => {
     const unknown = getToolCapability("totally_unknown_tool_xyz");
     expect(unknown.kind).toBe("mixed");
     expect(unknown.weight).toBe("standard");
-    expect(unknown.summary).toBeTruthy();
+    expect(unknown.summary).toBeUndefined();
   });
 
   test("all tools in TOOLSETS have capability entries", () => {
@@ -37,11 +46,22 @@ describe("tool-capabilities registry", () => {
     for (const toolset of TOOLSETS) {
       for (const name of toolset.toolNames) {
         const cap = getToolCapability(name);
-        if (cap.summary === "No capability summary available.") {
+        // Every TOOLSET tool should have an explicit entry (not the default)
+        if (cap === getToolCapability("__nonexistent__")) {
           missing.push(name);
         }
       }
     }
     expect(missing).toEqual([]);
+  });
+
+  test("summary is only set when overriding the tool description", () => {
+    // Most tools should NOT have a summary (they use the tool's own description at runtime)
+    const bash = getToolCapability("bash");
+    expect(bash.summary).toBeUndefined();
+
+    // refresh_workspace_index has an explicit override
+    const refresh = getToolCapability("refresh_workspace_index");
+    expect(refresh.summary).toBe("Rebuild the workspace FTS index.");
   });
 });

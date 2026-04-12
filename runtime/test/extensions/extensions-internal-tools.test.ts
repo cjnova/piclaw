@@ -80,12 +80,12 @@ describe("internal-tools extension", () => {
     const result = await tool.execute("t4", {});
     const tools = result.details.tools;
 
-    // bash: mutating, standard, default
+    // bash: mutating, standard, default — summary falls back to tool description
     const bashTool = tools.find((t: any) => t.name === "bash");
     expect(bashTool.kind).toBe("mutating");
     expect(bashTool.weight).toBe("standard");
     expect(bashTool.activation).toBe("default");
-    expect(bashTool.summary).toContain("shell");
+    expect(bashTool.summary).toBe("Run a shell command.");  // from tool description
 
     // read: read-only, lightweight, default
     const readTool = tools.find((t: any) => t.name === "read");
@@ -115,6 +115,7 @@ describe("internal-tools extension", () => {
     expect(custom.kind).toBe("mixed");
     expect(custom.weight).toBe("standard");
     expect(custom.activation).toBe("on-demand");
-    expect(custom.summary).toBeTruthy();
+    // summary falls back to the tool's own description
+    expect(custom.summary).toBe("A custom tool.");
   });
 });

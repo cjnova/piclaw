@@ -14,8 +14,8 @@ export interface ToolCapability {
   kind: ToolKind;
   /** Execution weight hint: lightweight (fast, small output), standard, heavy (slow or large). */
   weight: ToolWeight;
-  /** One-line capability summary for progressive discovery. */
-  summary: string;
+  /** Optional one-line capability summary. When omitted, callers should use the tool's own description. */
+  summary?: string;
 }
 
 /**
@@ -24,73 +24,76 @@ export interface ToolCapability {
  * Tools not in this map get a sensible default via `getToolCapability()`.
  */
 const TOOL_CAPABILITIES: Record<string, ToolCapability> = {
-  // core
-  read:                   { kind: "read-only",  weight: "lightweight", summary: "Read file contents (text or image)." },
-  bash:                   { kind: "mutating",   weight: "standard",    summary: "Execute a shell command; returns stdout/stderr." },
-  powershell:             { kind: "mutating",   weight: "standard",    summary: "Execute a PowerShell command (Windows)." },
-  edit:                   { kind: "mutating",   weight: "lightweight", summary: "Replace exact text in a file." },
-  write:                  { kind: "mutating",   weight: "lightweight", summary: "Write content to a file (creates or overwrites)." },
+  // core (upstream pi-coding-agent)
+  read:                   { kind: "read-only",  weight: "lightweight" },
+  bash:                   { kind: "mutating",   weight: "standard" },
+  powershell:             { kind: "mutating",   weight: "standard" },
+  edit:                   { kind: "mutating",   weight: "lightweight" },
+  write:                  { kind: "mutating",   weight: "lightweight" },
+  find:                   { kind: "read-only",  weight: "lightweight" },
+  grep:                   { kind: "read-only",  weight: "lightweight" },
+  ls:                     { kind: "read-only",  weight: "lightweight" },
 
   // discovery
-  list_internal_tools:    { kind: "read-only",  weight: "lightweight", summary: "Discover available tools with capability metadata." },
-  activate_tools:         { kind: "mutating",   weight: "lightweight", summary: "Enable tools for the current session." },
-  reset_active_tools:     { kind: "mutating",   weight: "lightweight", summary: "Restore default active tool set." },
+  list_internal_tools:    { kind: "read-only",  weight: "lightweight" },
+  activate_tools:         { kind: "mutating",   weight: "lightweight" },
+  reset_active_tools:     { kind: "mutating",   weight: "lightweight" },
 
   // attachments
-  attach_file:            { kind: "read-only",  weight: "lightweight", summary: "Attach a workspace file for user download." },
-  read_attachment:        { kind: "read-only",  weight: "lightweight", summary: "Read an uploaded attachment by id." },
-  export_attachment:      { kind: "mutating",   weight: "lightweight", summary: "Save an attachment to workspace for shell tools." },
+  attach_file:            { kind: "read-only",  weight: "lightweight" },
+  read_attachment:        { kind: "read-only",  weight: "lightweight" },
+  export_attachment:      { kind: "mutating",   weight: "lightweight" },
 
   // model control
-  get_model_state:        { kind: "read-only",  weight: "lightweight", summary: "Show current model and thinking level." },
-  list_models:            { kind: "read-only",  weight: "lightweight", summary: "List available models." },
-  switch_model:           { kind: "mutating",   weight: "lightweight", summary: "Change the active model." },
-  switch_thinking:        { kind: "mutating",   weight: "lightweight", summary: "Change the thinking level." },
+  get_model_state:        { kind: "read-only",  weight: "lightweight" },
+  list_models:            { kind: "read-only",  weight: "lightweight" },
+  switch_model:           { kind: "mutating",   weight: "lightweight" },
+  switch_thinking:        { kind: "mutating",   weight: "lightweight" },
 
   // data
-  messages:               { kind: "mixed",      weight: "standard",    summary: "Search, retrieve, add, post, or delete chat messages." },
-  introspect_sql:         { kind: "read-only",  weight: "standard",    summary: "Read-only SQLite introspection (SELECT/PRAGMA only)." },
-  keychain:               { kind: "mixed",      weight: "lightweight", summary: "List/get/set/delete secure keychain entries." },
+  messages:               { kind: "mixed",      weight: "standard" },
+  introspect_sql:         { kind: "read-only",  weight: "standard" },
+  keychain:               { kind: "mixed",      weight: "lightweight" },
 
   // workspace
-  search_workspace:       { kind: "read-only",  weight: "standard",    summary: "Full-text search across workspace files." },
-  open_drawio_editor:     { kind: "mutating",   weight: "standard",    summary: "Open a draw.io diagram in the web editor." },
-  open_office_viewer:     { kind: "read-only",  weight: "standard",    summary: "Open an Office document in the viewer pane." },
-  office_read:            { kind: "read-only",  weight: "standard",    summary: "Extract text/data from Office documents." },
-  office_write:           { kind: "mutating",   weight: "heavy",       summary: "Create or modify Office documents." },
-  open_workspace_file:    { kind: "read-only",  weight: "lightweight", summary: "Open a file in the web UI editor or popout." },
+  search_workspace:       { kind: "read-only",  weight: "standard" },
+  refresh_workspace_index:{ kind: "mutating",   weight: "standard",    summary: "Rebuild the workspace FTS index." },
+  open_drawio_editor:     { kind: "mutating",   weight: "standard" },
+  open_office_viewer:     { kind: "read-only",  weight: "standard" },
+  office_read:            { kind: "read-only",  weight: "standard" },
+  office_write:           { kind: "mutating",   weight: "heavy" },
+  open_workspace_file:    { kind: "read-only",  weight: "lightweight" },
 
   // automation
-  schedule_task:          { kind: "mutating",   weight: "standard",    summary: "Schedule a task to run later or on a recurring basis." },
-  bun_run:                { kind: "mutating",   weight: "standard",    summary: "Execute a Bun script directly without a shell." },
-  exec_batch:             { kind: "mutating",   weight: "heavy",       summary: "Run multiple commands in a batch." },
-  search_tool_output:     { kind: "read-only",  weight: "lightweight", summary: "Search stored tool output by handle and query." },
+  schedule_task:          { kind: "mutating",   weight: "standard" },
+  bun_run:                { kind: "mutating",   weight: "standard" },
+  exec_batch:             { kind: "mutating",   weight: "heavy" },
+  search_tool_output:     { kind: "read-only",  weight: "lightweight" },
 
   // remote
-  ssh:                    { kind: "mixed",      weight: "standard",    summary: "Inspect or change the SSH profile; run remote commands." },
-  proxmox:                { kind: "mixed",      weight: "standard",    summary: "Proxmox API: discover, workflows, and ad-hoc requests." },
-  portainer:              { kind: "mixed",      weight: "standard",    summary: "Portainer API: discover, workflows, and ad-hoc requests." },
+  ssh:                    { kind: "mixed",      weight: "standard" },
+  proxmox:                { kind: "mixed",      weight: "standard" },
+  portainer:              { kind: "mixed",      weight: "standard" },
 
   // browser
-  cdp_browser:            { kind: "mixed",      weight: "heavy",       summary: "Browser automation via Chrome DevTools Protocol." },
+  cdp_browser:            { kind: "mixed",      weight: "heavy" },
 
   // ui
-  send_adaptive_card:     { kind: "mutating",   weight: "lightweight", summary: "Post an Adaptive Card to the web timeline." },
-  send_dashboard_widget:  { kind: "mutating",   weight: "standard",    summary: "Post an interactive HTML widget to the timeline." },
+  send_adaptive_card:     { kind: "mutating",   weight: "lightweight" },
+  send_dashboard_widget:  { kind: "mutating",   weight: "standard" },
 
   // experiments
-  start_autoresearch:     { kind: "mutating",   weight: "heavy",       summary: "Launch an autonomous experiment loop in a sub-agent." },
-  stop_autoresearch:      { kind: "mutating",   weight: "standard",    summary: "Stop the autoresearch sub-agent and generate a report." },
-  autoresearch_status:    { kind: "read-only",  weight: "lightweight", summary: "Check autoresearch progress." },
+  start_autoresearch:     { kind: "mutating",   weight: "heavy" },
+  stop_autoresearch:      { kind: "mutating",   weight: "standard" },
+  autoresearch_status:    { kind: "read-only",  weight: "lightweight" },
 
   // lifecycle
-  exit_process:           { kind: "mutating",   weight: "lightweight", summary: "Gracefully terminate piclaw for supervisor restart." },
+  exit_process:           { kind: "mutating",   weight: "lightweight" },
 };
 
 const DEFAULT_CAPABILITY: ToolCapability = {
   kind: "mixed",
   weight: "standard",
-  summary: "No capability summary available.",
 };
 
 /** Look up capability metadata for a tool. Returns a sensible default for unknown tools. */
