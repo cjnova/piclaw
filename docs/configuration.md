@@ -353,6 +353,11 @@ Default windows:
 AutoDream is gated, but nightly cadence no longer waits for a full 24-hour gap.
 It runs when there has been activity since the last consolidation.
 
+| Variable | Default | Purpose |
+|----------|---------|---------||
+| `PICLAW_DREAM_MODEL` | _(unset — inherits session model)_ | Pin Dream to a specific model label (e.g. `anthropic/claude-sonnet-4-20250514`). The scheduler switches before the Dream turn and restores the original model afterward. |
+| `PICLAW_DREAM_BACKUP_KEEP` | `10` | Number of pre-Dream note backups to retain |
+
 - if there is no prior consolidation, AutoDream runs
 - if there have been no sessions since the last consolidation, AutoDream skips
 - otherwise the nightly run proceeds even if the previous consolidation was late the night before

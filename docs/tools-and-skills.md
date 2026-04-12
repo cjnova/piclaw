@@ -407,7 +407,7 @@ Direct commands (no LLM round-trip):
 | `/image <prompt> [--size ...] [--count ...] [--quality ...] [--style ...] [--transparent]` | Generate an Azure OpenAI image into workspace-backed files; `--transparent` requests transparent PNG output |
 | `/flux <prompt> [--size ...] [--count ...] [--quality ...]` | Generate an Azure Foundry image into workspace-backed files |
 | `/restart` | Restart the agent and stop subprocesses |
-| `/commands` | List available commands |
+| `/commands` | List available commands (shows sourceInfo provenance: scope, source, and origin for extension commands, templates, and skills) |
 | `/btw <question>` | Open a side-conversation panel in the web UI and stream an answer without interrupting the main chat |
 | `/tasks [filter]` | List scheduled tasks (via extension) |
 | `/scheduled [filter]` | Alias for `/tasks` |
