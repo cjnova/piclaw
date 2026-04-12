@@ -217,10 +217,10 @@ export function SessionTreeWidget({ widget, onWidgetEvent }) {
                             <div class="st-side-label">Type</div>
                             <div class="st-side-value">${selectedNode.role || selectedNode.type || 'entry'}${selectedNode.toolName ? ` \u2192 ${selectedNode.toolName}` : ''}${selectedNode.merged ? ' (merged)' : ''}</div>
                         </div>
-                        ${selectedNode.toolInput && html`
+                        ${selectedNode.toolInputFull && html`
                             <div class="st-side-section">
                                 <div class="st-side-label">${selectedNode.toolName === 'bash' ? 'Command' : 'Input'}</div>
-                                <pre class="st-side-code">${selectedNode.toolInput}</pre>
+                                <pre class="st-side-code">${selectedNode.toolInputFull}</pre>
                             </div>
                         `}
                         ${selectedNode.resultDetail && html`

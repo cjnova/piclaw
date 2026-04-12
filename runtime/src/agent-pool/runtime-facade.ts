@@ -41,36 +41,143 @@ function getToolCallName(content: unknown): string | null {
   return null;
 }
 
+function parseToolArgs(block: Record<string, unknown>): Record<string, unknown> | null {
+  // Try all known field names for tool arguments
+  for (const key of ["input", "args", "arguments"]) {
+    const val = block[key];
+    if (!val) continue;
+    if (typeof val === "object" && val !== null) return val as Record<string, unknown>;
+    if (typeof val === "string") {
+      try { const parsed = JSON.parse(val); if (parsed && typeof parsed === "object") return parsed; } catch {}
+    }
+  }
+  // Try partialJson field
+  if (typeof block.partialJson === "string") {
+    try { const parsed = JSON.parse(block.partialJson); if (parsed && typeof parsed === "object") return parsed; } catch {}
+  }
+  return null;
+}
+
+function formatToolInput(toolName: string, args: Record<string, unknown>): string {
+  const trunc = (s: string, max: number) => s.length > max ? s.slice(0, max - 1) + "\u2026" : s;
+
+  switch (toolName) {
+    case "bash":
+    case "bun_run": {
+      const cmd = typeof args.command === "string" ? args.command : null;
+      return cmd ? trunc(cmd, 500) : JSON.stringify(args).slice(0, 200);
+    }
+    case "read":
+    case "read_file": {
+      let s = typeof args.path === "string" ? args.path : "";
+      if (typeof args.offset === "number") s += `:${args.offset}`;
+      if (typeof args.limit === "number") s += `-${(args.offset as number || 0) + (args.limit as number)}`;
+      return s || JSON.stringify(args).slice(0, 200);
+    }
+    case "write":
+    case "write_file": {
+      const p = typeof args.path === "string" ? args.path : "";
+      const contentLen = typeof args.content === "string" ? args.content.length : 0;
+      return contentLen ? `${p} (${contentLen} chars)` : p || JSON.stringify(args).slice(0, 200);
+    }
+    case "edit":
+    case "edit_file": {
+      const p = typeof args.path === "string" ? args.path : (typeof args.file === "string" ? args.file : "");
+      const old = typeof args.oldText === "string" ? args.oldText : (typeof args.old_string === "string" ? args.old_string : "");
+      if (old) return `${p}  \u2016 ${trunc(old.split("\n")[0], 80)} \u2192 \u2026`;
+      return p || JSON.stringify(args).slice(0, 200);
+    }
+    case "search_workspace":
+    case "grep":
+    case "rg": {
+      const q = typeof args.query === "string" ? args.query : (typeof args.pattern === "string" ? args.pattern : "");
+      const p = typeof args.path === "string" ? ` in ${args.path}` : "";
+      return q ? `"${trunc(q, 80)}"${p}` : JSON.stringify(args).slice(0, 200);
+    }
+    case "messages": {
+      const action = typeof args.action === "string" ? args.action : "";
+      const q = typeof args.query === "string" ? ` "${trunc(args.query, 60)}"` : "";
+      return `${action}${q}` || JSON.stringify(args).slice(0, 200);
+    }
+    case "keychain": {
+      const action = typeof args.action === "string" ? args.action : "";
+      const name = typeof args.name === "string" ? ` ${args.name}` : "";
+      return `${action}${name}` || JSON.stringify(args).slice(0, 200);
+    }
+    default: {
+      // Generic: show key=value pairs, skip large values
+      const parts: string[] = [];
+      for (const [k, v] of Object.entries(args)) {
+        if (typeof v === "string" && v.length > 120) {
+          parts.push(`${k}: ${trunc(v.split("\n")[0], 80)}`);
+        } else if (typeof v === "string") {
+          parts.push(`${k}: ${v}`);
+        } else {
+          parts.push(`${k}: ${JSON.stringify(v).slice(0, 60)}`);
+        }
+      }
+      return trunc(parts.join(", "), 500);
+    }
+  }
+}
+
+function formatToolInputFull(toolName: string, args: Record<string, unknown>): string {
+  switch (toolName) {
+    case "bash":
+    case "bun_run":
+      return typeof args.command === "string" ? args.command : JSON.stringify(args, null, 2);
+    case "read":
+    case "read_file": {
+      let s = typeof args.path === "string" ? args.path : "";
+      if (typeof args.offset === "number") s += `:${args.offset}`;
+      if (typeof args.limit === "number") s += `-${(args.offset as number || 0) + (args.limit as number)}`;
+      return s || JSON.stringify(args, null, 2);
+    }
+    case "write":
+    case "write_file": {
+      const p = typeof args.path === "string" ? args.path : "";
+      const content = typeof args.content === "string" ? args.content : "";
+      return content ? `${p}\n\n${content}` : p || JSON.stringify(args, null, 2);
+    }
+    case "edit":
+    case "edit_file": {
+      const p = typeof args.path === "string" ? args.path : (typeof args.file === "string" ? args.file : "");
+      const old = typeof args.oldText === "string" ? args.oldText : (typeof args.old_string === "string" ? args.old_string : "");
+      const nw = typeof args.newText === "string" ? args.newText : (typeof args.new_string === "string" ? args.new_string : "");
+      const edits = Array.isArray(args.edits) ? args.edits : null;
+      if (edits) {
+        return `${p}\n\n${edits.map((e: any, i: number) => `[${i + 1}] - ${e.oldText || e.old_string || ''}\n    + ${e.newText || e.new_string || ''}`).join('\n')}`;
+      }
+      if (old || nw) return `${p}\n\n- ${old}\n+ ${nw}`;
+      return p || JSON.stringify(args, null, 2);
+    }
+    default:
+      return JSON.stringify(args, null, 2);
+  }
+}
+
 function getToolCallInput(content: unknown): string | null {
   if (!Array.isArray(content)) return null;
   for (const block of content) {
     if (!block || typeof block !== "object") continue;
     const b = block as Record<string, unknown>;
     if (b.type !== "toolCall") continue;
-    // The tool args may be stored as `input`, `args`, or nested in `toolCall`
-    const raw = b.input || b.args || (b as any).toolCall?.args || null;
-    if (!raw || typeof raw !== "object") {
-      // Fallback: dump all non-standard keys on the block itself
-      const skip = new Set(["type", "name", "toolCallId", "id"]);
-      const extra = Object.keys(b).filter(k => !skip.has(k));
-      if (extra.length > 0) { const s = extra.map(k => `${k}: ${JSON.stringify(b[k]).slice(0, 100)}`).join(', '); return s.length > 500 ? s.slice(0, 499) + '\u2026' : s; }
-      continue;
-    }
-    const input = raw as Record<string, unknown>;
-    // bash: show command
-    if (typeof input.command === "string") return input.command.length > 500 ? input.command.slice(0, 499) + '\u2026' : input.command;
-    // read/write: show path
-    if (typeof input.path === "string") {
-      let s = input.path as string;
-      if (typeof input.offset === "number") s += `:${input.offset}`;
-      if (typeof input.limit === "number") s += `-${(input.offset as number || 0) + (input.limit as number)}`;
-      return s;
-    }
-    // edit: show path + short old/new
-    if (typeof input.file === "string") return input.file as string;
-    // generic: JSON summary of keys
-    const keys = Object.keys(input);
-    if (keys.length > 0) { const s = keys.map(k => { const v = String(input[k]); return `${k}: ${v.length > 80 ? v.slice(0, 79) + '\u2026' : v}`; }).join(', '); return s.length > 500 ? s.slice(0, 499) + '\u2026' : s; }
+    const toolName = typeof b.name === "string" ? b.name : "";
+    const args = parseToolArgs(b);
+    if (args) return formatToolInput(toolName, args);
+  }
+  return null;
+}
+
+function getToolCallInputFull(content: unknown): string | null {
+  if (!Array.isArray(content)) return null;
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const b = block as Record<string, unknown>;
+    if (b.type !== "toolCall") continue;
+    const toolName = typeof b.name === "string" ? b.name : "";
+    const args = parseToolArgs(b);
+    if (args) return formatToolInputFull(toolName, args);
   }
   return null;
 }
@@ -86,14 +193,15 @@ function getEntryMeta(entry: Record<string, unknown>): Record<string, unknown> {
   if (role === "toolResult" && typeof msg.toolName === "string") meta.toolName = msg.toolName;
   const toolCallName = getToolCallName(msg.content);
   if (toolCallName) meta.toolName = toolCallName;
-  // Tool call input (command, path, etc.)
+  // Tool call input (compact for row, full for sidebar)
   const toolInput = getToolCallInput(msg.content);
   if (toolInput) meta.toolInput = toolInput;
+  const toolInputFull = getToolCallInputFull(msg.content);
+  if (toolInputFull) meta.toolInputFull = toolInputFull;
   const text = extractTextPreview(msg.content);
   if (text) {
     meta.contentLength = text.length;
-    // Longer detail excerpt for sidebar (up to 500 chars)
-    meta.detail = text.length > 500 ? text.slice(0, 500) + "…" : text;
+    meta.detail = text;
   }
   const thinking = (msg as any).thinking;
   if (thinking) {
