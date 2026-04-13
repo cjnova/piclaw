@@ -89,15 +89,15 @@
 }
 
 .system-meters-row.cpu .system-meters-spark path {
-    stroke: var(--accent-color);
+    stroke: color-mix(in srgb, var(--accent-color) 88%, var(--text-primary));
 }
 
 .system-meters-row.ram .system-meters-spark path {
-    stroke: var(--success-color);
+    stroke: color-mix(in srgb, var(--accent-color) 55%, var(--success-color) 45%);
 }
 
 .system-meters-row.swap .system-meters-spark path {
-    stroke: var(--warning-color, #f59e0b);
+    stroke: color-mix(in srgb, var(--accent-color) 60%, var(--warning-color, #f59e0b) 40%);
 }
 
 @media (max-width: 900px) {

@@ -28,7 +28,8 @@ export function handleUiMetersCommand(rawText: string): UiMetersCommandResult | 
   if (!args) {
     return {
       status: "success",
-      message: "Usage: /meters on, /meters off, or /meters toggle",
+      message: "CPU/RAM meters toggled.",
+      payload: { mode: "toggle" },
     };
   }
 

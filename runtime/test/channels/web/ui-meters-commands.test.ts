@@ -2,10 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { handleUiMetersCommand } from "../../../src/channels/web/ui-meters-commands.js";
 
 describe("/meters command formatting", () => {
-  test("without arguments, returns usage guidance", () => {
+  test("without arguments, toggles the meters HUD", () => {
     const result = handleUiMetersCommand("/meters");
-    expect(result?.status).toBe("success");
-    expect(result?.message).toContain("/meters on");
+    expect(result).toEqual({
+      status: "success",
+      message: "CPU/RAM meters toggled.",
+      payload: { mode: "toggle" },
+    });
   });
 
   test("supports on/off/toggle payloads", () => {
