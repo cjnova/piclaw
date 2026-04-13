@@ -150,10 +150,6 @@
     stroke: color-mix(in srgb, var(--accent-color) 60%, var(--warning-color, #f59e0b) 40%);
 }
 
-.system-meters-inline-row {
-    display: none;
-}
-
 @media (max-width: 900px) {
     .chat-window-header {
         flex-wrap: wrap;
@@ -164,46 +160,38 @@
         flex: 1 1 100%;
     }
 
-    .system-meters-inline-row {
-        display: flex;
-        justify-content: flex-end;
-        padding: 8px 12px 0;
+    .system-meters-hud-overlay {
+        top: max(10px, calc(env(safe-area-inset-top, 0px) + 8px));
+        right: max(8px, calc(env(safe-area-inset-right, 0px) + 8px));
     }
 
-    .system-meters-hud-inline {
-        display: inline-flex;
-        align-self: stretch;
-        pointer-events: auto;
-    }
-
-    .system-meters-hud-inline .system-meters-card {
+    .system-meters-hud-overlay .system-meters-card {
         min-width: 0;
-        padding: 4px 6px;
-        border-radius: 10px;
-        background: transparent;
-        border-color: color-mix(in srgb, var(--border-color) 72%, transparent);
-        box-shadow: none;
-        backdrop-filter: none;
+        max-width: min(72vw, 280px);
+        padding: 6px 9px;
+        border-radius: 999px;
+        backdrop-filter: blur(12px);
     }
 
-    .system-meters-hud-inline.is-collapsed .system-meters-card {
-        padding: 4px 5px;
+    .system-meters-hud-overlay.is-collapsed .system-meters-card {
+        padding: 6px 5px;
     }
 
-    .system-meters-hud-inline .system-meters-row {
-        grid-template-columns: 28px 36px auto;
-        gap: 6px;
-        font-size: 10px;
+    .system-meters-hud-overlay.is-collapsed .system-meters-card,
+    .system-meters-hud-overlay.is-collapsed .system-meters-card:hover {
+        transform: translateX(10px);
     }
 
-    .system-meters-hud-inline .system-meters-spark {
-        width: 36px;
-        height: 12px;
-    }
-
-    .system-meters-hud-inline .system-meters-value {
-        min-width: 28px;
-        font-size: 10px;
+    .system-meters-compact-summary {
+        display: inline-flex;
+        align-items: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 11px;
+        line-height: 1;
+        font-weight: 600;
+        color: var(--text-primary);
     }
 
     .chat-window-header-actions {

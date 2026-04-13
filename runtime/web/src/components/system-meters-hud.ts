@@ -30,6 +30,17 @@ function formatPercent(value) {
     return `${Math.round(Number(value) || 0)}%`;
 }
 
+export function buildCompactMetersSummary(metrics) {
+    const parts = [
+        `CPU ${formatPercent(metrics?.cpu_percent)}`,
+        `RAM ${formatPercent(metrics?.ram_percent)}`,
+    ];
+    if (Number.isFinite(Number(metrics?.swap_percent)) && Number(metrics?.swap_total_bytes) > 0) {
+        parts.push(`SWP ${formatPercent(metrics?.swap_percent)}`);
+    }
+    return parts.join(' • ');
+}
+
 function readIsNarrowLayout() {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
     return window.matchMedia('(max-width: 900px)').matches;
@@ -80,7 +91,7 @@ export function SystemMetersHud({ mode = 'overlay' }) {
         return () => mediaQuery.removeListener(sync);
     }, []);
 
-    const activeMode = isNarrowLayout ? 'inline' : 'overlay';
+    const activeMode = 'overlay';
     const isActiveInstance = mode === activeMode;
 
     useEffect(() => {
@@ -127,6 +138,7 @@ export function SystemMetersHud({ mode = 'overlay' }) {
     const ramPath = useMemo(() => buildSparklinePath(metrics.ram_series), [metrics.ram_series]);
     const swapPath = useMemo(() => buildSparklinePath(metrics.swap_series), [metrics.swap_series]);
     const showSwap = Number.isFinite(Number(metrics.swap_percent)) && metrics.swap_total_bytes > 0;
+    const compactSummary = useMemo(() => buildCompactMetersSummary(metrics), [metrics]);
 
     if (!enabled || !isActiveInstance) return null;
 
@@ -151,31 +163,33 @@ export function SystemMetersHud({ mode = 'overlay' }) {
             >
                 ${collapsed
                     ? html`<span class="system-meters-collapse-tab" aria-hidden="true">◂</span>`
-                    : html`
-                        <div class="system-meters-row cpu">
-                            <span class="system-meters-label">CPU</span>
-                            <svg class="system-meters-spark" viewBox="0 0 56 16" preserveAspectRatio="none" aria-hidden="true">
-                                <path d=${cpuPath}></path>
-                            </svg>
-                            <span class="system-meters-value">${formatPercent(metrics.cpu_percent)}</span>
-                        </div>
-                        <div class="system-meters-row ram">
-                            <span class="system-meters-label">RAM</span>
-                            <svg class="system-meters-spark" viewBox="0 0 56 16" preserveAspectRatio="none" aria-hidden="true">
-                                <path d=${ramPath}></path>
-                            </svg>
-                            <span class="system-meters-value">${formatPercent(metrics.ram_percent)}</span>
-                        </div>
-                        ${showSwap && html`
-                            <div class="system-meters-row swap">
-                                <span class="system-meters-label">SWP</span>
+                    : isNarrowLayout
+                        ? html`<span class="system-meters-compact-summary">${compactSummary}</span>`
+                        : html`
+                            <div class="system-meters-row cpu">
+                                <span class="system-meters-label">CPU</span>
                                 <svg class="system-meters-spark" viewBox="0 0 56 16" preserveAspectRatio="none" aria-hidden="true">
-                                    <path d=${swapPath}></path>
+                                    <path d=${cpuPath}></path>
                                 </svg>
-                                <span class="system-meters-value">${formatPercent(metrics.swap_percent)}</span>
+                                <span class="system-meters-value">${formatPercent(metrics.cpu_percent)}</span>
                             </div>
+                            <div class="system-meters-row ram">
+                                <span class="system-meters-label">RAM</span>
+                                <svg class="system-meters-spark" viewBox="0 0 56 16" preserveAspectRatio="none" aria-hidden="true">
+                                    <path d=${ramPath}></path>
+                                </svg>
+                                <span class="system-meters-value">${formatPercent(metrics.ram_percent)}</span>
+                            </div>
+                            ${showSwap && html`
+                                <div class="system-meters-row swap">
+                                    <span class="system-meters-label">SWP</span>
+                                    <svg class="system-meters-spark" viewBox="0 0 56 16" preserveAspectRatio="none" aria-hidden="true">
+                                        <path d=${swapPath}></path>
+                                    </svg>
+                                    <span class="system-meters-value">${formatPercent(metrics.swap_percent)}</span>
+                                </div>
+                            `}
                         `}
-                    `}
             </button>
         </div>
     `;

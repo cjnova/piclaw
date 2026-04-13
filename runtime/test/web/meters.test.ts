@@ -6,6 +6,7 @@ import {
   readStoredMetersCollapsed,
   toggleMetersCollapsed,
 } from '../../web/src/ui/meters.ts';
+import { buildCompactMetersSummary } from '../../web/src/components/system-meters-hud.ts';
 
 const originalWindow = globalThis.window;
 
@@ -42,6 +43,11 @@ test('applyMetersCollapsed persists state and dispatches a collapsed-change even
   expect(win.__events).toEqual([
     { type: METERS_COLLAPSED_EVENT_NAME, detail: { collapsed: true } },
   ]);
+});
+
+test('buildCompactMetersSummary uses fat bullet separators and includes swap when present', () => {
+  expect(buildCompactMetersSummary({ cpu_percent: 18, ram_percent: 62, swap_percent: 7, swap_total_bytes: 1024 })).toBe('CPU 18% • RAM 62% • SWP 7%');
+  expect(buildCompactMetersSummary({ cpu_percent: 18, ram_percent: 62, swap_percent: null, swap_total_bytes: 0 })).toBe('CPU 18% • RAM 62%');
 });
 
 test('toggleMetersCollapsed flips the stored collapsed state', () => {

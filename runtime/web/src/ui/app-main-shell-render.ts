@@ -429,11 +429,6 @@ export function renderMainShell(options: MainShellRenderOptions): any {
         <div class="editor-splitter" onMouseDown=${handleEditorSplitterMouseDown} onTouchStart=${handleEditorSplitterTouchStart}></div>
       `}
       <div class="container">
-        ${!chatOnlyMode && html`
-          <div class="system-meters-inline-row">
-            <${SystemMetersHud} mode="inline" />
-          </div>
-        `}
         ${searchQuery && isIOSDevice() && html`<div class="search-results-spacer"></div>`}
         ${chatOnlyMode && html`
           <div class="chat-window-header">
@@ -443,7 +438,6 @@ export function renderMainShell(options: MainShellRenderOptions): any {
               </span>
               <span class="chat-window-header-subtitle">${currentBranchRecord?.chat_jid || currentChatJid}</span>
             </div>
-            <${SystemMetersHud} mode="inline" />
             <div class="chat-window-header-actions">
               ${currentChatBranches.length > 1 && html`
                 <label class="chat-window-branch-picker-wrap">
