@@ -418,14 +418,14 @@ Direct commands (no LLM round-trip):
 | `/tasks [filter]` | List scheduled tasks (via extension) |
 | `/scheduled [filter]` | Alias for `/tasks` |
 | `/dream [days]` | Queue an out-of-band Dream cycle on a temporary `dream:` channel; runtime backs up notes, seeds daily notes from DB, the model follows Orient / Signal / Consolidate / Prune and Index, and runtime refreshes FTS at the end |
-| `/mcp [status\|tools\|reconnect [server]]` | Open MCP status/UI, list MCP tools, or reconnect bundled `pi-mcp-adapter` servers |
-| `/mcp-auth <server>` | Start OAuth/authentication for an MCP server managed by `pi-mcp-adapter` |
+| `/mcp [status\|tools\|reconnect [server]]` | Open the MCP management panel in the web UI (or text status elsewhere), list MCP tools, or reconnect bundled `pi-mcp-adapter` servers |
+| `/mcp-auth <server>` | Show OAuth token-setup guidance for an MCP server managed by `pi-mcp-adapter` |
 
 > [!NOTE]
 > Provider auth works via `pi /login` in the terminal or the experimental `/login` card flow in the web UI.
 > The card-based `/login` flow supports GitHub Copilot, Codex, and standard OpenAI providers. Anthropic is untested. The terminal remains the reliable fallback.
 
-The bundled `pi-mcp-adapter` reads project-local MCP config from `.pi/mcp.json` (starter example: `.pi/mcp.json.example`) and also understands the Pi home config under `~/.pi/agent/mcp.json` (inside the container image this typically maps to `/config/.pi/agent/mcp.json`). Prefer the project-local config when an MCP server belongs to the current workspace.
+The bundled `pi-mcp-adapter` reads project-local MCP config from `.pi/mcp.json` (starter example: `.pi/mcp.json.example`) and also understands the Pi home config under `~/.pi/agent/mcp.json` (inside the container image this typically maps to `/config/.pi/agent/mcp.json`). It merges Pi-home config, optional imported tool configs, then project-local `.pi/mcp.json` overrides. Prefer the project-local config when an MCP server belongs to the current workspace.
 
 `/image` writes generated images back into the workspace and renders them as workspace-backed timeline images plus file-path listings. `/flux` follows the same output pattern, but transparent background requests are currently supported only on `/image`.
 
