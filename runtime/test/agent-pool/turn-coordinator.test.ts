@@ -26,20 +26,133 @@ test("AgentTurnCoordinator tracks streamed turns and fallback assistant text", (
 
   tracker.handleMessageUpdate({
     type: "message_update",
-    assistantMessageEvent: { type: "text_delta", delta: "hello" },
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "hello",
+      contentIndex: 0,
+      partial: { content: [{ type: "text", textSignature: JSON.stringify({ v: 1, id: "msg_1", phase: "final_answer" }) }] },
+    },
   } as any);
   tracker.handleMessageUpdate({
     type: "message_update",
-    assistantMessageEvent: { type: "text_start" },
+    assistantMessageEvent: {
+      type: "text_start",
+      contentIndex: 0,
+      partial: { content: [{ type: "text", textSignature: JSON.stringify({ v: 1, id: "msg_2", phase: "final_answer" }) }] },
+    },
   } as any);
   tracker.handleMessageUpdate({
     type: "message_end",
-    message: { role: "assistant", content: [{ type: "text", text: "fallback answer" }] },
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "fallback answer", textSignature: JSON.stringify({ v: 1, id: "msg_2", phase: "final_answer" }) }],
+    },
   } as any);
 
   expect(completed).toEqual([{ text: "hello", attachments: [sampleAttachment] }]);
   expect(tracker.getTurnCount()).toBe(1);
   expect(tracker.getFinalText()).toBe("fallback answer");
+});
+
+ test("AgentTurnCoordinator ignores commentary-only assistant text", () => {
+  const coordinator = new AgentTurnCoordinator({
+    takeAttachments: () => [],
+    touchSession: () => {},
+    recordMessageUsage: () => {},
+  });
+
+  const tracker = coordinator.createTracker("web:default");
+
+  tracker.handleMessageUpdate({
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_start",
+      contentIndex: 0,
+      partial: { content: [{ type: "text", textSignature: JSON.stringify({ v: 1, id: "msg_c", phase: "commentary" }) }] },
+    },
+  } as any);
+  tracker.handleMessageUpdate({
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "progress update",
+      contentIndex: 0,
+      partial: { content: [{ type: "text", textSignature: JSON.stringify({ v: 1, id: "msg_c", phase: "commentary" }) }] },
+    },
+  } as any);
+  tracker.handleMessageUpdate({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "progress update", textSignature: JSON.stringify({ v: 1, id: "msg_c", phase: "commentary" }) }],
+    },
+  } as any);
+
+  expect(tracker.getFinalText()).toBe("");
+  expect(tracker.getTurnCount()).toBe(0);
+});
+
+ test("AgentTurnCoordinator drops commentary and keeps later final answers", () => {
+  const completed: Array<{ text: string; attachments: AttachmentInfo[] }> = [];
+  const coordinator = new AgentTurnCoordinator({
+    takeAttachments: () => [],
+    touchSession: () => {},
+    recordMessageUsage: () => {},
+  });
+
+  const tracker = coordinator.createTracker("web:default", (turn) => completed.push(turn));
+
+  tracker.handleMessageUpdate({
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_start",
+      contentIndex: 0,
+      partial: { content: [{ type: "text", textSignature: JSON.stringify({ v: 1, id: "msg_c", phase: "commentary" }) }] },
+    },
+  } as any);
+  tracker.handleMessageUpdate({
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "progress",
+      contentIndex: 0,
+      partial: { content: [{ type: "text", textSignature: JSON.stringify({ v: 1, id: "msg_c", phase: "commentary" }) }] },
+    },
+  } as any);
+  tracker.handleMessageUpdate({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "progress", textSignature: JSON.stringify({ v: 1, id: "msg_c", phase: "commentary" }) }],
+    },
+  } as any);
+  tracker.handleMessageUpdate({
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_start",
+      contentIndex: 0,
+      partial: { content: [{ type: "text", textSignature: JSON.stringify({ v: 1, id: "msg_f", phase: "final_answer" }) }] },
+    },
+  } as any);
+  tracker.handleMessageUpdate({
+    type: "message_update",
+    assistantMessageEvent: {
+      type: "text_delta",
+      delta: "done",
+      contentIndex: 0,
+      partial: { content: [{ type: "text", textSignature: JSON.stringify({ v: 1, id: "msg_f", phase: "final_answer" }) }] },
+    },
+  } as any);
+  tracker.handleMessageUpdate({
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text: "done", textSignature: JSON.stringify({ v: 1, id: "msg_f", phase: "final_answer" }) }],
+    },
+  } as any);
+
+  expect(completed).toEqual([]);
+  expect(tracker.getFinalText()).toBe("done");
 });
 
 test("AgentTurnCoordinator subscribes, records usage, and downgrades handler failures to warnings", () => {

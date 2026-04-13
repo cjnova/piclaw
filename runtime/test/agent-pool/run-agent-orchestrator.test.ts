@@ -208,3 +208,69 @@ test("runAgentPrompt skips pre-prompt auto-compaction when it is disabled", asyn
   expect(result.status).toBe("success");
   expect(calls).toEqual(["prompt"]);
 });
+
+test("runAgentPrompt ignores commentary-only aborted output", async () => {
+  class StubSession {
+    private listeners: Array<(event: any) => void> = [];
+    sessionManager = { getLeafId: () => "leaf-1" };
+    isStreaming = false;
+    isCompacting = false;
+    isRetrying = false;
+    subscribe(listener: (event: any) => void) {
+      this.listeners.push(listener);
+      return () => {
+        this.listeners = this.listeners.filter((entry) => entry !== listener);
+      };
+    }
+    async prompt() {
+      for (const listener of this.listeners) {
+        listener({
+          type: "message_update",
+          assistantMessageEvent: {
+            type: "text_start",
+            contentIndex: 0,
+            partial: { content: [{ type: "text", textSignature: JSON.stringify({ v: 1, id: "msg_c", phase: "commentary" }) }] },
+          },
+        });
+        listener({
+          type: "message_update",
+          assistantMessageEvent: {
+            type: "text_delta",
+            delta: "progress update",
+            contentIndex: 0,
+            partial: { content: [{ type: "text", textSignature: JSON.stringify({ v: 1, id: "msg_c", phase: "commentary" }) }] },
+          },
+        });
+        listener({
+          type: "message_end",
+          message: {
+            role: "assistant",
+            content: [{ type: "text", text: "progress update", textSignature: JSON.stringify({ v: 1, id: "msg_c", phase: "commentary" }) }],
+          },
+        });
+      }
+    }
+    async abort() {}
+  }
+
+  const session = new StubSession();
+  const turnCoordinator = new AgentTurnCoordinator({
+    takeAttachments: () => [],
+    touchSession: () => {},
+    recordMessageUsage: () => {},
+  });
+
+  const result = await runAgentPrompt("test", "web:default", { timeoutMs: 0 }, {
+    getOrCreateRuntime: async () => createRuntime(session) as any,
+    turnCoordinator,
+    clearAttachments: () => {},
+    takeAttachments: () => [],
+    logsDir: process.env.PICLAW_WORKSPACE || "/workspace",
+    setActiveForkBaseLeaf: () => {},
+    clearActiveForkBaseLeaf: () => {},
+  });
+
+  expect(result.status).toBe("success");
+  expect(result.result).toBeNull();
+  expect(result.attachments).toBeUndefined();
+});
