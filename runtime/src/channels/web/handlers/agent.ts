@@ -843,8 +843,18 @@ export async function processChat(
   const trackedEmitter = {
     ...emitter,
     status: (payload: Record<string, unknown>) => {
-      channel.updateAgentStatus(chatJid, payload);
-      emitter.status(payload);
+      const isToolStatus = payload?.type === "tool_call" || payload?.type === "tool_status";
+      let nextPayload = payload;
+      if (isToolStatus && !payload?.ssh_target) {
+        const sshConfig = typeof (channel.agentPool as { getSshConfig?: (chatJid: string) => { ssh_target?: string | null } | null })?.getSshConfig === "function"
+          ? (channel.agentPool as { getSshConfig: (chatJid: string) => { ssh_target?: string | null } | null }).getSshConfig(chatJid)
+          : null;
+        if (sshConfig?.ssh_target) {
+          nextPayload = { ...payload, ssh_target: sshConfig.ssh_target };
+        }
+      }
+      channel.updateAgentStatus(chatJid, nextPayload);
+      emitter.status(nextPayload);
     },
   };
 

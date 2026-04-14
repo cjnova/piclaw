@@ -5,7 +5,7 @@ import { renderThinkingMarkdown } from '../markdown.js';
 import { getTurnColor } from '../ui/agent-utils.js';
 import { buildTurnDotClass, resolveRunningStatusIndicator, shouldShowRunningStatusDot } from '../ui/status-dot.js';
 import { getStatusElapsedLabel, isCompactionStatus, resolveStatusPanelTitle } from '../ui/status-duration.js';
-import { extractToolContextPath, extractToolSshTarget } from '../ui/tool-git-context.js';
+import { extractToolContextPath, extractToolSshTarget, stripRemotePathFromSshTarget } from '../ui/tool-git-context.js';
 
 const COPY_ICON_SVG = html`
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -191,7 +191,9 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
     const toolRepoLabel = toolRepoContext
         ? [toolRepoRepoPath, toolRepoBranch].filter(Boolean).join(' · ')
         : '';
-    const toolSshTarget = extractToolSshTarget(status?.tool_name, status?.tool_args) || '';
+    const toolSshTarget = extractToolSshTarget(status?.tool_name, status?.tool_args)
+        || stripRemotePathFromSshTarget(status?.ssh_target)
+        || '';
 
     const renderThinkingPanel = ({ panelTitle, text, fullText, totalLines, maxLines, titleClass, panelKey }) => {
         const isExpanded = expandedPanels.has(panelKey);

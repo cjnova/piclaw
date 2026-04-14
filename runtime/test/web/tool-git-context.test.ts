@@ -42,3 +42,7 @@ test('extractToolSshTarget reads ssh wrapper targets', () => {
   expect(extractToolSshTarget('bash', { ssh_target: 'agent@example.com:/srv/project' })).toBe('agent@example.com');
   expect(extractToolSshTarget('ssh', { action: 'get' })).toBeNull();
 });
+
+test('stripRemotePathFromSshTarget also handles top-level status payload values', () => {
+  expect(stripRemotePathFromSshTarget('agent@example.com:/srv/project')).toBe('agent@example.com');
+});
