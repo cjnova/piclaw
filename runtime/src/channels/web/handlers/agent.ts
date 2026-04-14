@@ -51,6 +51,11 @@ import { checkPendingShutdown } from "../../../runtime/shutdown-registry.js";
 
 const log = createLogger("web.handlers.agent");
 
+function isRateLimitError(errorText: string | null | undefined): boolean {
+  if (!errorText) return false;
+  return /\b429\b|rate[ -]?limit|too many requests|retry-after/i.test(errorText);
+}
+
 export function withResolvedToolStatusHints(chatJid: string, payload: Record<string, unknown>): Record<string, unknown> {
   const isToolStatus = payload?.type === "tool_call" || payload?.type === "tool_status";
   const toolName = typeof payload?.tool_name === "string" ? payload.tool_name.trim() : "";
@@ -1104,6 +1109,7 @@ export async function processChat(
     }
 
     const errorText = output.error || "Agent error";
+    const rateLimited = isRateLimitError(errorText);
     const fallbackPublished = errorText.toLowerCase().includes("timed out")
       ? publishDraftFallback("timeout")
       : publishDraftFallback("error");
@@ -1131,9 +1137,11 @@ export async function processChat(
     // what went wrong. Previously errors were only shown as transient status
     // events which are invisible in timeline history.
     const isApiError = /invalid_request_error|400|media_type|image.*source/i.test(errorText);
-    const userVisibleError = isApiError
-      ? `⚠️ API error — the session may be corrupted:\n\n\`${errorText.slice(0, 500)}\`\n\nThis error will repeat on every message. Try \`/new-session\` to start fresh, or manually repair the session JSONL.`
-      : `⚠️ Agent error: ${errorText.slice(0, 300)}`;
+    const userVisibleError = rateLimited
+      ? `⚠️ AI provider rate limit after automatic retries:\n\n\`${errorText.slice(0, 500)}\`\n\nPiclaw now retries 429/rate-limit failures with exponential backoff up to 5 times before surfacing the error.`
+      : isApiError
+        ? `⚠️ API error — the session may be corrupted:\n\n\`${errorText.slice(0, 500)}\`\n\nThis error will repeat on every message. Try \`/new-session\` to start fresh, or manually repair the session JSONL.`
+        : `⚠️ Agent error: ${errorText.slice(0, 300)}`;
     const errorNotice = channel.storeMessage(chatJid, userVisibleError, true, [], {
       threadId: resolvedThreadRootId ?? undefined,
       isTerminalAgentReply: true,
@@ -1146,7 +1154,8 @@ export async function processChat(
       thread_id: threadId,
       agent_id: agentId,
       type: "error",
-      title: errorText,
+      title: rateLimited ? "AI provider rate limit" : errorText,
+      detail: rateLimited ? errorText : undefined,
       turn_id: turnId,
     });
     return;
