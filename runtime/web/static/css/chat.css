@@ -1111,9 +1111,17 @@
     padding: var(--spacing-xs);
 }
 
+.compose-session-trigger-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
 .compose-session-trigger {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 4px;
     min-height: 28px;
     padding: 0;
@@ -1129,6 +1137,15 @@
 .compose-session-trigger:hover,
 .compose-session-trigger:focus-visible {
     outline: none;
+}
+
+.compose-session-trigger-pill {
+    justify-content: flex-start;
+}
+
+.compose-session-trigger-icon-btn {
+    min-width: 28px;
+    padding: 4px;
 }
 
 .compose-current-agent-label {

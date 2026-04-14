@@ -556,7 +556,7 @@ export function ComposeBox({
     const modelPopupRef = useRef(null);
     const modelHintRef = useRef(null);
     const sessionPopupRef = useRef(null);
-    const sessionButtonRef = useRef(null);
+    const sessionTriggerRef = useRef(null);
     const footerRef = useRef(null);
     const popupTypeaheadRef = useRef({ value: '', updatedAt: 0 });
     const dragCounterRef = useRef(0);
@@ -1597,7 +1597,7 @@ export function ComposeBox({
 
         const onPointerDown = (event) => {
             const popup = sessionPopupRef.current;
-            const trigger = sessionButtonRef.current;
+            const trigger = sessionTriggerRef.current;
             const target = event.target;
             if (popup && popup.contains(target)) return;
             if (trigger && trigger.contains(target)) return;
@@ -2029,27 +2029,40 @@ export function ComposeBox({
                     `}
                     <div class="compose-actions ${searchMode ? 'search-mode' : ''}">
                     ${showSessionSwitcherButton && html`
-                        <button
-                            ref=${sessionButtonRef}
-                            type="button"
-                            class=${`compose-session-trigger${showSessionPopup ? ' active' : ''}`}
-                            onClick=${toggleSessionPopup}
-                            title=${currentSessionAgent?.chat_jid || currentChatJid}
-                            aria-label=${currentSessionAgent?.agent_name
-                                ? `Manage sessions for @${currentSessionAgent.agent_name}`
-                                : 'Manage Sessions/Agents'}
-                            aria-expanded=${showSessionPopup ? 'true' : 'false'}
+                        <div
+                            ref=${sessionTriggerRef}
+                            class="compose-session-trigger-group"
                         >
                             ${currentSessionAgent?.agent_name && html`
-                                <span class="compose-current-agent-label active">@${currentSessionAgent.agent_name}</span>
+                                <button
+                                    type="button"
+                                    class=${`compose-session-trigger compose-session-trigger-pill${showSessionPopup ? ' active' : ''}`}
+                                    onClick=${toggleSessionPopup}
+                                    title=${currentSessionAgent?.chat_jid || currentChatJid}
+                                    aria-label=${`Manage sessions for @${currentSessionAgent.agent_name}`}
+                                    aria-expanded=${showSessionPopup ? 'true' : 'false'}
+                                >
+                                    <span class="compose-current-agent-label active">@${currentSessionAgent.agent_name}</span>
+                                </button>
                             `}
-                            <span class="compose-session-trigger-icon" aria-hidden="true">
-                                <svg class="compose-mention-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" focusable="false">
-                                    <circle cx="12" cy="12" r="4.25" />
-                                    <path d="M16.25 7.75v5.4a2.1 2.1 0 0 0 4.2 0V12a8.45 8.45 0 1 0-4.2 7.33" />
-                                </svg>
-                            </span>
-                        </button>
+                            <button
+                                type="button"
+                                class=${`compose-session-trigger compose-session-trigger-icon-btn${showSessionPopup ? ' active' : ''}`}
+                                onClick=${toggleSessionPopup}
+                                title=${currentSessionAgent?.chat_jid || currentChatJid}
+                                aria-label=${currentSessionAgent?.agent_name
+                                    ? `Manage sessions for @${currentSessionAgent.agent_name}`
+                                    : 'Manage Sessions/Agents'}
+                                aria-expanded=${showSessionPopup ? 'true' : 'false'}
+                            >
+                                <span class="compose-session-trigger-icon" aria-hidden="true">
+                                    <svg class="compose-mention-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                                        <circle cx="12" cy="12" r="4.25" />
+                                        <path d="M16.25 7.75v5.4a2.1 2.1 0 0 0 4.2 0V12a8.45 8.45 0 1 0-4.2 7.33" />
+                                    </svg>
+                                </span>
+                            </button>
+                        </div>
                     `}
                     ${searchMode && html`
                         <label class="compose-search-scope-wrap" title="Search scope">
