@@ -29,7 +29,7 @@ declare module "@mariozechner/pi-coding-agent" {
 	}
 
 	export interface ExtensionAPI {
-		on(event: string, handler: (event: any, ctx: ExtensionContext) => Promise<void> | void): void;
+		on(event: string, handler: (event: any, ctx: ExtensionContext) => Promise<any> | any): void;
 		registerCommand(name: string, command: ExtensionCommand): void;
 		registerTool(tool: ExtensionTool): void;
 	}
