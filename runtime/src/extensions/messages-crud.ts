@@ -21,12 +21,15 @@ const MessagesSchema = Type.Object({
     Type.Union([
       Type.Literal("search"),
       Type.Literal("get"),
+      Type.Literal("grep"),
+      Type.Literal("extract"),
       Type.Literal("add"),
       Type.Literal("post"),
       Type.Literal("delete"),
     ]),
   ),
-  query: Type.Optional(Type.String({ description: "Full-text query string (search action)." })),
+  query: Type.Optional(Type.String({ description: "Full-text query string (search action), or fallback pattern for grep/extract." })),
+  pattern: Type.Optional(Type.String({ description: "Substring or regex pattern for grep/extract actions." })),
   row_ids: Type.Optional(
     Type.Array(Type.Integer({ minimum: 1 }), {
       description: "Target row IDs (get/delete actions).",
@@ -59,6 +62,16 @@ const MessagesSchema = Type.Object({
   ),
   content_lines: Type.Optional(Type.String({ description: "Line selection for get action, e.g. '10-20' or '15'." })),
   content_grep: Type.Optional(Type.String({ description: "Filter get action content lines by substring match." })),
+  regex: Type.Optional(Type.Boolean({ description: "Interpret pattern as a regular expression for grep/extract actions." })),
+  context_lines: Type.Optional(Type.Integer({ description: "Context lines before/after grep matches.", minimum: 0, maximum: 5 })),
+  max_matches: Type.Optional(Type.Integer({ description: "Max grep/extract matches or values to return (1-200).", minimum: 1, maximum: 200 })),
+  capture_group: Type.Optional(Type.Integer({ description: "Regex capture group index to extract (extract action).", minimum: 0, maximum: 10 })),
+  dedupe: Type.Optional(Type.Boolean({ description: "Collapse repeated extracted values (extract action, default true)." })),
+  sort: Type.Optional(Type.Union([
+    Type.Literal("none"),
+    Type.Literal("asc"),
+    Type.Literal("desc"),
+  ], { description: "Optional extract result ordering." })),
   content: Type.Optional(Type.String({ description: "Message content to insert (add action)." })),
   type: Type.Optional(
     Type.Union([Type.Literal("user"), Type.Literal("agent")], {
@@ -120,6 +133,32 @@ type GetResultItem = {
   context_before: MessageResultRow[];
   context_after: MessageResultRow[];
   line_view?: MessageLineView;
+};
+
+type GrepLineView = {
+  total_lines: number;
+  context_lines: number;
+  match_count: number;
+  lines: Array<{
+    line_number: number;
+    content: string;
+    matched: boolean;
+  }>;
+};
+
+type GrepResultItem = {
+  message: MessageResultRow;
+  line_view: GrepLineView;
+};
+
+type ExtractResultItem = {
+  value: string;
+  count: number;
+  first_seen_rowid: number;
+  first_seen_at: string;
+  first_seen_chat_jid: string;
+  first_seen_sender: string;
+  first_seen_sender_name: string;
 };
 
 function normalizeChatJid(input: string | undefined, defaultChat: string): string | null {
@@ -219,6 +258,56 @@ function parseContentLines(input: string | undefined): { start: number; end: num
   return { start, end };
 }
 
+function getPatternInput(params: MessagesParams): string {
+  return params.pattern?.trim() || params.query?.trim() || "";
+}
+
+function compileRegex(pattern: string): RegExp | null {
+  try {
+    return new RegExp(pattern, "g");
+  } catch {
+    return null;
+  }
+}
+
+function lineMatchesPattern(line: string, pattern: string, regex: boolean): boolean {
+  if (!pattern) return false;
+  if (!regex) return line.toLowerCase().includes(pattern.toLowerCase());
+  const expression = compileRegex(pattern);
+  if (!expression) return false;
+  expression.lastIndex = 0;
+  return expression.test(line);
+}
+
+function collectPatternMatches(content: string, pattern: string, regex: boolean, captureGroup = 0): string[] {
+  if (!pattern) return [];
+  if (!regex) {
+    if (captureGroup > 0) return [];
+    const values: string[] = [];
+    const needle = pattern.toLowerCase();
+    const haystack = content.toLowerCase();
+    let startIndex = 0;
+    while (startIndex <= haystack.length) {
+      const index = haystack.indexOf(needle, startIndex);
+      if (index === -1) break;
+      values.push(content.slice(index, index + pattern.length));
+      startIndex = index + Math.max(pattern.length, 1);
+    }
+    return values;
+  }
+
+  const expression = compileRegex(pattern);
+  if (!expression) return [];
+  const values: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = expression.exec(content)) !== null) {
+    const value = match[captureGroup] ?? match[0] ?? "";
+    if (value) values.push(value);
+    if (match[0] === "") expression.lastIndex += 1;
+  }
+  return values;
+}
+
 function clipText(value: string, limit?: number): string {
   const max = Number.isFinite(limit ?? NaN) ? Math.max(limit as number, 0) : undefined;
   if (max === undefined) return value;
@@ -288,6 +377,94 @@ function clipContent(row: MessageRow, limit?: number): MessageResultRow {
     content: `${row.content.slice(0, Math.max(1, max - 1))}…`,
     content_truncated: true,
     content_full_length: row.content.length,
+  };
+}
+
+function listMessageWindow(
+  chatJid: string | null,
+  roleFilter: number | null,
+  senderFilter: string | null,
+  limit: number,
+  offset: number,
+  afterTs?: string,
+  beforeTs?: string,
+  afterRow?: number,
+  beforeRow?: number,
+): MessageRow[] {
+  const db = getDb();
+  const conditions: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (chatJid) {
+    conditions.push("chat_jid = ?");
+    params.push(chatJid);
+  }
+  if (roleFilter !== null) {
+    conditions.push("is_bot_message = ?");
+    params.push(roleFilter);
+  }
+  appendSenderFilter(conditions, params, senderFilter);
+  if (afterTs) {
+    conditions.push("timestamp > ?");
+    params.push(afterTs);
+  }
+  if (beforeTs) {
+    conditions.push("timestamp < ?");
+    params.push(beforeTs);
+  }
+  if (typeof afterRow === "number" && Number.isInteger(afterRow) && afterRow > 0) {
+    conditions.push("rowid > ?");
+    params.push(afterRow);
+  }
+  if (typeof beforeRow === "number" && Number.isInteger(beforeRow) && beforeRow > 0) {
+    conditions.push("rowid < ?");
+    params.push(beforeRow);
+  }
+
+  const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  const sql = `SELECT rowid, chat_jid, sender, sender_name, content, content_blocks, timestamp, is_bot_message
+    FROM messages${whereClause} ORDER BY rowid DESC LIMIT ? OFFSET ?`;
+  return db.prepare(sql).all(...params, limit, offset) as MessageRow[];
+}
+
+function buildGrepLineView(
+  content: string,
+  pattern: string,
+  regex: boolean,
+  contextLines: number,
+  detailsMaxChars?: number,
+): GrepLineView | null {
+  const rawLines = content.split(/\r?\n/);
+  const matchedLineNumbers = new Set<number>();
+  for (let index = 0; index < rawLines.length; index += 1) {
+    if (lineMatchesPattern(rawLines[index] ?? "", pattern, regex)) {
+      matchedLineNumbers.add(index + 1);
+    }
+  }
+  if (matchedLineNumbers.size === 0) return null;
+
+  const selectedLineNumbers = new Set<number>();
+  for (const lineNumber of matchedLineNumbers) {
+    const start = Math.max(1, lineNumber - contextLines);
+    const end = Math.min(rawLines.length, lineNumber + contextLines);
+    for (let current = start; current <= end; current += 1) {
+      selectedLineNumbers.add(current);
+    }
+  }
+
+  const lines = Array.from(selectedLineNumbers)
+    .sort((a, b) => a - b)
+    .map((lineNumber) => ({
+      line_number: lineNumber,
+      content: clipText(rawLines[lineNumber - 1] ?? "", detailsMaxChars),
+      matched: matchedLineNumbers.has(lineNumber),
+    }));
+
+  return {
+    total_lines: rawLines.length,
+    context_lines: contextLines,
+    match_count: matchedLineNumbers.size,
+    lines,
   };
 }
 
@@ -659,6 +836,199 @@ function executeGet(params: MessagesParams, defaultChat: string): AgentToolResul
   };
 }
 
+function executeGrep(params: MessagesParams, defaultChat: string): AgentToolResult<Record<string, unknown>> {
+  const pattern = getPatternInput(params);
+  if (!pattern) {
+    return {
+      content: [{ type: "text", text: "Provide pattern (or query) for action=grep." }],
+      details: { action: "grep", count: 0, matching_lines: 0, results: [] },
+    };
+  }
+
+  const regex = params.regex === true;
+  if (regex && !compileRegex(pattern)) {
+    return {
+      content: [{ type: "text", text: "Invalid regex pattern." }],
+      details: { action: "grep", count: 0, matching_lines: 0, results: [], error: "invalid_regex", pattern },
+    };
+  }
+
+  const chatJid = normalizeChatJid(params.chat_jid, defaultChat);
+  const roleFilter = normalizeRole(params.role);
+  const senderFilter = normalizeSender(params.sender);
+  const limit = Math.min(Math.max(params.limit ?? 20, 1), 50);
+  const offset = Math.max(params.offset ?? 0, 0);
+  const maxMatches = Math.min(Math.max(params.max_matches ?? 50, 1), 200);
+  const contextLines = Math.min(Math.max(params.context_lines ?? 0, 0), 5);
+  const detailsMaxChars = typeof params.details_max_chars === "number" ? Math.max(params.details_max_chars, 0) : undefined;
+  const rows = listMessageWindow(chatJid, roleFilter, senderFilter, limit, offset, params.since || params.after, params.before, params.after_row, params.before_row);
+
+  const results: GrepResultItem[] = [];
+  let matchingLines = 0;
+  for (const row of rows) {
+    if (matchingLines >= maxMatches) break;
+    const lineView = buildGrepLineView(row.content, pattern, regex, contextLines, detailsMaxChars);
+    if (!lineView) continue;
+    const remaining = maxMatches - matchingLines;
+    const matchedNumbers = new Set(lineView.lines.filter((line) => line.matched).map((line) => line.line_number));
+    const limitedMatched = new Set(Array.from(matchedNumbers).sort((a, b) => a - b).slice(0, remaining));
+    const limitedLines = lineView.lines.filter((line) => !line.matched || limitedMatched.has(line.line_number));
+    const limitedLineView: GrepLineView = {
+      ...lineView,
+      match_count: limitedMatched.size,
+      lines: limitedLines,
+    };
+    results.push({
+      message: clipContent(row, detailsMaxChars),
+      line_view: limitedLineView,
+    });
+    matchingLines += limitedMatched.size;
+  }
+
+  if (results.length === 0) {
+    return {
+      content: [{ type: "text", text: "No matching lines found." }],
+      details: { action: "grep", count: 0, matching_lines: 0, results: [], pattern, regex },
+    };
+  }
+
+  const preview = results.map((item) => {
+    const lines = item.line_view.lines.map((line) => `${line.matched ? ">" : " "} ${line.line_number}| ${line.content}`).join("\n");
+    return `[${item.message.rowid}] ${item.message.sender_name || item.message.sender}:\n${lines}`;
+  }).join("\n\n");
+
+  return {
+    content: [{ type: "text", text: `Found ${matchingLines} matching line${matchingLines === 1 ? "" : "s"} across ${results.length} message${results.length === 1 ? "" : "s"}.\n${preview}` }],
+    details: {
+      action: "grep",
+      count: results.length,
+      matching_lines: matchingLines,
+      results,
+      pattern,
+      regex,
+      context_lines: contextLines,
+      max_matches: maxMatches,
+      limit,
+      offset,
+      chat_jid: chatJid,
+      role: params.role,
+      sender: senderFilter,
+      after: params.after || params.since,
+      before: params.before,
+      after_row: params.after_row,
+      before_row: params.before_row,
+      details_max_chars: detailsMaxChars,
+    },
+  };
+}
+
+function executeExtract(params: MessagesParams, defaultChat: string): AgentToolResult<Record<string, unknown>> {
+  const pattern = getPatternInput(params);
+  if (!pattern) {
+    return {
+      content: [{ type: "text", text: "Provide pattern (or query) for action=extract." }],
+      details: { action: "extract", count: 0, values: [] },
+    };
+  }
+
+  const regex = params.regex === true;
+  const captureGroup = Math.min(Math.max(params.capture_group ?? 0, 0), 10);
+  if (!regex && captureGroup > 0) {
+    return {
+      content: [{ type: "text", text: "capture_group requires regex=true." }],
+      details: { action: "extract", count: 0, values: [], error: "capture_group_requires_regex" },
+    };
+  }
+  if (regex && !compileRegex(pattern)) {
+    return {
+      content: [{ type: "text", text: "Invalid regex pattern." }],
+      details: { action: "extract", count: 0, values: [], error: "invalid_regex", pattern },
+    };
+  }
+
+  const chatJid = normalizeChatJid(params.chat_jid, defaultChat);
+  const roleFilter = normalizeRole(params.role);
+  const senderFilter = normalizeSender(params.sender);
+  const limit = Math.min(Math.max(params.limit ?? 50, 1), 50);
+  const offset = Math.max(params.offset ?? 0, 0);
+  const maxMatches = Math.min(Math.max(params.max_matches ?? 50, 1), 200);
+  const dedupe = params.dedupe !== false;
+  const sort = params.sort ?? "none";
+  const rows = listMessageWindow(chatJid, roleFilter, senderFilter, limit, offset, params.since || params.after, params.before, params.after_row, params.before_row).slice().reverse();
+
+  const values: ExtractResultItem[] = [];
+  const byValue = new Map<string, ExtractResultItem>();
+  for (const row of rows) {
+    const matches = collectPatternMatches(row.content, pattern, regex, captureGroup);
+    for (const match of matches) {
+      if (dedupe) {
+        const existing = byValue.get(match);
+        if (existing) {
+          existing.count += 1;
+          continue;
+        }
+        const item: ExtractResultItem = {
+          value: match,
+          count: 1,
+          first_seen_rowid: row.rowid,
+          first_seen_at: row.timestamp,
+          first_seen_chat_jid: row.chat_jid,
+          first_seen_sender: row.sender,
+          first_seen_sender_name: row.sender_name,
+        };
+        byValue.set(match, item);
+      } else {
+        values.push({
+          value: match,
+          count: 1,
+          first_seen_rowid: row.rowid,
+          first_seen_at: row.timestamp,
+          first_seen_chat_jid: row.chat_jid,
+          first_seen_sender: row.sender,
+          first_seen_sender_name: row.sender_name,
+        });
+      }
+    }
+  }
+
+  const resultValues = dedupe ? Array.from(byValue.values()) : values;
+  if (sort === "asc") resultValues.sort((a, b) => a.value.localeCompare(b.value));
+  if (sort === "desc") resultValues.sort((a, b) => b.value.localeCompare(a.value));
+  const bounded = resultValues.slice(0, maxMatches);
+
+  if (bounded.length === 0) {
+    return {
+      content: [{ type: "text", text: "No values extracted." }],
+      details: { action: "extract", count: 0, values: [], pattern, regex, capture_group: captureGroup, dedupe, sort },
+    };
+  }
+
+  const preview = bounded.map((item) => `${item.value} (${item.count}) first_seen=[${item.first_seen_rowid}] ${item.first_seen_at}`).join("\n");
+  return {
+    content: [{ type: "text", text: `Extracted ${bounded.length} value${bounded.length === 1 ? "" : "s"}.\n${preview}` }],
+    details: {
+      action: "extract",
+      count: bounded.length,
+      values: bounded,
+      pattern,
+      regex,
+      capture_group: captureGroup,
+      dedupe,
+      sort,
+      max_matches: maxMatches,
+      limit,
+      offset,
+      chat_jid: chatJid,
+      role: params.role,
+      sender: senderFilter,
+      after: params.after || params.since,
+      before: params.before,
+      after_row: params.after_row,
+      before_row: params.before_row,
+    },
+  };
+}
+
 function sanitizeMessageToolContent(rawContent: string | undefined, isBot: boolean): string {
   const trimmed = rawContent?.trim() ?? "";
   if (!isBot) return trimmed;
@@ -920,6 +1290,8 @@ export function runMessagesTool(
 
   if (action === "search") return executeSearch(params, defaultChat);
   if (action === "get") return executeGet(params, defaultChat);
+  if (action === "grep") return executeGrep(params, defaultChat);
+  if (action === "extract") return executeExtract(params, defaultChat);
   if (action === "add") return executeAdd(params, defaultChat);
   if (action === "post") return executePost(params, defaultChat, postFn);
   if (action === "delete") return executeDelete(params, defaultChat);
@@ -946,13 +1318,15 @@ export function postMessagesToolMessage(
 
 const MESSAGES_TOOL_HINT = [
   "## Messages",
-  "Use the messages tool to search, retrieve, add, post, and delete chat messages.",
+  "Use the messages tool to search, retrieve, grep, extract, add, post, and delete chat messages.",
   "Read operations are safe by default; delete requires explicit action=delete and can be dry-run with dry_run=true.",
   "Read/search/get results include message metadata and include parsed content_blocks when available.",
   "The post action stores a message with content_blocks and broadcasts it to connected clients.",
   "Example:",
   "- search: { action: \"search\", query: \"keyword\", limit: 10 }",
   "- get: { action: \"get\", row_ids: [123], context_before: 2, context_after: 1 }",
+  "- grep: { action: \"grep\", pattern: \"error\", after_row: 100, context_lines: 1 }",
+  "- extract: { action: \"extract\", pattern: \"pc=(0x[0-9a-f]+)\", regex: true, capture_group: 1 }",
   "- add: { action: \"add\", type: \"agent\", content: \"Hello\" }",
   "- post: { action: \"post\", type: \"agent\", content: \"Card fallback\", content_blocks: [...] }",
   "- delete: { action: \"delete\", row_ids: [123, 124], dry_run: true, force: true }",
@@ -983,8 +1357,8 @@ export const messagesCrud: ExtensionFactory = (pi: ExtensionAPI) => {
   pi.registerTool({
     name: "messages",
     label: "messages",
-    description: "Search, retrieve, add, post, or delete messages via shared store.",
-    promptSnippet: "messages: search/get/add/post/delete rows in the shared message timeline store.",
+    description: "Search, retrieve, grep, extract, add, post, or delete messages via shared store.",
+    promptSnippet: "messages: search/get/grep/extract/add/post/delete rows in the shared message timeline store.",
     parameters: MessagesSchema,
     async execute(_toolCallId, params) {
       const defaultChat = getChatJid("web:default");

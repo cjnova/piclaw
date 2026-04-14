@@ -289,6 +289,65 @@ describe("messages tool extension", () => {
     expect(result.content[0].text).not.toContain("3| line three");
   });
 
+  test("grep returns matching lines with bounded context", async () => {
+    insertMessage("alpha\nerror: first issue\nbeta\nerror: second issue\ngamma");
+    insertMessage("totally unrelated");
+
+    const { tool } = await getTool();
+    const result = await runWithContext(tool, {
+      action: "grep",
+      pattern: "error",
+      context_lines: 1,
+      max_matches: 10,
+      details_max_chars: 200,
+    });
+
+    expect(result.details.action).toBe("grep");
+    expect(result.details.count).toBe(1);
+    expect(result.details.matching_lines).toBe(2);
+    expect(result.details.results[0].line_view).toEqual({
+      total_lines: 5,
+      context_lines: 1,
+      match_count: 2,
+      lines: [
+        { line_number: 1, content: "alpha", matched: false },
+        { line_number: 2, content: "error: first issue", matched: true },
+        { line_number: 3, content: "beta", matched: false },
+        { line_number: 4, content: "error: second issue", matched: true },
+        { line_number: 5, content: "gamma", matched: false },
+      ],
+    });
+    expect(result.content[0].text).toContain("> 2| error: first issue");
+    expect(result.content[0].text).toContain("> 4| error: second issue");
+  });
+
+  test("extract supports regex capture groups, dedupe, and sorting", async () => {
+    const firstRow = insertMessage("pc=0x1234 and pc=0x9999");
+    insertMessage("pc=0x5678");
+    insertMessage("pc=0x1234 again");
+
+    const { tool } = await getTool();
+    const result = await runWithContext(tool, {
+      action: "extract",
+      pattern: "pc=(0x[0-9a-f]+)",
+      regex: true,
+      capture_group: 1,
+      dedupe: true,
+      sort: "asc",
+      max_matches: 10,
+    });
+
+    expect(result.details.action).toBe("extract");
+    expect(result.details.count).toBe(3);
+    expect(result.details.values.map((item: any) => item.value)).toEqual(["0x1234", "0x5678", "0x9999"]);
+    expect(result.details.values[0]).toMatchObject({
+      value: "0x1234",
+      count: 2,
+      first_seen_rowid: firstRow,
+    });
+    expect(result.content[0].text).toContain("0x1234 (2)");
+  });
+
   test("get missing row_ids are reported", async () => {
     const { tool } = await getTool();
     const result = await runWithContext(tool, { action: "get", row_ids: [999999] });
