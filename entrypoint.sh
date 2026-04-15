@@ -157,6 +157,8 @@ if [ ! -f "$MARKER_FILE" ] || [ ! -f "$HOME_DIR/.bashrc" ]; then
 
     if [ ! -f "$HOME_DIR/.bashrc" ]; then
         cat > "$HOME_DIR/.bashrc" <<'BASHRC'
+# piclaw-workspace-env-hook
+[ -f /workspace/.env.sh ] && . /workspace/.env.sh
 case $- in *i*) ;; *) return;; esac
 HISTCONTROL=ignoreboth
 shopt -s histappend
@@ -192,6 +194,19 @@ PROFILE
 
     chown -R agent:agent "$HOME_DIR"
     record_runtime_ids
+fi
+
+if [ -f "$HOME_DIR/.bashrc" ] && ! grep -Fq '# piclaw-workspace-env-hook' "$HOME_DIR/.bashrc" 2>/dev/null; then
+    if grep -Fq 'case $- in *i*) ;; *) return;; esac' "$HOME_DIR/.bashrc" 2>/dev/null; then
+        sed -i '/^case \$- in .*return;; esac$/i\
+# piclaw-workspace-env-hook\
+[ -f /workspace/.env.sh ] && . /workspace/.env.sh' "$HOME_DIR/.bashrc"
+    else
+        cat >> "$HOME_DIR/.bashrc" <<'BASHRC_ENV_HOOK'
+# piclaw-workspace-env-hook
+[ -f /workspace/.env.sh ] && . /workspace/.env.sh
+BASHRC_ENV_HOOK
+    fi
 fi
 
 # Always reconcile persistent config links, even on restart with existing marker.
