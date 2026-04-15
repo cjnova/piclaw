@@ -1,5 +1,6 @@
 import { Type } from "@sinclair/typebox";
 import { getToolActivationConfig } from "../core/config.js";
+import { getToolCapability } from "./tool-capabilities.js";
 export const TOOLSETS = [
     {
         name: "core",
@@ -85,11 +86,19 @@ const DEFAULT_ACTIVE_TOOL_NAMES = [
 const WINDOWS_DEFAULT_ACTIVE_TOOL_NAMES = [
     "bun_run",
 ];
+const AUTO_ACTIVE_TOOL_NAMES = [
+    "messages",
+    "schedule_task",
+    "scheduled_tasks",
+    "attach_file",
+    "read_attachment",
+    "export_attachment",
+];
 const TOOL_ACTIVATION_HINT = [
     "## Tool Activation",
     "Keep the active tool set small by default.",
-    "If you are unsure which capability is available, call list_internal_tools.",
-    "Use activate_tools to enable only what you need.",
+    "Discover first: if you are unsure which capability is available, call list_internal_tools with a focused query before activating extra tools.",
+    "Use activate_tools to enable only what you need, when you need it.",
     "Newly activated tools become available immediately to subsequent tool/model steps in the same turn.",
     "Use reset_active_tools to return to the default configured tool set.",
 ].join("\n");
@@ -105,6 +114,13 @@ const ActivateToolsSchema = Type.Object({
 });
 function unique(values) {
     return [...new Set(Array.from(values).map((value) => String(value || "").trim()).filter(Boolean))];
+}
+function toToolName(value) {
+    if (typeof value === "string")
+        return value;
+    if (value && typeof value === "object" && typeof value.name === "string")
+        return value.name;
+    return "";
 }
 function normalizeToolNamesForPlatform(toolNames, platform = process.platform) {
     const normalized = unique(toolNames);
@@ -123,6 +139,24 @@ export function getDefaultActiveToolNames(platform = process.platform) {
         ...getToolActivationConfig().additionalDefaultTools,
     ], platform);
 }
+export function getAutoActiveToolNames(tools, platform = process.platform) {
+    const names = normalizeToolNamesForPlatform(Array.from(tools, (tool) => toToolName(tool)).filter(Boolean), platform);
+    const explicit = new Set(AUTO_ACTIVE_TOOL_NAMES);
+    return names.filter((name) => {
+        if (explicit.has(name))
+            return true;
+        const capability = getToolCapability(name);
+        return capability.kind === "read-only" && capability.weight !== "heavy";
+    });
+}
+export function getEffectiveDefaultActiveToolNames(tools, platform = process.platform) {
+    const availableNames = normalizeToolNamesForPlatform(Array.from(tools, (tool) => toToolName(tool)).filter(Boolean), platform);
+    const availableSet = new Set(availableNames);
+    return unique([
+        ...getDefaultActiveToolNames(platform),
+        ...getAutoActiveToolNames(availableNames, platform),
+    ]).filter((name) => availableSet.has(name));
+}
 function getCatalog(api) {
     const allTools = api.getAllTools();
     const allToolNames = new Set(allTools.map((tool) => tool.name));
@@ -131,11 +165,11 @@ function getCatalog(api) {
     return { allTools, allToolNames, activeToolNames, activeSet };
 }
 function applyActiveToolNames(api, requestedNames, mode) {
-    const { allToolNames, activeToolNames, activeSet } = getCatalog(api);
+    const { allTools, allToolNames, activeToolNames, activeSet } = getCatalog(api);
     const requested = normalizeToolNamesForPlatform(requestedNames);
     const accepted = requested.filter((name) => allToolNames.has(name));
     const missing = requested.filter((name) => !allToolNames.has(name));
-    const base = mode === "replace" ? getDefaultActiveToolNames() : activeToolNames;
+    const base = mode === "replace" ? getEffectiveDefaultActiveToolNames(allTools) : activeToolNames;
     const next = unique([...base, ...accepted]).filter((name) => allToolNames.has(name));
     api.setActiveTools(next);
     const alreadyActive = accepted.filter((name) => activeSet.has(name));
@@ -164,9 +198,8 @@ function formatActivationSummary(result, label) {
 /** Extension factory that registers lazy tool activation controls. */
 export const toolActivation = (pi) => {
     pi.on("session_start", async () => {
-        const { allToolNames } = getCatalog(pi);
-        const defaults = getDefaultActiveToolNames().filter((name) => allToolNames.has(name));
-        pi.setActiveTools(defaults);
+        const { allTools } = getCatalog(pi);
+        pi.setActiveTools(getEffectiveDefaultActiveToolNames(allTools));
     });
     pi.on("before_agent_start", async (event) => ({
         systemPrompt: `${event.systemPrompt}\n\n${TOOL_ACTIVATION_HINT}`,
@@ -195,7 +228,7 @@ export const toolActivation = (pi) => {
         promptSnippet: "reset_active_tools: restore the configured default active tool set.",
         parameters: Type.Object({}),
         async execute() {
-            const defaults = getDefaultActiveToolNames();
+            const defaults = getEffectiveDefaultActiveToolNames(pi.getAllTools());
             const result = applyActiveToolNames(pi, defaults, "replace");
             return {
                 content: [{ type: "text", text: formatActivationSummary(result, "Active tools reset") }],

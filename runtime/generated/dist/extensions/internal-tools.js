@@ -2,7 +2,7 @@
  * internal-tools – registers list_internal_tools for quick tool discovery.
  */
 import { Type } from "@sinclair/typebox";
-import { getToolsetsForTool, getDefaultActiveToolNames } from "./tool-activation.js";
+import { getToolsetsForTool, getEffectiveDefaultActiveToolNames } from "./tool-activation.js";
 import { getToolCapability } from "./tool-capabilities.js";
 const InternalToolsSchema = Type.Object({
     query: Type.Optional(Type.String({ description: "Filter by tool name/description substring." })),
@@ -28,6 +28,19 @@ function summarizeDescription(value) {
 const HINT = [
     "## Internal Tool Discovery",
     "If you are unsure about available tools, call list_internal_tools.",
+    "Prefer the staged flow: query-filtered discovery → compact summary → on-demand parameters/details → activate/use.",
+    "Use include_parameters only for the specific tool you are about to use or inspect in detail.",
+    "Discovery is separate from activation: use activate_tools only when you actually need additional tools beyond the effective default set.",
+    "",
+    "## Baseline working principles",
+    "These apply even when no AGENTS.md or project instructions are present:",
+    "- Read relevant files before editing. Never edit blind.",
+    "- Test after changes. Never declare done without verification.",
+    "- Prefer editing over rewriting whole files.",
+    "- Keep output direct, concise, and specific. Lead with findings.",
+    "- Attach generated files to the chat with attach_file instead of only naming paths.",
+    "- Prefer Bun scripts over Python/uv. Use `brew install` for system tools, `sudo apt install` for system-level dependencies.",
+    "- Keychain entries are auto-injected as $ENV_VARS into bash (names with `/`, `-`, `.` become `_` and uppercase). Never fetch secrets and inline them.",
 ].join("\n");
 /** Extension factory that registers list_internal_tools. */
 export const internalTools = (pi) => {
@@ -37,18 +50,18 @@ export const internalTools = (pi) => {
     pi.registerTool({
         name: "list_internal_tools",
         label: "list_internal_tools",
-        description: "List available internal tools with brief descriptions.",
-        promptSnippet: "list_internal_tools: Discover available internal tools and their schemas.",
+        description: "List available internal tools with brief descriptions. Each result includes capability metadata (kind: read-only/mutating/mixed, weight: lightweight/standard/heavy, activation: default/on-demand) and toolset groupings. Start with query-filtered compact summaries; request parameter schemas only on demand for the specific tool you need.",
+        promptSnippet: "list_internal_tools: Discover available internal tools with compact summaries first, then request schema details only when needed.",
         parameters: InternalToolsSchema,
         async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
             const query = params.query?.trim().toLowerCase() || "";
             const limit = clampLimit(params.limit, 100);
             const includeParameters = Boolean(params.include_parameters);
             const activeSet = new Set(pi.getActiveTools());
-            const defaultSet = new Set(getDefaultActiveToolNames());
             const visibleTools = process.platform === "win32" && pi.getAllTools().some((tool) => tool.name === "powershell")
                 ? pi.getAllTools().filter((tool) => tool.name !== "bash")
                 : pi.getAllTools();
+            const defaultSet = new Set(getEffectiveDefaultActiveToolNames(visibleTools));
             const all = visibleTools
                 .map((tool) => {
                 const cap = getToolCapability(tool.name);

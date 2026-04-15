@@ -412,6 +412,7 @@ const groupDefinitions: GroupDefinition[] = [
           "markdown-live-preview-gating.test.ts",
           "markdown-preview-storage.test.ts",
           "markdown-rendering.test.ts",
+          "markdown-math-rendering.test.ts",
           "oobe-panel.test.ts",
           "post-copy-markdown.test.ts",
           "post-runtime-safety.test.ts",

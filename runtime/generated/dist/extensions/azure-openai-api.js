@@ -197,6 +197,17 @@ export function buildBaseOptions(model, options, apiKey) {
         metadata: options?.metadata,
     };
 }
+export function applySessionCorrelationHeaders(headers, sessionId, options) {
+    const next = { ...(headers || {}) };
+    if (!sessionId)
+        return next;
+    next.session_id = sessionId;
+    next["x-client-request-id"] = sessionId;
+    if (options?.includeAzureClientRequestId) {
+        next["x-ms-client-request-id"] = sessionId;
+    }
+    return next;
+}
 /** Clamp unsupported reasoning levels for providers that do not accept `xhigh`. */
 export function clampReasoning(effort) {
     return effort === "xhigh" ? "high" : effort;

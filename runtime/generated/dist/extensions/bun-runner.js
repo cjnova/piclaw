@@ -48,6 +48,7 @@ export function buildBunRunHint(platform = process.platform) {
         "Use bun_run to execute a workspace Bun script directly without a shell.",
         "Pass script arguments as an array; do not rely on shell features like pipes or redirects.",
         "Stdout is discarded by default; set capture_stdout=true when you need bounded inline output or searchable stored output.",
+        "Prefer Bun scripts over Python/uv unless Bun is not viable for the task.",
         buildSubprocessExecutionHint(platform),
     ].join("\n");
 }
