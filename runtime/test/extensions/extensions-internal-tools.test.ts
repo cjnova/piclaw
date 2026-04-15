@@ -70,9 +70,12 @@ describe("internal-tools extension", () => {
       allTools: [
         { name: "bash", description: "Run a shell command." },
         { name: "read", description: "Read a file." },
+        { name: "list_models", description: "List available models." },
+        { name: "schedule_task", description: "Schedule a task." },
+        { name: "read_attachment", description: "Read attachment." },
         { name: "proxmox", description: "Proxmox API." },
       ],
-      activeTools: ["bash", "read"],
+      activeTools: ["bash", "read", "list_models", "schedule_task", "read_attachment"],
     });
     internalTools(fake.api);
 
@@ -92,6 +95,24 @@ describe("internal-tools extension", () => {
     expect(readTool.kind).toBe("read-only");
     expect(readTool.weight).toBe("lightweight");
     expect(readTool.activation).toBe("default");
+
+    // list_models: read-only, lightweight, default via effective read-only baseline
+    const listModelsTool = tools.find((t: any) => t.name === "list_models");
+    expect(listModelsTool.kind).toBe("read-only");
+    expect(listModelsTool.weight).toBe("lightweight");
+    expect(listModelsTool.activation).toBe("default");
+
+    // schedule_task: mutating, standard, default via effective scheduling baseline
+    const scheduleTaskTool = tools.find((t: any) => t.name === "schedule_task");
+    expect(scheduleTaskTool.kind).toBe("mutating");
+    expect(scheduleTaskTool.weight).toBe("standard");
+    expect(scheduleTaskTool.activation).toBe("default");
+
+    // read_attachment: read-only, lightweight, default via effective attachment baseline
+    const readAttachmentTool = tools.find((t: any) => t.name === "read_attachment");
+    expect(readAttachmentTool.kind).toBe("read-only");
+    expect(readAttachmentTool.weight).toBe("lightweight");
+    expect(readAttachmentTool.activation).toBe("default");
 
     // proxmox: mixed, standard, on-demand
     const proxmoxTool = tools.find((t: any) => t.name === "proxmox");

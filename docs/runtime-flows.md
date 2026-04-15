@@ -264,7 +264,7 @@ Transport semantics match the packaged SSH extension model:
 
 Several runtime choices are intentionally optimized for low-context turns and progressive discovery:
 
-- small always-active tool baseline, with explicit same-turn tool activation for everything else
+- small fixed tool baseline, plus automatic default activation for safe read-only tools in the current catalog, with explicit same-turn tool activation for everything else
 - session-scoped infra profiles so SSH / Proxmox / Portainer state can be reused without restating connection details every turn
 - compact `capabilities` output and short `recommend` results before full workflow details
 - opt-in examples in `workflow_help` instead of returning bulky example payloads by default

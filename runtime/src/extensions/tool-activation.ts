@@ -5,6 +5,7 @@
 import type { ExtensionAPI, ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { getToolActivationConfig } from "../core/config.js";
+import { getToolCapability } from "./tool-capabilities.js";
 
 export type ToolsetDefinition = {
   name: string;
@@ -100,6 +101,15 @@ const WINDOWS_DEFAULT_ACTIVE_TOOL_NAMES = [
   "bun_run",
 ] as const;
 
+const AUTO_ACTIVE_TOOL_NAMES = [
+  "messages",
+  "schedule_task",
+  "scheduled_tasks",
+  "attach_file",
+  "read_attachment",
+  "export_attachment",
+] as const;
+
 const TOOL_ACTIVATION_HINT = [
   "## Tool Activation",
   "Keep the active tool set small by default.",
@@ -124,6 +134,12 @@ function unique(values: Iterable<string>): string[] {
   return [...new Set(Array.from(values).map((value) => String(value || "").trim()).filter(Boolean))];
 }
 
+function toToolName(value: string | { name?: unknown }): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && typeof value.name === "string") return value.name;
+  return "";
+}
+
 function normalizeToolNamesForPlatform(toolNames: Iterable<string>, platform = process.platform): string[] {
   const normalized = unique(toolNames);
   if (platform !== "win32") {
@@ -143,6 +159,37 @@ export function getDefaultActiveToolNames(platform = process.platform): string[]
     ...(platform === "win32" ? WINDOWS_DEFAULT_ACTIVE_TOOL_NAMES : []),
     ...getToolActivationConfig().additionalDefaultTools,
   ], platform);
+}
+
+export function getAutoActiveToolNames(
+  tools: Iterable<string | { name?: unknown }>,
+  platform = process.platform,
+): string[] {
+  const names = normalizeToolNamesForPlatform(
+    Array.from(tools, (tool) => toToolName(tool)).filter(Boolean),
+    platform,
+  );
+  const explicit = new Set<string>(AUTO_ACTIVE_TOOL_NAMES);
+  return names.filter((name) => {
+    if (explicit.has(name)) return true;
+    const capability = getToolCapability(name);
+    return capability.kind === "read-only" && capability.weight !== "heavy";
+  });
+}
+
+export function getEffectiveDefaultActiveToolNames(
+  tools: Iterable<string | { name?: unknown }>,
+  platform = process.platform,
+): string[] {
+  const availableNames = normalizeToolNamesForPlatform(
+    Array.from(tools, (tool) => toToolName(tool)).filter(Boolean),
+    platform,
+  );
+  const availableSet = new Set(availableNames);
+  return unique([
+    ...getDefaultActiveToolNames(platform),
+    ...getAutoActiveToolNames(availableNames, platform),
+  ]).filter((name) => availableSet.has(name));
 }
 
 function getCatalog(api: ExtensionAPI) {
@@ -165,11 +212,11 @@ function applyActiveToolNames(
   alreadyActive: string[];
   newlyActivated: string[];
 } {
-  const { allToolNames, activeToolNames, activeSet } = getCatalog(api);
+  const { allTools, allToolNames, activeToolNames, activeSet } = getCatalog(api);
   const requested = normalizeToolNamesForPlatform(requestedNames);
   const accepted = requested.filter((name) => allToolNames.has(name));
   const missing = requested.filter((name) => !allToolNames.has(name));
-  const base = mode === "replace" ? getDefaultActiveToolNames() : activeToolNames;
+  const base = mode === "replace" ? getEffectiveDefaultActiveToolNames(allTools) : activeToolNames;
   const next = unique([...base, ...accepted]).filter((name) => allToolNames.has(name));
 
   api.setActiveTools(next);
@@ -203,9 +250,8 @@ function formatActivationSummary(result: ReturnType<typeof applyActiveToolNames>
 /** Extension factory that registers lazy tool activation controls. */
 export const toolActivation: ExtensionFactory = (pi: ExtensionAPI) => {
   pi.on("session_start", async () => {
-    const { allToolNames } = getCatalog(pi);
-    const defaults = getDefaultActiveToolNames().filter((name) => allToolNames.has(name));
-    pi.setActiveTools(defaults);
+    const { allTools } = getCatalog(pi);
+    pi.setActiveTools(getEffectiveDefaultActiveToolNames(allTools));
   });
 
   pi.on("before_agent_start", async (event) => ({
@@ -237,7 +283,7 @@ export const toolActivation: ExtensionFactory = (pi: ExtensionAPI) => {
     promptSnippet: "reset_active_tools: restore the configured default active tool set.",
     parameters: Type.Object({}),
     async execute() {
-      const defaults = getDefaultActiveToolNames();
+      const defaults = getEffectiveDefaultActiveToolNames(pi.getAllTools());
       const result = applyActiveToolNames(pi, defaults, "replace");
       return {
         content: [{ type: "text", text: formatActivationSummary(result, "Active tools reset") }],

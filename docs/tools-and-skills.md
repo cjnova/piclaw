@@ -12,7 +12,17 @@ Core tools (from `pi`):
 - `write` — write files
 
 Piclaw keeps a small always-active baseline and lazily enables other tools on demand. This is one of the main context-conservation strategies: keep default tool exposure small, promote only what the current turn needs, and prefer compact discovery surfaces before expanding into detailed schemas or examples.
-Default always-active set:
+
+In addition to the fixed baseline below, the effective default active set now auto-includes:
+
+- available **read-only** tools
+- message/timeline access (`messages`)
+- scheduling helpers (`schedule_task`, `scheduled_tasks` when present)
+- attachment helpers (`attach_file`, `read_attachment`, `export_attachment` when present)
+
+This removes most activation friction for safe inspection/search, messaging, scheduling, and attachment flows while keeping broader mutating and remote/admin tools opt-in.
+
+Fixed baseline:
 
 - `read`
 - `edit`
@@ -26,7 +36,7 @@ Default always-active set:
 - `keychain`
 - `exit_process`
 
-Newly activated tools become available immediately to subsequent tool/model steps in the same turn. For critical actions, keep the needed tool in the default baseline or promote it with config.
+Newly activated tools become available immediately to subsequent tool/model steps in the same turn. For critical actions, keep the needed tool in the default baseline or promote it with config. Read-only tools plus the message/scheduling/attachment helpers listed above are activated automatically as part of the effective default set when they exist in the current tool catalog.
 
 You can extend that baseline with `.piclaw/config.json`:
 

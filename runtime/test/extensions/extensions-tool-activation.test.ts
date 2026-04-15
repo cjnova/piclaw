@@ -11,7 +11,7 @@ import { createFakeExtensionApi } from "./fake-extension-api.js";
 
 describe("tool-activation extension", () => {
   test("registers activation tools and default baseline metadata", async () => {
-    const { toolActivation, getDefaultActiveToolNames } = await import("../../src/extensions/tool-activation.js");
+    const { toolActivation, getDefaultActiveToolNames, getEffectiveDefaultActiveToolNames } = await import("../../src/extensions/tool-activation.js");
     const fake = createFakeExtensionApi({ allTools: [] });
 
     toolActivation(fake.api);
@@ -25,15 +25,41 @@ describe("tool-activation extension", () => {
     expect(getDefaultActiveToolNames()).toContain("exit_process");
     expect(getDefaultActiveToolNames()).not.toContain("list_models");
     expect(getDefaultActiveToolNames()).not.toContain("bun_run");
+    expect(getEffectiveDefaultActiveToolNames([
+      { name: "read" },
+      { name: "list_models" },
+      { name: "search_workspace" },
+      { name: "schedule_task" },
+      { name: "read_attachment" },
+      { name: "export_attachment" },
+      { name: "switch_model" },
+    ])).toEqual([
+      "read",
+      "list_models",
+      "search_workspace",
+      "schedule_task",
+      "read_attachment",
+      "export_attachment",
+    ]);
     expect(getDefaultActiveToolNames("win32")).toContain("powershell");
     expect(getDefaultActiveToolNames("win32")).toContain("bun_run");
     expect(getDefaultActiveToolNames("win32")).not.toContain("bash");
   });
 
-  test("session_start resets active tools to the default minimal baseline", async () => {
-    const { toolActivation, getDefaultActiveToolNames } = await import("../../src/extensions/tool-activation.js");
+  test("session_start activates the effective default baseline including read-only, scheduling, and attachment tools", async () => {
+    const { toolActivation, getDefaultActiveToolNames, getEffectiveDefaultActiveToolNames } = await import("../../src/extensions/tool-activation.js");
+    const availableTools = [
+      ...getDefaultActiveToolNames().map((name) => ({ name, description: `${name} description` })),
+      { name: "search_workspace", description: "Search workspace." },
+      { name: "introspect_sql", description: "Read-only SQL." },
+      { name: "list_models", description: "List models." },
+      { name: "schedule_task", description: "Schedule task." },
+      { name: "read_attachment", description: "Read attachment." },
+      { name: "export_attachment", description: "Export attachment." },
+      { name: "switch_model", description: "Switch model." },
+    ];
     const fake = createFakeExtensionApi({
-      allTools: getDefaultActiveToolNames().map((name) => ({ name, description: `${name} description` })),
+      allTools: availableTools,
       activeTools: ["messages", "keychain"],
     });
 
@@ -42,7 +68,14 @@ describe("tool-activation extension", () => {
     const sessionStart = fake.handlers.find((entry) => entry.event === "session_start");
     expect(sessionStart).toBeDefined();
     await sessionStart!.handler({}, {});
-    expect(fake.api.getActiveTools()).toEqual(getDefaultActiveToolNames());
+    expect(fake.api.getActiveTools()).toEqual(getEffectiveDefaultActiveToolNames(availableTools));
+    expect(fake.api.getActiveTools()).toContain("search_workspace");
+    expect(fake.api.getActiveTools()).toContain("introspect_sql");
+    expect(fake.api.getActiveTools()).toContain("list_models");
+    expect(fake.api.getActiveTools()).toContain("schedule_task");
+    expect(fake.api.getActiveTools()).toContain("read_attachment");
+    expect(fake.api.getActiveTools()).toContain("export_attachment");
+    expect(fake.api.getActiveTools()).not.toContain("switch_model");
   });
 
   test("windows baseline includes bun_run alongside powershell", async () => {
@@ -88,14 +121,18 @@ describe("tool-activation extension", () => {
     expect(fake.api.getActiveTools()).toContain("messages");
   });
 
-  test("reset_active_tools returns to baseline after manual activation", async () => {
-    const { toolActivation, getDefaultActiveToolNames } = await import("../../src/extensions/tool-activation.js");
+  test("reset_active_tools returns to the effective baseline after manual activation", async () => {
+    const { toolActivation, getDefaultActiveToolNames, getEffectiveDefaultActiveToolNames } = await import("../../src/extensions/tool-activation.js");
     const available = [
       ...getDefaultActiveToolNames(),
       "introspect_sql",
+      "list_models",
+      "schedule_task",
+      "read_attachment",
     ];
+    const availableTools = available.map((name) => ({ name, description: `${name} description` }));
     const fake = createFakeExtensionApi({
-      allTools: available.map((name) => ({ name, description: `${name} description` })),
+      allTools: availableTools,
       activeTools: getDefaultActiveToolNames(),
     });
 
@@ -109,7 +146,11 @@ describe("tool-activation extension", () => {
 
     const resetResult = await resetActiveTools.execute("t3", {});
     expect(resetResult.details.availability).toBe("same_turn");
-    expect(fake.api.getActiveTools()).toEqual(getDefaultActiveToolNames());
+    expect(fake.api.getActiveTools()).toEqual(getEffectiveDefaultActiveToolNames(availableTools));
+    expect(fake.api.getActiveTools()).toContain("introspect_sql");
+    expect(fake.api.getActiveTools()).toContain("list_models");
+    expect(fake.api.getActiveTools()).toContain("schedule_task");
+    expect(fake.api.getActiveTools()).toContain("read_attachment");
   });
 
   test("default active tools include config-defined additions", async () => {

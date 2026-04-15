@@ -22,10 +22,16 @@ import { storeAgentTurn } from "../messaging/agent-message-store.js";
 import { resolveThreadId, resolveThreadRootId } from "../runtime/threading.js";
 import { resolveToolStatusHints } from "../../../tool-status-hints.js";
 import "../../../extensions/local-core-tool-status-hints.js";
+import "../../../extensions/generic-tool-status-hints.js";
 import { createUuid } from "../../../utils/ids.js";
 import { createLogger } from "../../../utils/logger.js";
 import { checkPendingShutdown } from "../../../runtime/shutdown-registry.js";
 const log = createLogger("web.handlers.agent");
+function isRateLimitError(errorText) {
+    if (!errorText)
+        return false;
+    return /\b429\b|rate[ -]?limit|too many requests|retry-after/i.test(errorText);
+}
 export function withResolvedToolStatusHints(chatJid, payload) {
     const isToolStatus = payload?.type === "tool_call" || payload?.type === "tool_status";
     const toolName = typeof payload?.tool_name === "string" ? payload.tool_name.trim() : "";
@@ -45,6 +51,20 @@ export function withResolvedToolStatusHints(chatJid, payload) {
     if (statusHints.length === 0)
         return payload;
     return { ...payload, status_hints: statusHints };
+}
+export function stripMarkdownCodeFenceMarkers(value) {
+    return value
+        .replace(/^```[a-zA-Z0-9_-]*\s*\n?/, "")
+        .replace(/\n?```\s*$/, "")
+        .trim();
+}
+export function summarizeCommandStatusTitle(message, fallback = "Command failed") {
+    const raw = typeof message === "string" ? message.trim() : "";
+    if (!raw)
+        return fallback;
+    const unfenced = stripMarkdownCodeFenceMarkers(raw);
+    const collapsed = unfenced.replace(/\s*\n\s*/g, " ").trim();
+    return collapsed || fallback;
 }
 function parseLeadingAgentMention(content) {
     const match = content.match(/^\s*@([a-zA-Z0-9][a-zA-Z0-9_-]{0,31})(?:\s+([\s\S]*))?$/);
@@ -275,6 +295,7 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
         // Broadcast model state so the UI hint updates immediately
         let nextModel = result.model_label ?? null;
         let thinkingLevel = result.thinking_level ?? null;
+        let thinkingLevelLabel = result.thinking_level_label ?? null;
         let supportsThinking = undefined;
         try {
             const modelState = await channel.agentPool.getAvailableModels(chatJid);
@@ -282,6 +303,8 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
                 nextModel = modelState.current ?? null;
             if (thinkingLevel == null)
                 thinkingLevel = modelState.thinking_level ?? null;
+            if (!thinkingLevelLabel)
+                thinkingLevelLabel = modelState.thinking_level_label ?? thinkingLevel;
             supportsThinking = modelState.supports_thinking;
         }
         catch {
@@ -294,6 +317,7 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
                 chat_jid: chatJid,
                 model: nextModel ?? null,
                 thinking_level: thinkingLevel ?? null,
+                thinking_level_label: thinkingLevelLabel ?? thinkingLevel ?? null,
                 supports_thinking: supportsThinking,
             });
             if (command.type === "model" || command.type === "cycle_model") {
@@ -302,7 +326,7 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
         }
         return channel.json({
             thread_id: null,
-            command: { ...result, model_label: nextModel, thinking_level: thinkingLevel, supports_thinking: supportsThinking },
+            command: { ...result, model_label: nextModel, thinking_level: thinkingLevel, thinking_level_label: thinkingLevelLabel ?? thinkingLevel, supports_thinking: supportsThinking },
             ui_only: true,
         }, 200);
     }
@@ -478,6 +502,7 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
         if (result.status === "success" && modelCommands.includes(command.type)) {
             let nextModel = result.model_label ?? null;
             let thinkingLevel = result.thinking_level ?? null;
+            let thinkingLevelLabel = result.thinking_level_label ?? null;
             let supportsThinking = undefined;
             try {
                 const modelState = await channel.agentPool.getAvailableModels(chatJid);
@@ -485,6 +510,8 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
                     nextModel = modelState.current ?? null;
                 if (thinkingLevel == null)
                     thinkingLevel = modelState.thinking_level ?? null;
+                if (!thinkingLevelLabel)
+                    thinkingLevelLabel = modelState.thinking_level_label ?? thinkingLevel;
                 supportsThinking = modelState.supports_thinking;
             }
             catch {
@@ -496,6 +523,7 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
                 chat_jid: chatJid,
                 model: nextModel ?? null,
                 thinking_level: thinkingLevel ?? null,
+                thinking_level_label: thinkingLevelLabel ?? thinkingLevel ?? null,
                 supports_thinking: supportsThinking,
             });
         }
@@ -507,7 +535,9 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
             agent_id: agentId,
             turn_id: commandTurnId,
             type: result.status === "success" ? "done" : "error",
-            title: result.status === "success" ? "Completed " + commandTitle : (result.message || "Command failed"),
+            title: result.status === "success"
+                ? "Completed " + commandTitle
+                : summarizeCommandStatusTitle(result.message, "Command failed"),
         });
         if (isSteerCommand && result.queued_steer) {
             return channel.json({ user_message: interaction, thread_id: threadId, command: result, queued: "steer" }, 201);
@@ -562,7 +592,9 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
                 agent_id: agentId,
                 turn_id: commandTurnId,
                 type: cmdResult.status === "success" ? "done" : "error",
-                title: cmdResult.status === "success" ? "Completed " + slashName : (cmdResult.message || "Command failed"),
+                title: cmdResult.status === "success"
+                    ? "Completed " + slashName
+                    : summarizeCommandStatusTitle(cmdResult.message, "Command failed"),
             });
         }
         return channel.json({ user_message: interaction, thread_id: threadId, command: cmdResult }, 201);
@@ -905,6 +937,7 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
             throw new Error(output.error);
         }
         const errorText = output.error || "Agent error";
+        const rateLimited = isRateLimitError(errorText);
         const fallbackPublished = errorText.toLowerCase().includes("timed out")
             ? publishDraftFallback("timeout")
             : publishDraftFallback("error");
@@ -929,9 +962,11 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         // what went wrong. Previously errors were only shown as transient status
         // events which are invisible in timeline history.
         const isApiError = /invalid_request_error|400|media_type|image.*source/i.test(errorText);
-        const userVisibleError = isApiError
-            ? `⚠️ API error — the session may be corrupted:\n\n\`${errorText.slice(0, 500)}\`\n\nThis error will repeat on every message. Try \`/new-session\` to start fresh, or manually repair the session JSONL.`
-            : `⚠️ Agent error: ${errorText.slice(0, 300)}`;
+        const userVisibleError = rateLimited
+            ? `⚠️ AI provider rate limit after automatic retries:\n\n\`${errorText.slice(0, 500)}\`\n\nPiclaw now retries 429/rate-limit failures with exponential backoff up to 5 times before surfacing the error.`
+            : isApiError
+                ? `⚠️ API error — the session may be corrupted:\n\n\`${errorText.slice(0, 500)}\`\n\nThis error will repeat on every message. Try \`/new-session\` to start fresh, or manually repair the session JSONL.`
+                : `⚠️ Agent error: ${errorText.slice(0, 300)}`;
         const errorNotice = channel.storeMessage(chatJid, userVisibleError, true, [], {
             threadId: resolvedThreadRootId ?? undefined,
             isTerminalAgentReply: true,
@@ -943,7 +978,8 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
             thread_id: threadId,
             agent_id: agentId,
             type: "error",
-            title: errorText,
+            title: rateLimited ? "AI provider rate limit" : errorText,
+            detail: rateLimited ? errorText : undefined,
             turn_id: turnId,
         });
         return;

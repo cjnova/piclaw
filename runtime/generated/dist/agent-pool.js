@@ -46,6 +46,8 @@ function parsePositiveMs(value, fallback) {
 }
 const IDLE_TTL = parsePositiveMs(process.env.PICLAW_SESSION_IDLE_TTL_MS, DEFAULT_IDLE_TTL);
 const CLEANUP_INTERVAL = parsePositiveMs(process.env.PICLAW_SESSION_CLEANUP_INTERVAL_MS, DEFAULT_CLEANUP_INTERVAL);
+const DEFAULT_PROVIDER_RATE_LIMIT_MAX_RETRIES = 5;
+const DEFAULT_PROVIDER_RATE_LIMIT_BASE_DELAY_MS = 5000;
 /**
  * Manages a pool of persistent AgentSession instances keyed by chat JID.
  *
@@ -79,6 +81,7 @@ export class AgentPool {
         this.createSideSession = options.createSideSession;
         this.authStorage = AuthStorage.create();
         this.modelRegistry = options.modelRegistry ?? ModelRegistry.create(this.authStorage);
+        this.applyRateLimitRetryDefaults();
         ({
             attachments: this.attachments,
             sessionBinder: this.sessionBinder,
@@ -125,6 +128,20 @@ export class AgentPool {
         mkdirSync(SESSIONS_DIR, { recursive: true });
         mkdirSync(this.logsDir, { recursive: true });
         this.cleanupTimer = setInterval(() => this.sessionManager.evictIdle(IDLE_TTL), CLEANUP_INTERVAL);
+    }
+    applyRateLimitRetryDefaults() {
+        const settingsManager = this.settingsManager;
+        if (typeof settingsManager.getRetrySettings !== "function")
+            return;
+        const originalGetRetrySettings = settingsManager.getRetrySettings.bind(settingsManager);
+        settingsManager.getRetrySettings = () => {
+            const settings = originalGetRetrySettings();
+            return {
+                ...settings,
+                maxRetries: Math.max(settings.maxRetries ?? 0, DEFAULT_PROVIDER_RATE_LIMIT_MAX_RETRIES),
+                baseDelayMs: Math.max(settings.baseDelayMs ?? 0, DEFAULT_PROVIDER_RATE_LIMIT_BASE_DELAY_MS),
+            };
+        };
     }
     setSessionBinder(binder) {
         this.sessionBinder.setBinder(binder);

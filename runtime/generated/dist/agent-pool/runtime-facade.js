@@ -5,6 +5,7 @@
  * and queued-message mutations so AgentPool can remain a thinner orchestrator.
  */
 import { applyControlCommand } from "../agent-control/index.js";
+import { formatThinkingLevelForDisplay } from "../agent-control/agent-control-helpers.js";
 import { detectChannel } from "../router.js";
 import { executeSlashCommand } from "./slash-command.js";
 import { getProviderUsage } from "./provider-usage.js";
@@ -412,11 +413,15 @@ export class AgentRuntimeFacade {
         const providerUsage = session.model?.provider
             ? await getProviderUsage(this.options.authStorage, session.model.provider)
             : null;
+        const thinkingLevelLabel = thinkingLevel && session.model?.provider
+            ? formatThinkingLevelForDisplay(thinkingLevel, session.model.provider)
+            : thinkingLevel;
         return {
             current: currentModel,
             models,
             model_options: modelOptions,
             thinking_level: thinkingLevel,
+            thinking_level_label: thinkingLevelLabel,
             supports_thinking: supportsThinking,
             provider_usage: providerUsage,
         };

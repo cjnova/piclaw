@@ -450,6 +450,7 @@ export function parseSearch(args, raw) {
 export const COMMAND_PARSERS = {
     "/model": parseModel,
     "/thinking": parseThinking,
+    "/effort": parseThinking,
     "/commands": simple("commands"),
     "/restart": simple("restart"),
     "/exit": simple("exit"),

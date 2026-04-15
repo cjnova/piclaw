@@ -18,6 +18,7 @@ export class AgentTurnCoordinator {
         let currentTurnPhase = null;
         let turnCount = 0;
         let messageHasDelta = false;
+        let lastError = null;
         const parseTextPhase = (signature) => {
             if (typeof signature !== "string" || !signature.trim())
                 return null;
@@ -111,6 +112,9 @@ export class AgentTurnCoordinator {
             if (event.type === "message_end") {
                 const message = event.message;
                 if (message?.role === "assistant") {
+                    if (message.stopReason === "error" && message.errorMessage) {
+                        lastError = { stopReason: "error", errorMessage: message.errorMessage };
+                    }
                     const extracted = extractAssistantTextFromContent(message.content);
                     if (!messageHasDelta) {
                         currentTurnText = extracted.text;
@@ -127,6 +131,7 @@ export class AgentTurnCoordinator {
             handleMessageUpdate,
             getFinalText: () => currentTurnPhase === "commentary" ? "" : currentTurnText.trim(),
             getTurnCount: () => turnCount,
+            getError: () => lastError,
         };
     }
     subscribe(session, chatJid, tracker, onEvent) {

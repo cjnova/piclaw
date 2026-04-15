@@ -6,7 +6,7 @@ import type {
   ExtensionAPI,
   ExtensionFactory,
 } from "@mariozechner/pi-coding-agent";
-import { getToolsetsForTool, getDefaultActiveToolNames } from "./tool-activation.js";
+import { getToolsetsForTool, getEffectiveDefaultActiveToolNames } from "./tool-activation.js";
 import { getToolCapability, type ToolActivation } from "./tool-capabilities.js";
 
 const InternalToolsSchema = Type.Object({
@@ -52,10 +52,10 @@ export const internalTools: ExtensionFactory = (pi: ExtensionAPI) => {
       const includeParameters = Boolean(params.include_parameters);
 
       const activeSet = new Set(pi.getActiveTools());
-      const defaultSet = new Set(getDefaultActiveToolNames());
       const visibleTools = process.platform === "win32" && pi.getAllTools().some((tool) => tool.name === "powershell")
         ? pi.getAllTools().filter((tool) => tool.name !== "bash")
         : pi.getAllTools();
+      const defaultSet = new Set(getEffectiveDefaultActiveToolNames(visibleTools));
       const all = visibleTools
         .map((tool) => {
           const cap = getToolCapability(tool.name);

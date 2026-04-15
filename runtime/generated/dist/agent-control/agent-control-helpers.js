@@ -17,6 +17,33 @@ import { PICLAW_CONFIG_PATH, WORKSPACE_DIR } from "../core/config.js";
 import { readJsonConfig, writeJsonConfig } from "../core/config-store.js";
 /** Ordered list of supported thinking levels from off to xhigh. */
 export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"];
+/**
+ * Provider-native aliases for thinking levels.
+ * Anthropic uses "effort" terminology: "max" maps to internal "xhigh".
+ */
+export const EFFORT_PROVIDER_THINKING_LEVEL_ALIASES = {
+    max: "xhigh",
+};
+/** Resolve a user-provided level name through provider-native aliases for the active provider. */
+export function resolveThinkingAlias(level, provider) {
+    if (isEffortProvider(provider)) {
+        return EFFORT_PROVIDER_THINKING_LEVEL_ALIASES[level] ?? level;
+    }
+    return level;
+}
+/** Check if a provider uses "effort" terminology (e.g. Anthropic). */
+export function isEffortProvider(provider) {
+    return provider?.toLowerCase() === "anthropic";
+}
+/**
+ * Format a thinking level for display, using provider-native terms when appropriate.
+ * For Anthropic: "xhigh" displays as "max".
+ */
+export function formatThinkingLevelForDisplay(level, provider) {
+    if (isEffortProvider(provider) && level === "xhigh")
+        return "max";
+    return level;
+}
 /** Return the preferred working directory for shell commands (configured workspace or cwd). */
 export function resolveShellCwd() {
     if (existsSync(WORKSPACE_DIR))
