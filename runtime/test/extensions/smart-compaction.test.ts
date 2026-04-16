@@ -371,8 +371,8 @@ describe("smart-compaction", () => {
     const ac = new AbortController();
     ac.abort();
 
-    // completeSimple should still be called (abort is checked after)
-    (completeSimple as any).mockRejectedValueOnce(new Error("aborted"));
+    // Handler should return { cancel: true } before reaching completeSimple
+    // because the signal is already aborted at entry.
 
     const result = await handler!(
       {
@@ -383,8 +383,10 @@ describe("smart-compaction", () => {
       makeCtx(),
     );
 
-    // Should not return a compaction result when aborted
-    expect(result).toBeUndefined();
+    // Should return cancel (not a compaction result) when aborted
+    expect(result).toEqual({ cancel: true });
+    // Should never reach the LLM call
+    expect(completeSimple).not.toHaveBeenCalled();
   });
 
   it("does not skip file sections if summary already has them", async () => {
