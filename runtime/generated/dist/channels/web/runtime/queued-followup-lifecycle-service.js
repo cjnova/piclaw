@@ -85,8 +85,7 @@ export class QueuedFollowupLifecycleService {
                 return false;
             seen.add(row.rowId);
             return true;
-        })
-            .sort((a, b) => String(a.queuedAt).localeCompare(String(b.queuedAt)));
+        });
     }
     removeQueuedFollowupItem(chatJid, rowId) {
         const queued = this.getDeferredQueuedFollowupItems(chatJid);
@@ -146,6 +145,15 @@ export class QueuedFollowupLifecycleService {
     }
     setDeferredQueuedFollowupItems(chatJid, items) {
         setDeferredQueuedFollowups(chatJid, items.map((item) => toDeferredQueuedFollowupRecord(item)));
+    }
+    reorderQueuedFollowupItems(chatJid, fromIndex, toIndex) {
+        const queued = this.getDeferredQueuedFollowupItems(chatJid);
+        if (fromIndex < 0 || toIndex < 0 || fromIndex >= queued.length || toIndex >= queued.length || fromIndex === toIndex)
+            return false;
+        const [moved] = queued.splice(fromIndex, 1);
+        queued.splice(toIndex, 0, moved);
+        this.setDeferredQueuedFollowupItems(chatJid, queued);
+        return true;
     }
     allocateDeferredQueuedRowId(chatJid) {
         const queued = this.getDeferredQueuedFollowupItems(chatJid);

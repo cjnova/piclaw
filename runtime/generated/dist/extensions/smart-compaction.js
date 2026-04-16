@@ -41,6 +41,11 @@ const TOOL_RESULT_MAX_CHARS = 1_500;
 const TAIL_MESSAGES = 20;
 /** How many earliest user turns to include for goal context. */
 const HEAD_USER_TURNS = 3;
+/** Context to pin around a detected topic shift. */
+const TOPIC_SHIFT_CONTEXT_BEFORE = 2;
+const TOPIC_SHIFT_CONTEXT_AFTER = 6;
+/** Preview length for embedded user-topic snippets. */
+const USER_PREVIEW_MAX_CHARS = 300;
 /** Minimum acceptable summary length (chars). */
 const MIN_SUMMARY_CHARS = 100;
 // ---------------------------------------------------------------------------
@@ -90,6 +95,9 @@ function extractText(content) {
         .map((b) => b.text)
         .join("\n")
         .trim();
+}
+function buildPreview(text, maxChars = USER_PREVIEW_MAX_CHARS) {
+    return text.length > maxChars ? text.slice(0, maxChars) + "..." : text;
 }
 /** Serialize one LLM message to a compact readable line. */
 function serializeMessage(msg, idx) {
@@ -191,6 +199,93 @@ function findFirstUserRequest(messages) {
     }
     return null;
 }
+/** Latest non-slash-command user message. */
+function findLatestUserRequest(messages) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role !== "user")
+            continue;
+        const text = extractText(messages[i].content).trim();
+        if (!text || text.startsWith("/"))
+            continue;
+        return { index: i, text };
+    }
+    return null;
+}
+// A1 requirement: pre-prompt compaction must stop biasing the next turn toward
+// an older topic when the user has clearly pivoted. We keep this heuristic local
+// to piclaw rather than changing upstream compaction because:
+//   1. the stale-topic failure is product-specific and evidence-driven here,
+//   2. we already own the `session_before_compact` override point, and
+//   3. we want deterministic guardrails before the summary ever reaches the next run.
+//
+// The goal is not perfect topic modeling. It is a conservative detector for the
+// common failure mode: the summary says "continue X" even though the newest user
+// instruction has switched to Y. We therefore combine:
+//   - explicit pivot cues ("new topic", "instead", "ignore that", ...), and
+//   - a simple lexical-overlap check for strong subject changes.
+//
+// If this detector fires, newer context gets promoted to "active" and older
+// context is demoted to "historical/background" unless recent excerpts reaffirm it.
+const PIVOT_CUE_REGEX = /\b(new topic|different (?:topic|issue|problem)|switch(?:ing)?(?:\s+back)?(?:\s+to)?|instead\b|ignore (?:that|this|previous|above|the earlier)|separately|unrelated|moving on|back to|let'?s focus on|now for|another thing)\b/i;
+const TOPIC_STOP_WORDS = new Set([
+    "a", "an", "and", "are", "as", "at", "be", "but", "by", "do", "for", "from", "get", "go",
+    "help", "i", "if", "in", "into", "is", "it", "its", "let", "lets", "me", "my", "need", "now",
+    "of", "on", "or", "our", "please", "set", "so", "that", "the", "their", "then", "these", "this",
+    "to", "up", "use", "using", "we", "with", "work", "you",
+]);
+function tokenizeTopicText(text) {
+    return new Set(text
+        .toLowerCase()
+        .replace(/[^a-z0-9_\-\s]/g, " ")
+        .split(/\s+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 3 && !TOPIC_STOP_WORDS.has(token)));
+}
+function findUserTurns(messages) {
+    const turns = [];
+    for (let i = 0; i < messages.length; i++) {
+        if (messages[i].role !== "user")
+            continue;
+        const text = extractText(messages[i].content).trim();
+        if (!text || text.startsWith("/"))
+            continue;
+        turns.push({ index: i, text, tokens: tokenizeTopicText(text) });
+    }
+    return turns;
+}
+function computeTokenOverlap(a, b) {
+    if (a.size === 0 || b.size === 0)
+        return 0;
+    let intersection = 0;
+    for (const token of a) {
+        if (b.has(token))
+            intersection++;
+    }
+    const union = new Set([...a, ...b]).size;
+    return union === 0 ? 0 : intersection / union;
+}
+function detectRecentTopicShift(messages) {
+    const userTurns = findUserTurns(messages);
+    for (let i = userTurns.length - 1; i >= 1; i--) {
+        const current = userTurns[i];
+        const previous = userTurns[i - 1];
+        const reasons = [];
+        const cueMatch = current.text.match(PIVOT_CUE_REGEX);
+        if (cueMatch?.[0]) {
+            reasons.push(`explicit pivot cue: "${cueMatch[0]}"`);
+        }
+        const overlap = computeTokenOverlap(current.tokens, previous.tokens);
+        if (current.tokens.size >= 4 &&
+            previous.tokens.size >= 4 &&
+            overlap <= 0.12) {
+            reasons.push(`low lexical overlap (${overlap.toFixed(2)})`);
+        }
+        if (reasons.length > 0) {
+            return { current, previous, reasons, overlap };
+        }
+    }
+    return null;
+}
 /** Indices of assistant messages with substantial explanatory text. */
 function findKeyDecisionMessages(messages, exclude) {
     const indices = [];
@@ -224,11 +319,19 @@ IMPORTANT RULES:
 3. Exact Names: Use EXACT variable/function/parameter names from the code.
 4. File Lists: Only list files that were actually written/edited successfully. Don't list files that were only read.
 5. No-op Filtering: Don't count "Applied: 0" or "No changes applied" as modifications.
+6. Topic Pivots: If the prompt identifies a recent topic shift, treat the newest topic as the active lane. Older summary content becomes historical/background unless reaffirmed in recent excerpts.
+7. Active vs Background: Put stale or superseded work under Historical / Background Context instead of keeping it as Goal or In Progress.
 
 Use this EXACT format:
 
 ## Goal
-[What the user is trying to accomplish]
+[What the user is trying to accomplish overall]
+
+## Current Active Topic
+- [Newest active thread to continue right now, or "(none)"]
+
+## Historical / Background Context
+- [Earlier threads that still matter, or "(none)"]
 
 ## Constraints & Preferences
 - [Constraints/preferences mentioned by user, or "(none)"]
@@ -257,9 +360,18 @@ function buildSelectivePrompt(allMessages, input, customInstructions) {
     const total = allMessages.length;
     const sessionType = detectSessionType(allMessages);
     const firstRequest = findFirstUserRequest(allMessages);
+    const latestRequest = findLatestUserRequest(allMessages);
+    const topicShift = detectRecentTopicShift(allMessages);
     const complaints = findUserComplaints(allMessages);
     const { readFiles, modifiedFiles } = fileListsFromOps(input.fileOps);
-    // Collect indices to include verbatim
+    // A1 requirement: always preserve enough context to distinguish the newest
+    // active topic from older background material. The core stale-summary failure
+    // happens when compaction keeps the old goal but under-represents the pivot.
+    // We therefore pin four classes of excerpts:
+    //   1. head          → original goal / session setup,
+    //   2. tail          → newest state,
+    //   3. complaints    → user corrections that invalidate "done" claims,
+    //   4. topic shifts  → the transition boundary between old and new topics.
     const included = new Set();
     // 1. Head — first few user turns for goal context
     const headEnd = Math.min(HEAD_USER_TURNS * 3, total);
@@ -269,13 +381,27 @@ function buildSelectivePrompt(allMessages, input, customInstructions) {
     const tailStart = Math.max(0, total - TAIL_MESSAGES);
     for (let i = tailStart; i < total; i++)
         included.add(i);
-    // 3. User complaints + surrounding context
+    // 3. Latest request — pin the newest user instruction even if a long tool run
+    // pushed it outside the fixed tail window.
+    if (latestRequest) {
+        for (let j = Math.max(0, latestRequest.index - 1); j <= Math.min(total - 1, latestRequest.index + TOPIC_SHIFT_CONTEXT_AFTER); j++) {
+            included.add(j);
+        }
+    }
+    // 4. User complaints + surrounding context
     for (const idx of complaints) {
         for (let j = Math.max(0, idx - 1); j <= Math.min(total - 1, idx + 3); j++) {
             included.add(j);
         }
     }
-    // 4. Key decision messages from the middle
+    // 5. Topic-shift boundary — if we think A1 is in play, pin the turns on both
+    // sides of the pivot so the summarizer can explicitly demote the stale topic.
+    if (topicShift) {
+        for (let j = Math.max(0, topicShift.previous.index - TOPIC_SHIFT_CONTEXT_BEFORE); j <= Math.min(total - 1, topicShift.current.index + TOPIC_SHIFT_CONTEXT_AFTER); j++) {
+            included.add(j);
+        }
+    }
+    // 6. Key decision messages from the middle
     const decisions = findKeyDecisionMessages(allMessages, included);
     for (const idx of decisions) {
         included.add(idx);
@@ -285,20 +411,40 @@ function buildSelectivePrompt(allMessages, input, customInstructions) {
                 break;
         }
     }
-    // ── Build sections ────────────────────────────────────────────────────
     const sec = [];
     sec.push(`## Session Metadata`);
     sec.push(`- Total messages: ${total}`);
     sec.push(`- Session type: ${sessionType}`);
     sec.push(`- Tokens before compaction: ${input.tokensBefore}`);
     if (firstRequest) {
-        const preview = firstRequest.text.length > 300
-            ? firstRequest.text.slice(0, 300) + "..."
-            : firstRequest.text;
-        sec.push(`- First user request: "${preview}"`);
+        sec.push(`- First user request: "${buildPreview(firstRequest.text)}"`);
+    }
+    if (latestRequest) {
+        sec.push(`- Latest user request: message ${latestRequest.index} → "${buildPreview(latestRequest.text)}"`);
     }
     if (complaints.length > 0) {
         sec.push(`- User complaints at message indices: ${complaints.join(", ")}`);
+    }
+    // A1 requirement: the prompt must tell the compaction model which topic is
+    // active *before* it sees the previous summary. Otherwise the older summary
+    // can dominate the merge and resurrect stale work as if it were current.
+    sec.push(`\n## Current Active Topic`);
+    if (latestRequest) {
+        sec.push(`- Treat message ${latestRequest.index} as the newest active user instruction: "${buildPreview(latestRequest.text)}"`);
+    }
+    else {
+        sec.push(`- (none)`);
+    }
+    sec.push(`\n## Historical / Background Context Handling`);
+    if (topicShift) {
+        sec.push(`- Recent topic shift detected between user messages ${topicShift.previous.index} → ${topicShift.current.index}.`);
+        sec.push(`- Previous topic preview: "${buildPreview(topicShift.previous.text)}"`);
+        sec.push(`- New active topic preview: "${buildPreview(topicShift.current.text)}"`);
+        sec.push(`- Shift signals: ${topicShift.reasons.join("; ")}.`);
+        sec.push(`- Treat earlier summary content as background unless it is reaffirmed after message ${topicShift.current.index}.`);
+    }
+    else {
+        sec.push(`- No strong recent topic shift detected. Merge prior summary normally.`);
     }
     sec.push(`\n## Files Modified (verified from tool results)`);
     if (modifiedFiles.length > 0) {
@@ -328,9 +474,10 @@ function buildSelectivePrompt(allMessages, input, customInstructions) {
         sec.push(`The user passed this instruction to /compact. Use it to guide focus, but don't treat it as the session's main goal.`);
         sec.push(`"${customInstructions.trim()}"`);
     }
-    // Conversation excerpts with gap markers
     sec.push(`\n## Conversation Excerpts`);
-    sec.push(`(Selected fragments from ${total} messages — head, tail, complaints, and key decisions)\n`);
+    sec.push(topicShift
+        ? `(Selected fragments from ${total} messages — head, tail, complaints, key decisions, and the latest topic-shift boundary)\n`
+        : `(Selected fragments from ${total} messages — head, tail, complaints, and key decisions)\n`);
     const sorted = [...included].sort((a, b) => a - b);
     let lastIdx = -1;
     let chars = 0;
@@ -349,9 +496,11 @@ function buildSelectivePrompt(allMessages, input, customInstructions) {
         }
         lastIdx = idx;
     }
-    const instruction = input.previousSummary
-        ? `Update the previous summary with the new information from these conversation excerpts. Preserve existing information and add new progress, decisions, and context.`
-        : `Summarize these conversation excerpts into a structured context checkpoint. Focus on what matters for continuing the work.`;
+    const instruction = topicShift
+        ? `A recent topic shift was detected. Update the summary so the newest topic becomes the Current Active Topic. Move older work that is not reaffirmed after message ${topicShift.current.index} into Historical / Background Context instead of keeping it as the Goal or current in-progress work.`
+        : input.previousSummary
+            ? `Update the previous summary with the new information from these conversation excerpts. Preserve existing information and add new progress, decisions, and context.`
+            : `Summarize these conversation excerpts into a structured context checkpoint. Focus on what matters for continuing the work.`;
     return sec.join("\n") + `\n\n---\n\n${instruction}`;
 }
 // ---------------------------------------------------------------------------
@@ -369,6 +518,12 @@ function buildSelectivePrompt(allMessages, input, customInstructions) {
  *
  * 2. **Minimal content** — Very little user input (<100 chars) and no file
  *    modifications. The previous summary is still valid.
+ *
+ * A1 caveat: this optimisation is only safe when the tiny user input is *not*
+ * actually a topic pivot (for example: "new topic: Azure streaming"). Reusing
+ * the previous summary in that situation is exactly how stale-topic bias leaks
+ * into the next turn. We therefore disable the minimal-content fast path when
+ * the newest user message looks like a pivot.
  *
  * Returns a `{ compaction }` result to short-circuit the LLM path, or
  * `null` to fall through to selective/built-in compaction.
@@ -393,6 +548,7 @@ function tryNoOpCompaction(llmMessages, preparation, firstKeptEntryId, tokensBef
     }
     const { readFiles, modifiedFiles } = fileListsFromOps(fileOps);
     const hasModifications = modifiedFiles.length > 0;
+    const topicShift = detectRecentTopicShift(llmMessages);
     // ── Pattern 1: Split-turn continuation ────────────────────────────
     // Zero user messages → the goal/context hasn't changed, just more tool work.
     if (userMessageCount === 0) {
@@ -404,8 +560,10 @@ function tryNoOpCompaction(llmMessages, preparation, firstKeptEntryId, tokensBef
         };
     }
     // ── Pattern 2: Minimal content ────────────────────────────────────
-    // Tiny user input, no modifications → nothing new to capture.
-    if (userTotalChars < 100 && !hasModifications) {
+    // Tiny user input, no modifications → usually nothing new to capture.
+    // But if that tiny input is a pivot cue, we must force the LLM path so the
+    // summary can demote the stale topic and promote the new one.
+    if (userTotalChars < 100 && !hasModifications && !topicShift) {
         const summary = updateFileLists(previousSummary, fileOps);
         ctx.ui.notify(`No-op compaction: minimal content (${userTotalChars} user chars, 0 modifications) → reused summary`, "info");
         return {

@@ -66,10 +66,24 @@ export function initializeRuntimeEnvironment(state) {
     state.loadTimestamps();
     state.loadChats();
 }
+export function queueStartupSessionWarmup(agentPool, options = {}) {
+    const defaultChatJid = typeof options.defaultChatJid === "string" && options.defaultChatJid.trim()
+        ? options.defaultChatJid.trim()
+        : "web:default";
+    const recentLimit = Math.max(0, Math.min(8, Math.trunc(options.recentLimit ?? 5) || 5));
+    agentPool.scheduleChatWarmup?.(defaultChatJid, { priority: true });
+    if (recentLimit > 0) {
+        agentPool.scheduleRecentChatWarmup?.({
+            limit: recentLimit,
+            excludeChatJids: [defaultChatJid],
+        });
+    }
+}
 /** Start web channel and run immediate crash-recovery bootstrap. */
 export async function startWebChannel(queue, agentPool) {
     const web = new WebChannel({ queue, agentPool });
     await web.start();
+    queueStartupSessionWarmup(agentPool);
     web.recoverInflightRuns();
     // Run an immediate pending-resume scan at startup so deferred queued
     // follow-ups are picked up even before IPC workers process resume tasks.

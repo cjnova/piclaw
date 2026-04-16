@@ -18,6 +18,7 @@ export class AgentTurnCoordinator {
         let currentTurnPhase = null;
         let turnCount = 0;
         let messageHasDelta = false;
+        let messageComplete = false;
         let lastError = null;
         const parseTextPhase = (signature) => {
             if (typeof signature !== "string" || !signature.trim())
@@ -67,12 +68,16 @@ export class AgentTurnCoordinator {
             }
             return { text: "", phase: textBlocks.some((block) => resolveTextPhaseFromBlock(block) === "commentary") ? "commentary" : null };
         };
+        const resetCurrentTurn = () => {
+            currentTurnText = "";
+            currentTurnPhase = null;
+            messageHasDelta = false;
+            messageComplete = false;
+        };
         const flushTurn = () => {
             const text = currentTurnText.trim();
             if ((!text || currentTurnPhase === "commentary") && !onTurnComplete) {
-                currentTurnText = "";
-                currentTurnPhase = null;
-                messageHasDelta = false;
+                resetCurrentTurn();
                 return;
             }
             if ((text && currentTurnPhase !== "commentary") || turnCount > 0) {
@@ -82,22 +87,47 @@ export class AgentTurnCoordinator {
                 });
                 turnCount += 1;
             }
-            currentTurnText = "";
-            currentTurnPhase = null;
-            messageHasDelta = false;
+            resetCurrentTurn();
         };
         const handleMessageUpdate = (event) => {
             if (event.type === "message_update") {
                 const messageEvent = event.assistantMessageEvent;
                 if (messageEvent.type === "text_start") {
-                    if (onTurnComplete) {
-                        flushTurn();
+                    const textLengthBeforeStart = currentTurnText.length;
+                    const hadCompletedMessage = messageComplete;
+                    const hadIncompleteAccumulation = !messageComplete && (messageHasDelta || currentTurnText.length > 0 || currentTurnPhase !== null);
+                    this.options.onInfo?.("Assistant text stream started", {
+                        operation: "turn_coordinator.text_start",
+                        chatJid,
+                        contentIndex: messageEvent.contentIndex ?? null,
+                        currentTurnTextLength: textLengthBeforeStart,
+                        messageHasDelta,
+                        messageComplete,
+                        currentTurnPhase,
+                    });
+                    if (messageComplete) {
+                        if (onTurnComplete) {
+                            flushTurn();
+                        }
+                        else {
+                            resetCurrentTurn();
+                        }
                     }
-                    else {
-                        messageHasDelta = false;
-                        currentTurnText = "";
+                    else if (messageHasDelta || currentTurnText || currentTurnPhase !== null) {
+                        // A new text stream started before the previous assistant message
+                        // emitted message_end. Discard the incomplete accumulation rather
+                        // than flushing it as a completed turn.
+                        resetCurrentTurn();
                     }
                     currentTurnPhase = resolveTextPhaseFromPartial(messageEvent.partial, messageEvent.contentIndex);
+                    this.options.onInfo?.("Assistant text stream boundary resolved", {
+                        operation: "turn_coordinator.text_start_boundary",
+                        chatJid,
+                        contentIndex: messageEvent.contentIndex ?? null,
+                        hadCompletedMessage,
+                        hadIncompleteAccumulation,
+                        nextTurnPhase: currentTurnPhase,
+                    });
                 }
                 if (messageEvent.type === "text_delta") {
                     messageHasDelta = true;
@@ -123,8 +153,18 @@ export class AgentTurnCoordinator {
                     if (currentTurnPhase === "commentary") {
                         currentTurnText = "";
                     }
+                    this.options.onInfo?.("Assistant message completed", {
+                        operation: "turn_coordinator.message_end",
+                        chatJid,
+                        stopReason: message.stopReason ?? null,
+                        extractedTextLength: extracted.text.length,
+                        phase: extracted.phase,
+                        messageHasDelta,
+                        currentTurnTextLength: currentTurnText.length,
+                    });
                 }
                 messageHasDelta = false;
+                messageComplete = true;
             }
         };
         return {
@@ -166,10 +206,13 @@ export class AgentTurnCoordinator {
     }
     startPromptTimeout(session, chatJid, timeoutMs) {
         const timedOutRef = { value: false };
+        const completedRef = { value: false };
         if (!timeoutMs || timeoutMs <= 0) {
-            return { timeoutId: null, timedOutRef };
+            return { timeoutId: null, timedOutRef, completedRef };
         }
         const timeoutId = setTimeout(async () => {
+            if (completedRef.value)
+                return;
             timedOutRef.value = true;
             this.options.onError?.("Prompt timed out; aborting session", {
                 operation: "start_prompt_timeout",
@@ -178,6 +221,6 @@ export class AgentTurnCoordinator {
             });
             await session.abort();
         }, timeoutMs);
-        return { timeoutId, timedOutRef };
+        return { timeoutId, timedOutRef, completedRef };
     }
 }

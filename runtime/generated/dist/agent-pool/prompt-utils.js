@@ -37,9 +37,11 @@ export function toSideReasoning(level) {
         ? level
         : undefined;
 }
+export const DEFAULT_SESSION_IDLE_SETTLE_TICKS = 20;
 /** Wait until a session fully settles after a prompt completes. */
-export async function waitForSessionIdle(session, settleTicks = 10) {
+export async function waitForSessionIdle(session, settleTicks = DEFAULT_SESSION_IDLE_SETTLE_TICKS, onSettled) {
     let idleTicks = 0;
+    const startTime = Date.now();
     while (idleTicks < settleTicks) {
         if (!session.isStreaming && !session.isCompacting && !session.isRetrying) {
             idleTicks += 1;
@@ -49,4 +51,12 @@ export async function waitForSessionIdle(session, settleTicks = 10) {
         }
         await Bun.sleep(50);
     }
+    onSettled?.({
+        totalWaitMs: Date.now() - startTime,
+        settleTicks,
+        idleTicks,
+        isStreaming: Boolean(session.isStreaming),
+        isCompacting: Boolean(session.isCompacting),
+        isRetrying: Boolean(session.isRetrying),
+    });
 }

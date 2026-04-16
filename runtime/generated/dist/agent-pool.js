@@ -38,7 +38,7 @@ import { applyLiveSshConfig, clearLiveSshConfig, hasLiveChatSshSession, resolveS
 import { createLogger } from "./utils/logger.js";
 const log = createLogger("agent-pool");
 /** How long (ms) an idle session stays cached before being disposed. */
-const DEFAULT_IDLE_TTL = 2 * 60 * 1000; // 2 minutes
+const DEFAULT_IDLE_TTL = 15 * 60 * 1000; // 15 minutes
 const DEFAULT_CLEANUP_INTERVAL = 30 * 1000; // check every 30 seconds
 function parsePositiveMs(value, fallback) {
     const parsed = Number.parseInt(String(value || "").trim(), 10);
@@ -186,6 +186,9 @@ export class AgentPool {
     /** Return the current context token usage for a chat session, or null if unknown. */
     async getContextUsageForChat(chatJid) {
         return this.runtimeFacade.getContextUsageForChat(chatJid);
+    }
+    scheduleChatWarmup(chatJid, options = {}) {
+        return this.sessionManager.prewarm(chatJid, options);
     }
     getSessionTreeForChat(chatJid) {
         return this.runtimeFacade.getSessionTreeForChat(chatJid);

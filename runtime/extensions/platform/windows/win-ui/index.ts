@@ -33,6 +33,23 @@
  *     works even when the desktop session is locked. Good for visual
  *     inspection, dialog detection, and debugging.
  *
+ *   win_desktop_screenshot  outPath="desktop.png"
+ *     Capture the full interactive virtual desktop across all monitors.
+ *     Uses pure GDI BitBlt from the desktop DC and supports negative
+ *     virtual-screen origins for multi-monitor layouts.
+ *
+ *   win_list_monitors
+ *     List all attached monitors with index, device name, primary flag,
+ *     and monitor/work-area rectangles.
+ *
+ *   win_monitor_screenshot  monitorIndex=2 outPath="monitor-2.png"
+ *     Capture one monitor by index or device name using the same virtual-
+ *     screen GDI capture path as desktop capture.
+ *
+ *   win_region_screenshot  x=0 y=0 width=800 height=600 outPath="region.png"
+ *     Capture an arbitrary desktop region, including negative coordinates
+ *     on multi-monitor layouts.
+ *
  *   win_find_elements  windowTitle="Edge" elementName="Close"
  *     Search for interactive UI elements (buttons, links, tabs, menus)
  *     by name inside any window. Walks the IAccessible/MSAA tree which
@@ -121,7 +138,7 @@
  *
  * ── Limitations ──────────────────────────────────────────────────────
  *
- * - BMP output only (no PNG encoder in pure FFI; use external tool to convert)
+ * - Bitmap extraction still uses a 24-bit BMP pipeline, with optional in-process PNG conversion
  * - IAccessible tree may be shallower than UIA for some modern apps
  * - For web content inside Edge, prefer CDP (cdp_browser tool) which has
  *   full DOM access. IAccessible sees the accessibility layer, not the DOM.
@@ -136,8 +153,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { writeFileSync } from "fs";
 import { registerToolStatusHintProvider } from "../../../../src/tool-status-hints.js";
+import { createLogger, debugSuppressedError } from "../../../../src/utils/logger.js";
 
 const WINDOWS_UI_STATUS_ICON_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="14" rx="2"></rect><path d="M8 20h8"></path><path d="M12 18v2"></path><g fill="currentColor" stroke="none"><rect x="8.5" y="7.5" width="3" height="3" rx="0.5"></rect><rect x="12.5" y="7.5" width="3" height="3" rx="0.5"></rect><rect x="8.5" y="11.5" width="3" height="3" rx="0.5"></rect><rect x="12.5" y="11.5" width="3" height="3" rx="0.5"></rect></g></svg>`;
+const log = createLogger("extensions.platform.windows.win-ui");
 
 function readTrimmedString(...values: unknown[]): string | null {
   for (const value of values) {
@@ -154,7 +173,13 @@ registerToolStatusHintProvider({
     const label = readTrimmedString(
       record?.windowTitle,
       record?.titleMatch,
+      record?.deviceName,
+      typeof record?.monitorIndex === "number" ? `monitor ${record.monitorIndex}` : null,
       record?.elementName,
+      (record?.x !== undefined && record?.y !== undefined && record?.width !== undefined && record?.height !== undefined)
+        ? `${record.x},${record.y} ${record.width}x${record.height}`
+        : null,
+      record?.outPath,
       (record?.x !== undefined && record?.y !== undefined) ? `${record.x},${record.y}` : null,
     );
     if (!label) return null;
@@ -183,6 +208,13 @@ const MOUSEEVENTF_LEFTUP = 0x0004;
 const KEYEVENTF_KEYUP = 0x0002;
 const PW_RENDERFULLCONTENT = 2;
 const OBJID_CLIENT = 0xFFFFFFFC;
+const SRCCOPY = 0x00CC0020;
+const CAPTUREBLT = 0x40000000;
+const SM_XVIRTUALSCREEN = 76;
+const SM_YVIRTUALSCREEN = 77;
+const SM_CXVIRTUALSCREEN = 78;
+const SM_CYVIRTUALSCREEN = 79;
+const MONITORINFOF_PRIMARY = 0x00000001;
 
 function ensureInit() {
   if (_init) return;
@@ -204,6 +236,7 @@ function ensureInit() {
   });
   user32 = ffi.dlopen("user32.dll", {
     EnumWindows: { args: [F.ptr, F.ptr], returns: F.i32 },
+    EnumDisplayMonitors: { args: [F.ptr, F.ptr, F.ptr, F.ptr], returns: F.i32 },
     IsWindowVisible: { args: [F.ptr], returns: F.i32 },
     GetWindowTextW: { args: [F.ptr, F.ptr, F.i32], returns: F.i32 },
     GetWindowTextLengthW: { args: [F.ptr], returns: F.i32 },
@@ -221,6 +254,7 @@ function ensureInit() {
     SendInput: { args: [F.u32, F.ptr, F.i32], returns: F.u32 },
     PostMessageW: { args: [F.ptr, F.u32, F.ptr, F.ptr], returns: F.i32 },
     GetWindowThreadProcessId: { args: [F.ptr, F.ptr], returns: F.u32 },
+    GetMonitorInfoW: { args: [F.ptr, F.ptr], returns: F.i32 },
   });
   kernel32 = ffi.dlopen("kernel32.dll", {
     OpenProcess: { args: [F.u32, F.i32, F.u32], returns: F.ptr },
@@ -231,6 +265,7 @@ function ensureInit() {
     CreateCompatibleDC: { args: [F.ptr], returns: F.ptr },
     CreateCompatibleBitmap: { args: [F.ptr, F.i32, F.i32], returns: F.ptr },
     SelectObject: { args: [F.ptr, F.ptr], returns: F.ptr },
+    BitBlt: { args: [F.ptr, F.i32, F.i32, F.i32, F.i32, F.ptr, F.i32, F.i32, F.u32], returns: F.i32 },
     DeleteDC: { args: [F.ptr], returns: F.i32 },
     DeleteObject: { args: [F.ptr], returns: F.i32 },
     GetDIBits: { args: [F.ptr, F.ptr, F.u32, F.u32, F.ptr, F.ptr, F.u32], returns: F.i32 },
@@ -345,7 +380,11 @@ function accDoDefaultAction(p: number): boolean {
   try {
     const hr = new _CFunction({ ptr: vte(p, 25), args: [_FFIType.ptr, _FFIType.ptr], returns: _FFIType.i32 })(p, _ptr(cv));
     return hr >= 0;
-  } catch {
+  } catch (error) {
+    debugSuppressedError(log, "Failed to invoke IAccessible default action.", error, {
+      operation: "win_ui.acc_do_default_action",
+      pointer: p,
+    });
     return false;
   }
 }
@@ -354,7 +393,11 @@ function accDoDefaultAction(p: number): boolean {
 function accRelease(p: number) {
   try {
     new _CFunction({ ptr: vte(p, 2), args: [_FFIType.ptr], returns: _FFIType.i32 })(p);
-  } catch {
+  } catch (error) {
+    debugSuppressedError(log, "Failed to release IAccessible pointer.", error, {
+      operation: "win_ui.acc_release",
+      pointer: p,
+    });
     return;
   }
 }
@@ -401,11 +444,82 @@ function accFindElements(hwnd: number | any, nameMatch: string, maxResults = 30,
 
 /** Enumerate all visible top-level windows with title, class, and bounding rect */
 
-interface WindowInfo {
+export interface WindowInfo {
   handle: number;
   title: string;
   className: string;
+  pid: number;
   rect: { x: number; y: number; w: number; h: number };
+}
+
+export interface KillSummaryItem {
+  title: string;
+  handle: number;
+  pid?: number;
+  terminated?: boolean;
+}
+
+export interface BitmapPixels {
+  width: number;
+  height: number;
+  rowSize: number;
+  pixelData: Buffer;
+}
+
+export interface MonitorInfo {
+  index: number;
+  handle: number;
+  deviceName: string;
+  isPrimary: boolean;
+  rect: { x: number; y: number; w: number; h: number };
+  workRect: { x: number; y: number; w: number; h: number };
+}
+
+export function serializeWindowList(wins: WindowInfo[]): Array<Pick<WindowInfo, "title" | "className" | "rect" | "handle" | "pid">> {
+  return wins.map(w => ({
+    title: w.title,
+    className: w.className,
+    rect: w.rect,
+    handle: w.handle,
+    pid: w.pid,
+  }));
+}
+
+export function formatKillSummary(results: KillSummaryItem[], force: boolean): string {
+  return results
+    .map(r => {
+      const verb = !force ? "Closed" : r.terminated ? "Terminated" : "Close requested";
+      const suffix = force && r.terminated === false
+        ? ", process termination unavailable"
+        : force && r.terminated
+          ? ", killed"
+          : "";
+      return `${verb} "${r.title}" (handle=${r.handle}${r.pid ? `, pid=${r.pid}` : ""}${suffix})`;
+    })
+    .join("\n");
+}
+
+export function serializeMonitorList(monitors: MonitorInfo[]): Array<Pick<MonitorInfo, "index" | "deviceName" | "isPrimary" | "rect" | "workRect" | "handle">> {
+  return monitors.map(m => ({
+    index: m.index,
+    deviceName: m.deviceName,
+    isPrimary: m.isPrimary,
+    rect: m.rect,
+    workRect: m.workRect,
+    handle: m.handle,
+  }));
+}
+
+export function formatDesktopScreenshotSummary(result: { width: number; height: number; x: number; y: number }, outPath: string): string {
+  return `Captured desktop → ${outPath} (${result.width}x${result.height}, origin=${result.x},${result.y})`;
+}
+
+export function formatMonitorScreenshotSummary(monitor: Pick<MonitorInfo, "index" | "deviceName">, result: { width: number; height: number; x: number; y: number }, outPath: string): string {
+  return `Captured monitor ${monitor.index} (${monitor.deviceName}) → ${outPath} (${result.width}x${result.height}, origin=${result.x},${result.y})`;
+}
+
+export function formatRegionScreenshotSummary(result: { width: number; height: number; x: number; y: number }, outPath: string): string {
+  return `Captured region → ${outPath} (${result.width}x${result.height}, origin=${result.x},${result.y})`;
 }
 
 function listWindows(): WindowInfo[] {
@@ -436,12 +550,59 @@ function listWindows(): WindowInfo[] {
         h: rectBuf.readInt32LE(12) - rectBuf.readInt32LE(4),
       };
 
-      results.push({ handle: h, title, className, rect });
+      const pidBuf = Buffer.alloc(4);
+      user32.symbols.GetWindowThreadProcessId(h as any, _ptr(pidBuf));
+      const pid = pidBuf.readUInt32LE(0);
+
+      results.push({ handle: h, title, className, pid, rect });
       return 1;
     },
     { args: [_FFIType.ptr, _FFIType.ptr], returns: _FFIType.i32 },
   );
   user32.symbols.EnumWindows(cb.ptr, null);
+  cb.close();
+  return results;
+}
+
+function listMonitors(): MonitorInfo[] {
+  const results: MonitorInfo[] = [];
+
+  const cb = new _JSCallback(
+    (hMonitor: any) => {
+      const handle = Number(hMonitor);
+      const infoBuf = Buffer.alloc(104);
+      infoBuf.writeUInt32LE(104, 0);
+      const ok = Number(user32.symbols.GetMonitorInfoW(hMonitor, _ptr(infoBuf)));
+      if (!ok) return 1;
+
+      const rect = {
+        x: infoBuf.readInt32LE(4),
+        y: infoBuf.readInt32LE(8),
+        w: infoBuf.readInt32LE(12) - infoBuf.readInt32LE(4),
+        h: infoBuf.readInt32LE(16) - infoBuf.readInt32LE(8),
+      };
+      const workRect = {
+        x: infoBuf.readInt32LE(20),
+        y: infoBuf.readInt32LE(24),
+        w: infoBuf.readInt32LE(28) - infoBuf.readInt32LE(20),
+        h: infoBuf.readInt32LE(32) - infoBuf.readInt32LE(24),
+      };
+      const flags = infoBuf.readUInt32LE(36);
+      const deviceName = readWide(infoBuf.subarray(40, 104), 32);
+
+      results.push({
+        index: results.length + 1,
+        handle,
+        deviceName,
+        isPrimary: (flags & MONITORINFOF_PRIMARY) !== 0,
+        rect,
+        workRect,
+      });
+      return 1;
+    },
+    { args: [_FFIType.ptr, _FFIType.ptr, _FFIType.ptr, _FFIType.ptr], returns: _FFIType.i32 },
+  );
+  user32.symbols.EnumDisplayMonitors(null, null, cb.ptr, null);
   cb.close();
   return results;
 }
@@ -452,6 +613,62 @@ function listWindows(): WindowInfo[] {
  * window handle — bypasses lock screen and DWM. The bitmap is extracted
  * via GetDIBits (top-down, BGR order) and written as a standard BMP.
  */
+function extractBitmapPixels(dc: any, bitmap: any, width: number, height: number): BitmapPixels | null {
+  const rowSize = Math.ceil((width * 3) / 4) * 4;
+  const pixelData = Buffer.alloc(rowSize * height);
+  const bmiHeader = Buffer.alloc(40);
+  bmiHeader.writeUInt32LE(40, 0);
+  bmiHeader.writeInt32LE(width, 4);
+  bmiHeader.writeInt32LE(-height, 8);
+  bmiHeader.writeUInt16LE(1, 12);
+  bmiHeader.writeUInt16LE(24, 14);
+  const scanlines = Number(gdi32.symbols.GetDIBits(dc, bitmap, 0, height, _ptr(pixelData), _ptr(bmiHeader), 0));
+  if (scanlines <= 0) return null;
+  return { width, height, rowSize, pixelData };
+}
+
+export function writeBitmapToPath(outPath: string, bitmap: BitmapPixels): void {
+  const { width, height, rowSize, pixelData } = bitmap;
+  const pixelDataSize = pixelData.length;
+  const fileSize = 14 + 40 + pixelDataSize;
+  const bmp = Buffer.alloc(fileSize);
+  bmp.write("BM", 0);
+  bmp.writeUInt32LE(fileSize, 2);
+  bmp.writeUInt32LE(54, 10);
+  bmp.writeUInt32LE(40, 14);
+  bmp.writeInt32LE(width, 18);
+  bmp.writeInt32LE(-height, 22);
+  bmp.writeUInt16LE(1, 26);
+  bmp.writeUInt16LE(24, 28);
+  bmp.writeUInt32LE(pixelDataSize, 34);
+  pixelData.copy(bmp, 54);
+
+  if (!outPath.toLowerCase().endsWith(".png")) {
+    writeFileSync(outPath, bmp);
+    return;
+  }
+
+  const { deflateSync } = require("node:zlib");
+  const pngRowSize = 1 + width * 3;
+  const rawPng = Buffer.alloc(pngRowSize * height);
+  for (let y = 0; y < height; y++) {
+    const srcOff = y * rowSize;
+    const dstOff = y * pngRowSize;
+    rawPng[dstOff] = 0;
+    for (let x = 0; x < width; x++) {
+      rawPng[dstOff + 1 + x * 3] = pixelData[srcOff + x * 3 + 2];
+      rawPng[dstOff + 1 + x * 3 + 1] = pixelData[srcOff + x * 3 + 1];
+      rawPng[dstOff + 1 + x * 3 + 2] = pixelData[srcOff + x * 3];
+    }
+  }
+  const compressed = deflateSync(rawPng);
+  const crc32 = (buf: Buffer) => { let c = 0xffffffff; for (let i = 0; i < buf.length; i++) { c ^= buf[i]; for (let j = 0; j < 8; j++) c = (c >>> 1) ^ (c & 1 ? 0xedb88320 : 0); } return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type: string, data: Buffer) => { const l = Buffer.alloc(4); l.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc32(td)); return Buffer.concat([l, td, c]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(width, 0); ihdr.writeUInt32BE(height, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", compressed), chunk("IEND", Buffer.alloc(0))]);
+  writeFileSync(outPath, png);
+}
+
 function captureWindow(hwnd: number, outPath: string): { ok: boolean; width: number; height: number } {
   const rectBuf = Buffer.alloc(16);
   user32.symbols.GetWindowRect(hwnd as any, _ptr(rectBuf));
@@ -464,63 +681,48 @@ function captureWindow(hwnd: number, outPath: string): { ok: boolean; width: num
   const bitmap = gdi32.symbols.CreateCompatibleBitmap(screenDC, w, h);
   const oldBitmap = gdi32.symbols.SelectObject(memDC, bitmap);
   user32.symbols.PrintWindow(hwnd as any, memDC, PW_RENDERFULLCONTENT);
-
-  const bpp = 24;
-  const rowSize = Math.ceil((w * 3) / 4) * 4;
-  const pixelDataSize = rowSize * h;
-  const pixelData = Buffer.alloc(pixelDataSize);
-  const bmiHeader = Buffer.alloc(40);
-  bmiHeader.writeUInt32LE(40, 0);
-  bmiHeader.writeInt32LE(w, 4);
-  bmiHeader.writeInt32LE(-h, 8);
-  bmiHeader.writeUInt16LE(1, 12);
-  bmiHeader.writeUInt16LE(bpp, 14);
-  gdi32.symbols.GetDIBits(memDC, bitmap, 0, h, _ptr(pixelData), _ptr(bmiHeader), 0);
+  const bitmapPixels = extractBitmapPixels(memDC, bitmap, w, h);
 
   gdi32.symbols.SelectObject(memDC, oldBitmap);
   gdi32.symbols.DeleteObject(bitmap);
   gdi32.symbols.DeleteDC(memDC);
   user32.symbols.ReleaseDC(null, screenDC);
 
-  const fileSize = 14 + 40 + pixelDataSize;
-  const bmp = Buffer.alloc(fileSize);
-  bmp.write("BM", 0);
-  bmp.writeUInt32LE(fileSize, 2);
-  bmp.writeUInt32LE(54, 10);
-  bmp.writeUInt32LE(40, 14);
-  bmp.writeInt32LE(w, 18);
-  bmp.writeInt32LE(-h, 22);
-  bmp.writeUInt16LE(1, 26);
-  bmp.writeUInt16LE(bpp, 28);
-  bmp.writeUInt32LE(pixelDataSize, 34);
-  pixelData.copy(bmp, 54);
-  writeFileSync(outPath, bmp);
-  
-  // Auto-convert to PNG if outPath ends with .png
-  if (outPath.toLowerCase().endsWith(".png")) {
-    const { deflateSync } = require("node:zlib");
-    // BMP is 24-bit BGR top-down, convert to PNG RGB scanlines
-    const pngRowSize = 1 + w * 3;
-    const rawPng = Buffer.alloc(pngRowSize * h);
-    for (let y = 0; y < h; y++) {
-      const srcOff = 54 + y * rowSize;
-      const dstOff = y * pngRowSize;
-      rawPng[dstOff] = 0; // filter: None
-      for (let x = 0; x < w; x++) {
-        rawPng[dstOff + 1 + x * 3] = bmp[srcOff + x * 3 + 2];     // R
-        rawPng[dstOff + 1 + x * 3 + 1] = bmp[srcOff + x * 3 + 1]; // G
-        rawPng[dstOff + 1 + x * 3 + 2] = bmp[srcOff + x * 3];     // B
-      }
-    }
-    const compressed = deflateSync(rawPng);
-    const crc32 = (buf: Buffer) => { let c = 0xffffffff; for (let i = 0; i < buf.length; i++) { c ^= buf[i]; for (let j = 0; j < 8; j++) c = (c >>> 1) ^ (c & 1 ? 0xedb88320 : 0); } return (c ^ 0xffffffff) >>> 0; };
-    const chunk = (type: string, data: Buffer) => { const l = Buffer.alloc(4); l.writeUInt32BE(data.length); const td = Buffer.concat([Buffer.from(type), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc32(td)); return Buffer.concat([l, td, c]); };
-    const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
-    const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", compressed), chunk("IEND", Buffer.alloc(0))]);
-    writeFileSync(outPath, png);
-  }
-  
+  if (!bitmapPixels) return { ok: false, width: 0, height: 0 };
+  writeBitmapToPath(outPath, bitmapPixels);
   return { ok: true, width: w, height: h };
+}
+
+function captureScreenRegion(outPath: string, x: number, y: number, width: number, height: number): { ok: boolean; width: number; height: number; x: number; y: number } {
+  if (width <= 0 || height <= 0) return { ok: false, width: 0, height: 0, x, y };
+
+  const screenDC = user32.symbols.GetDC(null);
+  const memDC = gdi32.symbols.CreateCompatibleDC(screenDC);
+  const bitmap = gdi32.symbols.CreateCompatibleBitmap(screenDC, width, height);
+  const oldBitmap = gdi32.symbols.SelectObject(memDC, bitmap);
+  const blitOk = Number(gdi32.symbols.BitBlt(memDC, 0, 0, width, height, screenDC, x, y, SRCCOPY | CAPTUREBLT));
+  const bitmapPixels = blitOk ? extractBitmapPixels(memDC, bitmap, width, height) : null;
+
+  gdi32.symbols.SelectObject(memDC, oldBitmap);
+  gdi32.symbols.DeleteObject(bitmap);
+  gdi32.symbols.DeleteDC(memDC);
+  user32.symbols.ReleaseDC(null, screenDC);
+
+  if (!bitmapPixels) return { ok: false, width: 0, height: 0, x, y };
+  writeBitmapToPath(outPath, bitmapPixels);
+  return { ok: true, width, height, x, y };
+}
+
+function captureDesktop(outPath: string): { ok: boolean; width: number; height: number; x: number; y: number } {
+  const x = Number(user32.symbols.GetSystemMetrics(SM_XVIRTUALSCREEN));
+  const y = Number(user32.symbols.GetSystemMetrics(SM_YVIRTUALSCREEN));
+  const width = Number(user32.symbols.GetSystemMetrics(SM_CXVIRTUALSCREEN));
+  const height = Number(user32.symbols.GetSystemMetrics(SM_CYVIRTUALSCREEN));
+  return captureScreenRegion(outPath, x, y, width, height);
+}
+
+function captureMonitor(outPath: string, monitor: MonitorInfo): { ok: boolean; width: number; height: number; x: number; y: number } {
+  return captureScreenRegion(outPath, monitor.rect.x, monitor.rect.y, monitor.rect.w, monitor.rect.h);
 }
 
 // ── Kill window / process ───────────────────────────────────────────────
@@ -564,7 +766,7 @@ export default function register(pi: ExtensionAPI) {
     async execute() {
       const wins = listWindows();
       return {
-        content: [{ type: "text", text: JSON.stringify(wins.map(w => ({ title: w.title, className: w.className, rect: w.rect, handle: w.handle })), null, 2) }],
+        content: [{ type: "text", text: JSON.stringify(serializeWindowList(wins), null, 2) }],
         details: { count: wins.length },
       };
     },
@@ -583,8 +785,91 @@ export default function register(pi: ExtensionAPI) {
       const match = wins.find(w => w.title.toLowerCase().includes(params.titleMatch.toLowerCase()));
       if (!match) return { content: [{ type: "text", text: `No window matching "${params.titleMatch}". Available: ${wins.map(w => w.title).join(", ")}` }] };
       const result = captureWindow(match.handle, params.outPath);
-      if (!result.ok) return { content: [{ type: "text", text: `Window "${match.title}" has empty rect` }] };
-      return { content: [{ type: "text", text: `Captured "${match.title}" → ${params.outPath} (${result.width}x${result.height})` }] };
+      if (!result.ok) return { content: [{ type: "text", text: `Window "${match.title}" could not be captured.` }] };
+      return { content: [{ type: "text", text: `Captured "${match.title}" → ${params.outPath} (${result.width}x${result.height})` }], details: { outPath: params.outPath, width: result.width, height: result.height } };
+    },
+  });
+
+  pi.registerTool({
+    name: "win_desktop_screenshot",
+    label: "Desktop Screenshot",
+    description: "Capture the full interactive virtual desktop across all monitors to a BMP or PNG file using pure Win32 GDI.",
+    parameters: Type.Object({
+      outPath: Type.String({ description: "Output file path (.bmp or .png)" }),
+    }),
+    async execute(_id, params) {
+      const result = captureDesktop(params.outPath);
+      if (!result.ok) return { content: [{ type: "text", text: "Desktop capture failed. Ensure an interactive Windows desktop session is available." }] };
+      return {
+        content: [{ type: "text", text: formatDesktopScreenshotSummary(result, params.outPath) }],
+        details: { outPath: params.outPath, width: result.width, height: result.height, x: result.x, y: result.y },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "win_list_monitors",
+    label: "List Monitors",
+    description: "Enumerate attached monitors with index, device name, primary flag, and monitor/work-area rectangles.",
+    parameters: Type.Object({}),
+    async execute() {
+      const monitors = listMonitors();
+      return {
+        content: [{ type: "text", text: JSON.stringify(serializeMonitorList(monitors), null, 2) }],
+        details: { count: monitors.length },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "win_monitor_screenshot",
+    label: "Monitor Screenshot",
+    description: "Capture one monitor by index or device name to a BMP or PNG file using pure Win32 GDI.",
+    parameters: Type.Object({
+      outPath: Type.String({ description: "Output file path (.bmp or .png)" }),
+      monitorIndex: Type.Optional(Type.Number({ description: "1-based monitor index from win_list_monitors" })),
+      deviceName: Type.Optional(Type.String({ description: "Monitor device name from win_list_monitors, e.g. \\\\.\\DISPLAY2" })),
+    }),
+    async execute(_id, params) {
+      const monitors = listMonitors();
+      const monitor = typeof params.monitorIndex === "number"
+        ? monitors.find(m => m.index === params.monitorIndex)
+        : (typeof params.deviceName === "string" && params.deviceName.trim())
+          ? monitors.find(m => m.deviceName.toLowerCase() === params.deviceName.toLowerCase())
+          : null;
+      if (!monitor) {
+        return {
+          content: [{ type: "text", text: "No monitor matched the provided monitorIndex/deviceName. Use win_list_monitors first." }],
+          details: { available: serializeMonitorList(monitors) },
+        };
+      }
+      const result = captureMonitor(params.outPath, monitor);
+      if (!result.ok) return { content: [{ type: "text", text: `Monitor ${monitor.index} could not be captured.` }] };
+      return {
+        content: [{ type: "text", text: formatMonitorScreenshotSummary(monitor, result, params.outPath) }],
+        details: { outPath: params.outPath, width: result.width, height: result.height, x: result.x, y: result.y, monitorIndex: monitor.index, deviceName: monitor.deviceName },
+      };
+    },
+  });
+
+  pi.registerTool({
+    name: "win_region_screenshot",
+    label: "Region Screenshot",
+    description: "Capture an arbitrary desktop region to a BMP or PNG file using pure Win32 GDI. Supports negative coordinates on multi-monitor layouts.",
+    parameters: Type.Object({
+      x: Type.Number({ description: "Virtual-screen X coordinate" }),
+      y: Type.Number({ description: "Virtual-screen Y coordinate" }),
+      width: Type.Number({ description: "Region width in pixels" }),
+      height: Type.Number({ description: "Region height in pixels" }),
+      outPath: Type.String({ description: "Output file path (.bmp or .png)" }),
+    }),
+    async execute(_id, params) {
+      const result = captureScreenRegion(params.outPath, params.x, params.y, params.width, params.height);
+      if (!result.ok) return { content: [{ type: "text", text: "Region capture failed. Ensure the requested width/height are positive and an interactive Windows desktop session is available." }] };
+      return {
+        content: [{ type: "text", text: formatRegionScreenshotSummary(result, params.outPath) }],
+        details: { outPath: params.outPath, width: result.width, height: result.height, x: result.x, y: result.y },
+      };
     },
   });
 
@@ -654,7 +939,13 @@ export default function register(pi: ExtensionAPI) {
           Bun.sleepSync(30);
           user32.symbols.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, null);
           return { content: [{ type: "text", text: `Clicked "${elements[0].name}" at (${cx}, ${cy})` }] };
-        } catch {
+        } catch (error) {
+          debugSuppressedError(log, "Failed to resolve element location for click fallback.", error, {
+            operation: "win_ui.win_click.acc_location",
+            windowTitle: params.windowTitle,
+            elementName: params.elementName,
+            element: elements[0].name,
+          });
           return { content: [{ type: "text", text: `Found "${elements[0].name}" but couldn't get location` }] };
         }
       }
@@ -775,7 +1066,7 @@ export default function register(pi: ExtensionAPI) {
         const r = killWindow(win.handle, params.force ?? false);
         results.push({ title: win.title, handle: win.handle, ...r });
       }
-      const summary = results.map(r => `${r.force ? "Terminated" : "Closed"} "${r.title}" (handle=${r.handle}${r.pid ? `, pid=${r.pid}` : ""}${r.terminated ? ", killed" : ""})`).join("\n");
+      const summary = formatKillSummary(results, params.force ?? false);
       return { content: [{ type: "text", text: summary }], details: results };
     },
   });

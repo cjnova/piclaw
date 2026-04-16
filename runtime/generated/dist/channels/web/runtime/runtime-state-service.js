@@ -76,7 +76,7 @@ export class WebChannelRuntimeStateService {
         this.pendingSteeringStore.queue(chatJid, timestamp);
     }
     consumePendingSteering(chatJid) {
-        return this.pendingSteeringStore.consumeLatest(chatJid);
+        return this.pendingSteeringStore.consumeAll(chatJid);
     }
     updateAgentStatus(chatJid, status) {
         this.agentStatusStore.update(chatJid, status);

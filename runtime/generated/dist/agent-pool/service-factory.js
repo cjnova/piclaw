@@ -46,6 +46,7 @@ export function createAgentPoolServices(options) {
                 entry.lastUsed = Date.now();
         },
         recordMessageUsage,
+        onInfo: options.onInfo,
         onWarn: options.onWarn,
         onError: options.onError,
     });

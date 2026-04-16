@@ -43,7 +43,7 @@ type ControlPlaneAgentPool = AgentPool & {
 
 type ControlPlaneQueuedLifecycle = Pick<
   QueuedFollowupLifecycleService,
-  "getQueuedFollowupCount" | "listQueuedStateItems" | "prependQueuedFollowupItem" | "removeQueuedFollowupForAction"
+  "getQueuedFollowupCount" | "listQueuedStateItems" | "prependQueuedFollowupItem" | "removeQueuedFollowupForAction" | "reorderQueuedFollowupItems"
 >;
 
 export interface WebAgentControlPlaneServiceOptions {

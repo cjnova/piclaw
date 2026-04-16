@@ -129,6 +129,23 @@ export class WebAgentControlPlaneService {
             return this.options.json({ error: message }, 500);
         }
     }
+    async handleAgentQueueReorder(req) {
+        const parsed = await parseJsonObjectRequest(req);
+        if (!parsed.ok)
+            return this.options.json({ error: parsed.error }, 400);
+        try {
+            const payload = parsed.payload;
+            const chatJid = this.resolveChatJid(payload.chat_jid);
+            const fromIndex = typeof payload.from_index === "number" ? payload.from_index : -1;
+            const toIndex = typeof payload.to_index === "number" ? payload.to_index : -1;
+            const reordered = this.options.queuedFollowupLifecycle.reorderQueuedFollowupItems(chatJid, fromIndex, toIndex);
+            return this.options.json({ status: "ok", reordered });
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            return this.options.json({ error: message }, 500);
+        }
+    }
     async handleAgentQueueSteer(req) {
         const parsed = await parseJsonObjectRequest(req);
         if (!parsed.ok)

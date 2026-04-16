@@ -406,6 +406,42 @@ const TOOL_CAPABILITIES = {
             nouns: ["window", "screenshot", "desktop app"],
         }),
     },
+    win_desktop_screenshot: {
+        kind: "read-only",
+        weight: "standard",
+        recommend: rec({
+            domains: ["windows", "desktop", "ui"],
+            verbs: ["capture", "screenshot", "inspect"],
+            nouns: ["desktop", "screen", "monitors", "virtual screen"],
+        }),
+    },
+    win_list_monitors: {
+        kind: "read-only",
+        weight: "standard",
+        recommend: rec({
+            domains: ["windows", "desktop", "display"],
+            verbs: ["list", "inspect", "discover"],
+            nouns: ["monitor", "monitors", "display layout"],
+        }),
+    },
+    win_monitor_screenshot: {
+        kind: "read-only",
+        weight: "standard",
+        recommend: rec({
+            domains: ["windows", "desktop", "display"],
+            verbs: ["capture", "screenshot", "inspect"],
+            nouns: ["monitor", "display", "screen"],
+        }),
+    },
+    win_region_screenshot: {
+        kind: "read-only",
+        weight: "standard",
+        recommend: rec({
+            domains: ["windows", "desktop", "display"],
+            verbs: ["capture", "screenshot", "inspect"],
+            nouns: ["region", "area", "screen", "desktop"],
+        }),
+    },
     win_find_elements: {
         kind: "read-only",
         weight: "standard",

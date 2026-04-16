@@ -4,7 +4,7 @@ import { addToWhitelist, getWorkspaceBranch, respondToAgentRequest } from '../ap
 import { renderThinkingMarkdown } from '../markdown.js';
 import { getTurnColor } from '../ui/agent-utils.js';
 import { buildTurnDotClass, resolveRunningStatusIndicator, shouldShowRunningStatusDot } from '../ui/status-dot.js';
-import { getStatusElapsedLabel, isCompactionStatus, resolveStatusPanelTitle } from '../ui/status-duration.js';
+import { getStatusElapsedLabel, getStatusRetryCountdownLabel, isCompactionStatus, resolveStatusPanelTitle } from '../ui/status-duration.js';
 import { extractToolContextPath } from '../ui/tool-git-context.js';
 
 const COPY_ICON_SVG = html`
@@ -222,6 +222,13 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
     }, [statusIsCompaction, status?.started_at, status?.startedAt]);
 
     useEffect(() => {
+        if (!(status?.retry_at || status?.retryAt)) return;
+        setNowMs(Date.now());
+        const timer = setInterval(() => setNowMs(Date.now()), 1000);
+        return () => clearInterval(timer);
+    }, [status?.retry_at, status?.retryAt]);
+
+    useEffect(() => {
         const isToolStatus = status?.type === 'tool_call' || status?.type === 'tool_status';
         if (!isToolStatus || !toolContextPath) {
             setToolRepoContext(null);
@@ -365,9 +372,11 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
     const compactionElapsedLabel = statusIsCompaction ? getStatusElapsedLabel(status, nowMs) : null;
     const renderIntentPanel = (payload, color, elapsedLabel = null) => {
         const titleText = resolveStatusPanelTitle(payload);
+        const retryCountdownLabel = getStatusRetryCountdownLabel(payload, nowMs);
+        const metaLabel = [elapsedLabel, retryCountdownLabel].filter(Boolean).join(' · ');
         const pulsingDotClass = buildTurnDotClass({
             steerQueued,
-            pulsing: isCompactionStatus(payload),
+            pulsing: isCompactionStatus(payload) || Boolean(retryCountdownLabel),
         });
 
         return html`
@@ -380,7 +389,7 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
                 <div class="agent-thinking-title intent">
                     ${color && html`<span class=${pulsingDotClass} aria-hidden="true"></span>`}
                     <span class="agent-thinking-title-text">${titleText}</span>
-                    ${elapsedLabel && html`<span class="agent-status-elapsed">${elapsedLabel}</span>`}
+                    ${metaLabel && html`<span class="agent-status-elapsed">${metaLabel}</span>`}
                 </div>
                 ${payload.detail && html`<div class="agent-thinking-body">${payload.detail}</div>`}
             </div>

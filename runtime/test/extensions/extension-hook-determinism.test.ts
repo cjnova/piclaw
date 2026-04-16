@@ -39,7 +39,7 @@ describe("built-in extension hook determinism", () => {
         role: "user",
         content: [
           { type: "text", text: "hello" },
-          { type: "text", text: "[Invalid image block removed: image/svg+xml]" },
+          { type: "text", text: "[Invalid image block removed: unsupported MIME image/svg+xml]" },
         ],
       },
       {
@@ -48,7 +48,7 @@ describe("built-in extension hook determinism", () => {
           {
             type: "tool_result",
             content: [
-              { type: "text", text: "[Invalid image block removed: application/pdf]" },
+              { type: "text", text: "[Invalid image block removed: unsupported MIME application/pdf]" },
               { type: "text", text: "kept" },
             ],
           },

@@ -93,6 +93,9 @@ export class WebChannelHttpSurfaceService {
     async handleAgentQueueSteer(req) {
         return await this.channel.controlPlaneService.handleAgentQueueSteer(req);
     }
+    async handleAgentQueueReorder(req) {
+        return await this.channel.controlPlaneService.handleAgentQueueReorder(req);
+    }
     async handleAgentModels(req) {
         return await this.channel.endpointFacade.handleAgentModels(req);
     }

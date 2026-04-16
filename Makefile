@@ -155,7 +155,7 @@ local-install: pack ## Pack and install piclaw globally (no restart)
 	TGZ="$$(find $(PACK_DIR) -maxdepth 1 -type f -name 'piclaw-*.tgz' | sort | tail -1)"; \
 	if [ -z "$$TGZ" ]; then printf '%s\n' "[local-install] No package tarball found in $(PACK_DIR)"; exit 1; fi; \
 	printf '%s\n' "[local-install] Installing v$${VERSION} globally..."; \
-	printf '{"dependencies":{"@mariozechner/pi-coding-agent":"$(PI_AGENT_VERSION)","piclaw":"%s"}}\n' \
+	printf '{"dependencies":{"@mariozechner/pi-coding-agent":"$(PI_AGENT_VERSION)","@mariozechner/pi-agent-core":"$(PI_AGENT_VERSION)","@mariozechner/pi-ai":"$(PI_AGENT_VERSION)","@mariozechner/pi-tui":"$(PI_AGENT_VERSION)","piclaw":"%s"}}\n' \
 		"$$TGZ" | sudo tee $(GLOBAL_PKG) >/dev/null; \
 	sudo rm -f $(GLOBAL_LOCK); \
 	sudo mkdir -p $(PICLAW_TMPDIR) $(BUN_CACHE_DIR); \

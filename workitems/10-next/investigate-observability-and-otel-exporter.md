@@ -1,9 +1,9 @@
 ---
 id: investigate-observability-and-otel-exporter
 title: Investigate further instrumentation/observability including an OTel exporter
-status: inbox
+status: next
 created: 2026-04-15
-updated: 2026-04-15
+updated: 2026-04-16
 priority: medium
 estimate: L
 risk: medium
@@ -79,6 +79,13 @@ tooling (Grafana, Jaeger, Prometheus, etc.).
 - [ ] If OTel: exporter gated behind env var, off by default
 - [ ] Agent run and tool call timing visible in the chosen surface
 - [ ] No measurable performance regression on hot paths
+
+## Updates
+
+### 2026-04-16
+- Lane change: `00-inbox` → `10-next` during `v1.7.16` patch-release prep.
+- Kept as an explicit follow-up rather than pretending the newly landed `Server-Timing` and browser perf correlation work finishes the whole observability discussion.
+- This is intentionally **not** a blocker for the patch release; it is the next structured follow-up once the current web timing tranche settles.
 
 ## Links
 

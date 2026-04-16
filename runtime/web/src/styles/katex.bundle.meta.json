@@ -3,7 +3,7 @@
   "workflow": "parallel-static-asset-workflow",
   "workflow_reason": "KaTeX CSS/font assets are vendored via a dedicated static-asset script because the upstream CSS requires path rewriting and curated woff2-only font export rather than a straight JS bundle or raw file copy.",
   "package_name": "katex",
-  "package_version": "0.16.38",
+  "package_version": "0.16.45",
   "package_license": "MIT",
   "package_repository": "https://github.com/KaTeX/KaTeX.git",
   "source_css": "../node_modules/katex/dist/katex.min.css",
@@ -13,8 +13,8 @@
     {
       "package_path": "dist/katex.min.css",
       "output_file": "web/src/styles/katex.bundle.css",
-      "sha256": "6f2b8a983724db1d6ee1de3872f62f0ab4b58a792a0967dbc70493d04612315a",
-      "size_bytes": 21912,
+      "sha256": "d51eb6c939dc48ceae031e7324ea6b6e95207be9055b83460af5c8ddf6679540",
+      "size_bytes": 21930,
       "transform": "rewrite-font-urls-to-static-woff2-only"
     },
     {
@@ -139,8 +139,8 @@
     }
   ],
   "metadata_file": "web/src/styles/katex.bundle.meta.json",
-  "sha256": "6f2b8a983724db1d6ee1de3872f62f0ab4b58a792a0967dbc70493d04612315a",
-  "size_bytes": 21912,
+  "sha256": "d51eb6c939dc48ceae031e7324ea6b6e95207be9055b83460af5c8ddf6679540",
+  "size_bytes": 21930,
   "font_output_directory": "web/static/fonts",
   "font_count": 20,
   "font_url_prefix": "../../static/fonts"

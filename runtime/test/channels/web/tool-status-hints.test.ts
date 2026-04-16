@@ -255,6 +255,24 @@ test('resolveToolStatusHints covers local core tools, powershell, keychain, bun_
   ]);
 
   expect(resolveToolStatusHints({
+    chatJid: 'web:windows-ui',
+    toolName: 'win_monitor_screenshot',
+    args: { monitorIndex: 2, outPath: 'C:/tmp/monitor-2.png' },
+    payload: {},
+  })).toEqual([
+    expect.objectContaining({ key: 'win_ui', label: 'monitor 2', title: 'Windows UI target • monitor 2', kind: 'service' }),
+  ]);
+
+  expect(resolveToolStatusHints({
+    chatJid: 'web:windows-ui',
+    toolName: 'win_region_screenshot',
+    args: { x: -400, y: 20, width: 800, height: 600, outPath: 'C:/tmp/region.png' },
+    payload: {},
+  })).toEqual([
+    expect.objectContaining({ key: 'win_ui', label: '-400,20 800x600', title: 'Windows UI target • -400,20 800x600', kind: 'service' }),
+  ]);
+
+  expect(resolveToolStatusHints({
     chatJid: 'web:office-tools',
     toolName: 'office_write',
     args: { path: 'notes/report.docx' },

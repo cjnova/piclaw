@@ -11,12 +11,11 @@ export class PendingSteeringStore {
         existing.push(timestamp);
         this.pendingSteering.set(chatJid, existing);
     }
-    consumeLatest(chatJid) {
+    consumeAll(chatJid) {
         const entries = this.pendingSteering.get(chatJid);
         if (!entries || entries.length === 0)
-            return null;
+            return [];
         this.pendingSteering.delete(chatJid);
-        entries.sort();
-        return entries[entries.length - 1] ?? null;
+        return [...entries].sort();
     }
 }

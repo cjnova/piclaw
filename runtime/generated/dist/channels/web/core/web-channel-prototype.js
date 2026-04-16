@@ -375,6 +375,11 @@ export function installWebChannelPrototype(target, defaults) {
             writable: true,
             value: withHttpSurface(async (service, req) => await service.handleAgentQueueSteer(req)),
         },
+        handleAgentQueueReorder: {
+            configurable: true,
+            writable: true,
+            value: withHttpSurface(async (service, req) => await service.handleAgentQueueReorder(req)),
+        },
         handleAgentModels: {
             configurable: true,
             writable: true,

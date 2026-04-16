@@ -1,73 +1,19 @@
-import { describe, expect, test } from "bun:test";
-
+import { expect, test } from "bun:test";
 import {
   formatElapsedDuration,
-  getStatusElapsedLabel,
-  isCompactionStatus,
-  parseStatusStartedAt,
-  resolveStatusPanelTitle,
-} from "../../web/src/ui/status-duration.js";
+  getStatusRetryCountdownLabel,
+  parseStatusRetryAt,
+} from "../../web/src/ui/status-duration.ts";
 
-describe("status duration helpers", () => {
-  test("detects compaction intent status", () => {
-    expect(isCompactionStatus({ type: "intent", intent_key: "compaction" })).toBe(true);
-    expect(isCompactionStatus({ type: "intent", intent_key: "other" })).toBe(false);
-    expect(isCompactionStatus({ type: "tool_call" })).toBe(false);
-  });
+test("parseStatusRetryAt accepts retry_at and retryAt aliases", () => {
+  expect(parseStatusRetryAt({ retry_at: "2026-04-16T09:00:05.000Z" })).toBe(Date.parse("2026-04-16T09:00:05.000Z"));
+  expect(parseStatusRetryAt({ retryAt: "2026-04-16T09:00:06.000Z" })).toBe(Date.parse("2026-04-16T09:00:06.000Z"));
+  expect(parseStatusRetryAt({ retry_at: "nope" })).toBeNull();
+});
 
-  test("parses started_at timestamps safely", () => {
-    expect(parseStatusStartedAt({ started_at: "2026-03-14T14:00:00.000Z" })).toBe(Date.parse("2026-03-14T14:00:00.000Z"));
-    expect(parseStatusStartedAt({ started_at: "not-a-date" })).toBeNull();
-    expect(parseStatusStartedAt(null)).toBeNull();
-  });
-
-  test("formats elapsed durations for short and long runs", () => {
-    expect(formatElapsedDuration(0)).toBe("0:00");
-    expect(formatElapsedDuration(65_000)).toBe("1:05");
-    expect(formatElapsedDuration(3_661_000)).toBe("1:01:01");
-  });
-
-  test("builds elapsed label from status payload", () => {
-    const label = getStatusElapsedLabel(
-      { started_at: "2026-03-14T14:00:00.000Z" },
-      Date.parse("2026-03-14T14:02:05.000Z")
-    );
-    expect(label).toBe("2:05");
-  });
-
-  test("uses non-empty status title when available", () => {
-    expect(
-      resolveStatusPanelTitle({
-        type: "intent",
-        title: "Compaction in progress",
-      })
-    ).toBe("Compaction in progress");
-  });
-
-  test("falls back to compacting-context label for empty compaction intent", () => {
-    expect(
-      resolveStatusPanelTitle({
-        type: "intent",
-        intent_key: "compaction",
-      })
-    ).toBe("Compacting context");
-  });
-
-  test("uses status text fallback when title is empty", () => {
-    expect(
-      resolveStatusPanelTitle({
-        type: "intent",
-        status: "Retrying…",
-      })
-    ).toBe("Retrying…");
-  });
-
-  test("falls back to working label for other empty intent-like states", () => {
-    expect(
-      resolveStatusPanelTitle({
-        type: "intent",
-        intent_key: "unknown",
-      })
-    ).toBe("Working...");
-  });
+test("getStatusRetryCountdownLabel renders a live countdown and expiry label", () => {
+  const retryAt = Date.parse("2026-04-16T09:00:10.000Z");
+  expect(getStatusRetryCountdownLabel({ retry_at: "2026-04-16T09:00:10.000Z" }, retryAt - 5100)).toBe(`retry in ${formatElapsedDuration(5100)}`);
+  expect(getStatusRetryCountdownLabel({ retry_at: "2026-04-16T09:00:10.000Z" }, retryAt + 1)).toBe("retrying now");
+  expect(getStatusRetryCountdownLabel({}, retryAt)).toBeNull();
 });

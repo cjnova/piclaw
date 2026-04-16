@@ -20,3 +20,8 @@ export function getRetryDelay(retryCount: number, baseMs: number): number {
   if (retryCount <= 0) return 0;
   return baseMs * Math.pow(2, retryCount - 1);
 }
+
+/** Calculate the next retry timestamp as an ISO string. */
+export function getRetryAtIso(retryCount: number, baseMs: number, nowMs = Date.now()): string {
+  return new Date(nowMs + getRetryDelay(retryCount, baseMs)).toISOString();
+}

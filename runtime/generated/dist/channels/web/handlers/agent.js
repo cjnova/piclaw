@@ -26,11 +26,66 @@ import "../../../extensions/generic-tool-status-hints.js";
 import { createUuid } from "../../../utils/ids.js";
 import { createLogger } from "../../../utils/logger.js";
 import { checkPendingShutdown } from "../../../runtime/shutdown-registry.js";
+import { DEFAULT_BASE_RETRY_MS, getRetryAtIso } from "../../../queue/retry-policy.js";
 const log = createLogger("web.handlers.agent");
 function isRateLimitError(errorText) {
     if (!errorText)
         return false;
     return /\b429\b|rate[ -]?limit|too many requests|retry-after/i.test(errorText);
+}
+function isAuthError(errorText) {
+    if (!errorText)
+        return false;
+    return /authentication failed|credentials may have expired|no api key found|re-authenticate|unauthorized|\b401\b|\b403\b|invalid.*api.*key|api.*key.*invalid|token.*expired|oauth.*expired|refresh.*token/i.test(errorText);
+}
+function isModelConfigError(errorText) {
+    if (!errorText)
+        return false;
+    return /no model selected|select a model|use \/model|use \/login/i.test(errorText);
+}
+function isSessionCorruptionError(errorText) {
+    if (!errorText)
+        return false;
+    return /invalid_request_error|\b400\b.*(?:image|media_type|content|base64)|media_type|image.*source/i.test(errorText);
+}
+function isQuotaError(errorText) {
+    if (!errorText)
+        return false;
+    return /quota|usage.*limit|out of.*usage|billing|insufficient.*funds|exceeded.*limit|credit/i.test(errorText);
+}
+function formatUserVisibleError(errorText, rateLimited) {
+    if (rateLimited) {
+        return `\u26a0\ufe0f AI provider rate limit after automatic retries:\n\n\`${errorText.slice(0, 500)}\`\n\nPiclaw now retries 429/rate-limit failures with exponential backoff up to 5 times before surfacing the error.`;
+    }
+    if (isAuthError(errorText)) {
+        const providerMatch = errorText.match(/(?:for|provider)\s+["']?([\w-]+)["']?/i);
+        const provider = providerMatch?.[1] || "your provider";
+        return `\u26a0\ufe0f Authentication error with ${provider}:\n\n\`${errorText.slice(0, 500)}\`\n\nCredentials may have expired or been revoked. Use \`/login ${provider !== "your provider" ? provider : ""}\`.trim() to re-authenticate, or check your API key in the terminal with \`pi /login\`.`;
+    }
+    if (isQuotaError(errorText)) {
+        return `\u26a0\ufe0f Provider quota or billing limit reached:\n\n\`${errorText.slice(0, 500)}\`\n\nCheck your provider dashboard for usage limits or billing status.`;
+    }
+    if (isModelConfigError(errorText)) {
+        return `\u26a0\ufe0f Model not configured:\n\n\`${errorText.slice(0, 300)}\`\n\nUse \`/model\` to select a model, or \`/login\` to configure a provider.`;
+    }
+    if (isSessionCorruptionError(errorText)) {
+        return `\u26a0\ufe0f API error \u2014 the session may be corrupted:\n\n\`${errorText.slice(0, 500)}\`\n\nThis error may repeat on every message. Try \`/compact\` to rewrite the session (this strips corrupt image blocks automatically), or \`/new-session\` to start fresh.`;
+    }
+    return `\u26a0\ufe0f Agent error: ${errorText.slice(0, 300)}`;
+}
+function buildRetryStatusPayload(base) {
+    const startedAt = new Date().toISOString();
+    return {
+        thread_id: base.threadId,
+        agent_id: base.agentId,
+        type: "intent",
+        title: base.title,
+        ...(base.detail ? { detail: base.detail } : {}),
+        turn_id: base.turnId,
+        started_at: startedAt,
+        retry_at: getRetryAtIso(1, DEFAULT_BASE_RETRY_MS, Date.parse(startedAt)),
+        retry_delay_ms: DEFAULT_BASE_RETRY_MS,
+    };
 }
 export function withResolvedToolStatusHints(chatJid, payload) {
     const isToolStatus = payload?.type === "tool_call" || payload?.type === "tool_status";
@@ -795,7 +850,7 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         const intentKey = status.intent_key ?? status.intentKey;
         return status.type === "intent" && intentKey === "compaction";
     };
-    const publishDraftFallback = (reason) => {
+    const publishDraftFallback = (reason, detail) => {
         // Draft fallback should publish the currently visible draft for whichever
         // turn failed to finalize, even if earlier turns in the same session were
         // already flushed via onTurnComplete(). For the very first turn we must
@@ -810,9 +865,11 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
             : "";
         const suffix = reason === "timeout"
             ? `\n\n⚠️ Response timed out before finalization.${compactionNote}`
-            : reason === "error"
-                ? `\n\n⚠️ Response ended with an error before finalization.${compactionNote}`
-                : compactionNote;
+            : reason === "rate-limit"
+                ? `\n\n⚠️ AI provider rate limit after automatic retries.\n\n\`${String(detail || "rate limit").slice(0, 500)}\`\n\nPiclaw retried the request, but the provider still exhausted its rate-limit budget before finalization.${compactionNote}`
+                : reason === "error"
+                    ? `\n\n⚠️ Response ended with an error before finalization.${compactionNote}`
+                    : compactionNote;
         return storeAgentTurn(channel, emitter, {
             chatJid,
             text: `${draftText}${suffix}`,
@@ -827,13 +884,11 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         // Single UPDATE: clears inflight AND clears any stale failed_run atomically.
         endChatRun(chatJid);
         const cursorAfterEnd = getChatCursor(chatJid);
-        const pendingSteerTimestamp = channel.consumePendingSteering(chatJid);
-        if (pendingSteerTimestamp) {
-            const current = getChatCursor(chatJid);
-            if (!current || current < pendingSteerTimestamp) {
-                setChatCursor(chatJid, pendingSteerTimestamp);
-            }
-        }
+        const pendingSteerTimestamps = channel.consumePendingSteering(chatJid);
+        // Steering-only rows are already excluded from getMessagesSince(), so the
+        // chat cursor must stay anchored to the last processed persisted user
+        // message. Advancing the cursor to steer timestamps can skip normal user
+        // messages that were persisted before those steering rows.
         const cursorAfterSteer = getChatCursor(chatJid);
         channel.saveState();
         const contextUsage = await channel.agentPool.getContextUsageForChat(chatJid);
@@ -854,7 +909,10 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         log.info("finalizeSuccessfulRun advanced cursor", {
             operation: "process_chat.finalize_successful_run",
             chatJid,
+            cursorBefore: prevCursor,
             cursorAfterEnd,
+            pendingSteerCount: pendingSteerTimestamps.length,
+            pendingSteerTimestamps,
             cursorAfterSteer,
             cursorNow,
             remainingCount: remainingPersisted.length,
@@ -913,34 +971,34 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
             // we advanced so this message stays pending, then throw so the queue
             // retries after backoff.
             rollbackInflightRun(chatJid, prevCursor);
-            trackedEmitter.status({
-                thread_id: threadId,
-                agent_id: agentId,
-                type: "intent",
+            trackedEmitter.status(buildRetryStatusPayload({
+                threadId,
+                agentId,
+                turnId,
                 title: "Queued — waiting for current response",
-                turn_id: turnId,
-            });
+            }));
             throw new Error(output.error);
         }
         if (output.error && output.error.includes("No API provider registered for api:")) {
             // Extension/provider registration races can happen right after restart.
             // Keep the message pending and let the queue retry automatically.
             rollbackInflightRun(chatJid, prevCursor);
-            trackedEmitter.status({
-                thread_id: threadId,
-                agent_id: agentId,
-                type: "intent",
+            trackedEmitter.status(buildRetryStatusPayload({
+                threadId,
+                agentId,
+                turnId,
                 title: "Model provider is initializing — retrying shortly",
                 detail: output.error,
-                turn_id: turnId,
-            });
+            }));
             throw new Error(output.error);
         }
         const errorText = output.error || "Agent error";
         const rateLimited = isRateLimitError(errorText);
         const fallbackPublished = errorText.toLowerCase().includes("timed out")
             ? publishDraftFallback("timeout")
-            : publishDraftFallback("error");
+            : rateLimited
+                ? publishDraftFallback("rate-limit", errorText)
+                : publishDraftFallback("error");
         if (fallbackPublished) {
             // A persisted draft fallback is a terminal outcome, not a replayable
             // failure. Clear inflight state through the normal success path so the
@@ -961,12 +1019,7 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         // Surface the error as a visible timeline message so the user can see
         // what went wrong. Previously errors were only shown as transient status
         // events which are invisible in timeline history.
-        const isApiError = /invalid_request_error|400|media_type|image.*source/i.test(errorText);
-        const userVisibleError = rateLimited
-            ? `⚠️ AI provider rate limit after automatic retries:\n\n\`${errorText.slice(0, 500)}\`\n\nPiclaw now retries 429/rate-limit failures with exponential backoff up to 5 times before surfacing the error.`
-            : isApiError
-                ? `⚠️ API error — the session may be corrupted:\n\n\`${errorText.slice(0, 500)}\`\n\nThis error may repeat on every message. Try \`/compact\` to rewrite the session (this strips corrupt image blocks automatically), or \`/new-session\` to start fresh.`
-                : `⚠️ Agent error: ${errorText.slice(0, 300)}`;
+        const userVisibleError = formatUserVisibleError(errorText, rateLimited);
         const errorNotice = channel.storeMessage(chatJid, userVisibleError, true, [], {
             threadId: resolvedThreadRootId ?? undefined,
             isTerminalAgentReply: true,

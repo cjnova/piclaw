@@ -1269,6 +1269,7 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
       "If the optimization target changes (different benchmark, metric, or workload), call init_experiment again to insert a new config header and reset the baseline.",
     ],
     parameters: InitParams,
+    renderShell: "self",
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const runtime = getRuntime(ctx);
@@ -1374,6 +1375,7 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 
     ],
     parameters: RunParams,
+    renderShell: "self",
 
     async execute(_toolCallId, params, signal, onUpdate, ctx) {
       const runtime = getRuntime(ctx);
@@ -1890,6 +1892,7 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
       "Always include the asi parameter. At minimum: {\"hypothesis\": \"what you tried\"}. On discard/crash, also include rollback_reason and next_action_hint. Add any other key/value pairs that capture what you learned — dead ends, surprising findings, error details, bottlenecks. This is the only structured memory that survives reverts.",
     ],
     parameters: LogParams,
+    renderShell: "self",
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const runtime = getRuntime(ctx);

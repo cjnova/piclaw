@@ -114,6 +114,10 @@ describe("bundled optional extensions", () => {
     if (process.platform === "win32") {
       expect(fake.state.tools.has("win_list_windows")).toBe(true);
       expect(fake.state.tools.has("win_screenshot")).toBe(true);
+      expect(fake.state.tools.has("win_desktop_screenshot")).toBe(true);
+      expect(fake.state.tools.has("win_list_monitors")).toBe(true);
+      expect(fake.state.tools.has("win_monitor_screenshot")).toBe(true);
+      expect(fake.state.tools.has("win_region_screenshot")).toBe(true);
       expect(fake.state.tools.has("win_kill")).toBe(true);
     } else {
       expect(fake.state.tools.size).toBe(0);
