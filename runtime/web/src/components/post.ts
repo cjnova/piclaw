@@ -1137,6 +1137,7 @@ export function Post({ post, onClick, onHashtagClick, onMessageRef, onScrollToMe
                                     src=${imageSrc} 
                                     alt="Media" 
                                     loading="lazy"
+                                    decoding="async"
                                     onClick=${(e) => handleImageClick(e, id)}
                                 />
                             `;
