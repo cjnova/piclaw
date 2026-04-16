@@ -579,9 +579,7 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
         const series = Array.isArray(panel?.series) ? panel.series : [];
         const actions = Array.isArray(panel?.actions) ? panel.actions : [];
 
-        // Elapsed time labels (tick with nowMs)
         const experimentElapsed = formatElapsed(panel?.started_at);
-        const currentRunElapsed = formatElapsed(panel?.last_activity_at);
         const elapsedSuffix = experimentElapsed ? ` · ${experimentElapsed}` : '';
         const displayCollapsed = collapsedText + elapsedSuffix;
 
@@ -649,10 +647,10 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
                     <div class=${`agent-thinking-autoresearch-layout${hasDetailColumn ? '' : ' chart-only'}`}>
                         ${hasDetailColumn && html`
                             <div class="agent-thinking-autoresearch-meta-stack">
-                                ${(experimentElapsed || currentRunElapsed) && html`
+                                ${experimentElapsed && html`
                                     <div class="agent-thinking-autoresearch-elapsed">
-                                        ${experimentElapsed && html`<span title="Experiment duration">⏱ ${experimentElapsed}</span>`}
-                                        ${currentRunElapsed && panel?.state === 'running' && html`<span title="Since last activity">⟳ ${currentRunElapsed} ago</span>`}
+                                        <span title="Experiment duration">⏱ ${experimentElapsed}</span>
+                                        ${panel?.last_activity_at && panel?.state === 'running' && html`<span title="Since last activity">⟳ ${formatElapsed(panel.last_activity_at)} ago</span>`}
                                     </div>
                                 `}
                                 ${detailText && html`
