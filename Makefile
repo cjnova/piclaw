@@ -132,12 +132,61 @@ pack: build-piclaw ## Pack piclaw into a .tgz (outside the repo)
 	ls -lh $(PACK_DIR)/piclaw-*.tgz || true
 
 restart: ## Restart piclaw (auto-detects supervisor or systemd)
-	@if command -v supervisorctl >/dev/null 2>&1 && \
-		supervisorctl -c /workspace/.piclaw/supervisor/supervisord.conf status piclaw >/dev/null 2>&1; then \
+	@set -e; \
+	resolve_supervisor_conf() { \
+		if [ -n "$${PICLAW_SUPERVISORCTL_CONFIG:-}" ] && [ -f "$$PICLAW_SUPERVISORCTL_CONFIG" ]; then \
+			printf '%s\n' "$$PICLAW_SUPERVISORCTL_CONFIG"; \
+			return; \
+		fi; \
+		if command -v pidof >/dev/null 2>&1; then \
+			pid="$$(pidof supervisord 2>/dev/null | awk '{print $$1}')"; \
+			if [ -n "$$pid" ] && [ -r "/proc/$$pid/cmdline" ]; then \
+				conf="$$(tr '\000' '\n' <"/proc/$$pid/cmdline" | awk 'prev == "-c" { print; exit } { prev = $$0 }')"; \
+				if [ -n "$$conf" ] && [ -f "$$conf" ]; then \
+					printf '%s\n' "$$conf"; \
+					return; \
+				fi; \
+			fi; \
+		fi; \
+		for conf in /workspace/.piclaw/supervisor/supervisord.conf /etc/supervisor/supervisord.conf; do \
+			if [ -f "$$conf" ]; then \
+				printf '%s\n' "$$conf"; \
+				return; \
+			fi; \
+		done; \
+	}; \
+	supervisor_status_exists() { \
+		conf="$$1"; \
+		exit_code=0; \
+		if [ -n "$$conf" ]; then \
+			supervisorctl -c "$$conf" status piclaw >/dev/null 2>&1 || exit_code=$$?; \
+		else \
+			supervisorctl status piclaw >/dev/null 2>&1 || exit_code=$$?; \
+		fi; \
+		[ "$$exit_code" -le 3 ]; \
+	}; \
+	supervisor_restart() { \
+		conf="$$1"; \
+		if [ -n "$$conf" ]; then \
+			supervisorctl -c "$$conf" restart piclaw; \
+			sleep 2; \
+			supervisorctl -c "$$conf" status piclaw; \
+		else \
+			supervisorctl restart piclaw; \
+			sleep 2; \
+			supervisorctl status piclaw; \
+		fi; \
+	}; \
+	supervisor_conf="$$(resolve_supervisor_conf)"; \
+	if command -v supervisorctl >/dev/null 2>&1 && \
+		[ -n "$$supervisor_conf" ] && \
+		supervisor_status_exists "$$supervisor_conf"; then \
+		echo "[restart] Using supervisorctl (-c $$supervisor_conf)"; \
+		supervisor_restart "$$supervisor_conf"; \
+	elif command -v supervisorctl >/dev/null 2>&1 && \
+		supervisor_status_exists ""; then \
 		echo "[restart] Using supervisorctl"; \
-		supervisorctl -c /workspace/.piclaw/supervisor/supervisord.conf restart piclaw; \
-		sleep 2; \
-		supervisorctl -c /workspace/.piclaw/supervisor/supervisord.conf status piclaw; \
+		supervisor_restart ""; \
 	elif command -v systemctl >/dev/null 2>&1 && \
 		systemctl --user list-unit-files piclaw.service 2>/dev/null | grep -q piclaw; then \
 		echo "[restart] Using systemctl --user"; \
