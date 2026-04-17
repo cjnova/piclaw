@@ -8,6 +8,11 @@
 import { CronExpressionParser } from "cron-parser";
 import { getRuntimeTimingConfig } from "./core/config.js";
 
+export interface ComputeNextRunOptions {
+  currentDate?: string | Date | null;
+  timezone?: string | null;
+}
+
 /**
  * Compute the next execution time for a scheduled task.
  *
@@ -15,11 +20,19 @@ import { getRuntimeTimingConfig } from "./core/config.js";
  * - interval: add the interval (ms) to now.
  * - once: return null (no repeat).
  */
-export function computeNextRun(scheduleType: string, scheduleValue: string): string | null {
+export function computeNextRun(
+  scheduleType: string,
+  scheduleValue: string,
+  options: ComputeNextRunOptions = {},
+): string | null {
   if (scheduleType === "cron") {
     try {
-      const timezone = process.env.TZ || getRuntimeTimingConfig().timezone;
-      return CronExpressionParser.parse(scheduleValue, { tz: timezone }).next().toISOString();
+      const timezone = options.timezone || process.env.TZ || getRuntimeTimingConfig().timezone;
+      const currentDate = options.currentDate ? new Date(options.currentDate) : undefined;
+      return CronExpressionParser.parse(scheduleValue, {
+        tz: timezone,
+        ...(currentDate && !Number.isNaN(currentDate.getTime()) ? { currentDate } : {}),
+      }).next().toISOString();
     } catch {
       return null;
     }

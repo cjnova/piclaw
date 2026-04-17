@@ -53,6 +53,23 @@ test("computeNextRun handles invalid cron and timezone", async () => {
   expect(onceFuture).toBeNull();
 });
 
+test("computeNextRun can anchor cron schedules to a prior next_run", async () => {
+  const ws = getTestWorkspace();
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+    TZ: "UTC",
+  });
+
+  const scheduler = await importFresh<typeof import("../src/task-scheduler.js")>("../src/task-scheduler.js");
+
+  const cronNext = scheduler.computeNextRun("cron", "*/5 * * * *", {
+    currentDate: "2024-01-01T00:00:00.000Z",
+  });
+  expect(cronNext).toBe("2024-01-01T00:05:00.000Z");
+});
+
 test("runScheduledTask logs run and updates task", async () => {
   const ws = getTestWorkspace();
   restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
@@ -106,6 +123,52 @@ test("runScheduledTask logs run and updates task", async () => {
   expect(metrics.taskRunsStarted).toBe(1);
   expect(metrics.taskRunsSucceeded).toBe(1);
   expect(metrics.taskRunsFailed).toBe(0);
+});
+
+test("runScheduledTask computes the next cron run from the task next_run anchor", async () => {
+  const ws = getTestWorkspace();
+  restoreEnv = setEnv({
+    PICLAW_WORKSPACE: ws.workspace,
+    PICLAW_STORE: ws.store,
+    PICLAW_DATA: ws.data,
+    TZ: "UTC",
+  });
+
+  const db = await import("../../src/db.js");
+  db.initDatabase();
+
+  const scheduler = await import("../../src/task-scheduler.js");
+  scheduler.resetSchedulerMetricsForTests();
+
+  const taskId = `task-cron-${Date.now()}`;
+  db.createTask({
+    id: taskId,
+    chat_jid: "web:default",
+    prompt: "say hi",
+    schedule_type: "cron",
+    schedule_value: "*/5 * * * *",
+    next_run: "2024-01-01T00:00:00.000Z",
+    status: "active",
+    created_at: new Date().toISOString(),
+  });
+
+  const deps = {
+    queue: { enqueueTask: (_id: string, fn: () => Promise<void>) => fn() } as any,
+    agentPool: {
+      runAgent: async () => ({ status: "success", result: "Hello" }),
+      saveSessionPosition: async () => "leaf-123",
+      restoreSessionPosition: async () => {},
+      getCurrentModelLabel: async () => null,
+      applyControlCommand: async () => ({ status: "success", message: "" }),
+    } as any,
+    sendMessage: async () => {},
+  };
+
+  const task = db.getTaskById(taskId)!;
+  await scheduler.runScheduledTask(task, deps as any);
+
+  const updated = db.getTaskById(taskId)!;
+  expect(updated.next_run).toBe("2024-01-01T00:05:00.000Z");
 });
 
 test("runScheduledTask switches and restores models", async () => {
