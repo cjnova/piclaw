@@ -73,6 +73,7 @@ export interface PortainerApiResponse {
   status: number;
   body: unknown;
   raw_body: string;
+  raw_body_bytes: Uint8Array;
   path: string;
   method: PortainerApiMethod;
 }
@@ -129,6 +130,7 @@ type RequestExecutionResult = {
   status: number;
   statusText: string;
   bodyText: string;
+  bodyBytes?: Uint8Array;
 };
 
 type RequestExecutor = (input: {
@@ -148,11 +150,13 @@ const defaultRequestExecutor: RequestExecutor = async ({ url, method, headers, b
       rejectUnauthorized: !allowInsecureTls,
     },
   } as RequestInit & { tls: { rejectUnauthorized: boolean } });
+  const bodyBytes = new Uint8Array(await response.arrayBuffer());
 
   return {
     status: response.status,
     statusText: response.statusText,
-    bodyText: await response.text(),
+    bodyText: new TextDecoder().decode(bodyBytes),
+    bodyBytes,
   };
 };
 
@@ -223,10 +227,11 @@ function parseResponseBody(text: string): unknown {
   }
 }
 
-function decodeDockerMultiplexedText(text: string): string {
-  if (!text) return "";
-  const buffer = Buffer.from(text, "utf8");
-  if (buffer.length < 8) return text;
+function decodeDockerMultiplexedBytes(bytes: Uint8Array): string {
+  if (bytes.length === 0) return "";
+  const fallbackText = new TextDecoder().decode(bytes);
+  if (bytes.length < 8) return fallbackText;
+  const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 
   let offset = 0;
   const chunks: Buffer[] = [];
@@ -238,14 +243,14 @@ function decodeDockerMultiplexedText(text: string): string {
     const frameStart = offset + 8;
     const frameEnd = frameStart + frameLength;
     if (![0, 1, 2, 3].includes(streamType) || frameEnd > buffer.length) {
-      return text;
+      return fallbackText;
     }
     chunks.push(buffer.subarray(frameStart, frameEnd));
     parsedAnyFrame = true;
     offset = frameEnd;
   }
 
-  if (!parsedAnyFrame || offset !== buffer.length) return text;
+  if (!parsedAnyFrame || offset !== buffer.length) return fallbackText;
   return Buffer.concat(chunks).toString("utf8");
 }
 
@@ -580,6 +585,7 @@ export async function requestPortainerApi(
     ...(bodyText !== undefined ? { body: bodyText } : {}),
     allowInsecureTls: config.allow_insecure_tls,
   });
+  const rawBodyBytes = result.bodyBytes ?? new TextEncoder().encode(result.bodyText);
 
   const body = parseResponseBody(result.bodyText);
   if (result.status >= 400) {
@@ -591,6 +597,7 @@ export async function requestPortainerApi(
     status: result.status,
     body,
     raw_body: result.bodyText,
+    raw_body_bytes: rawBodyBytes,
     path,
     method: request.method,
   };
@@ -991,8 +998,7 @@ export class PortainerClient {
       path: `/api/endpoints/${endpointId}/docker/exec/${encodeURIComponent(execId)}/json`,
     });
 
-    const rawOutput = typeof startResponse.body === "string" ? startResponse.body : JSON.stringify(startResponse.body);
-    const decodedOutput = decodeDockerMultiplexedText(rawOutput);
+    const decodedOutput = decodeDockerMultiplexedBytes(startResponse.raw_body_bytes);
     return {
       exec_id: execId,
       output: await redactKeychainSecretsInText(decodedOutput),
@@ -1031,8 +1037,18 @@ export class PortainerClient {
 
     const containers = await this.listContainers(endpointId);
     if (id) {
-      const byId = containers.find((entry) => typeof entry.Id === "string" && entry.Id.startsWith(id));
-      if (byId) return byId;
+      const exact = containers.find((entry) => typeof entry.Id === "string" && entry.Id === id);
+      if (exact) return exact;
+
+      if (id.length < 12) {
+        throw new Error("Container id prefixes must be at least 12 characters.");
+      }
+
+      const byId = containers.filter((entry) => typeof entry.Id === "string" && entry.Id.startsWith(id));
+      if (byId.length === 1) return byId[0];
+      if (byId.length > 1) {
+        throw new Error(`Container id prefix "${id}" is ambiguous on endpoint ${endpointId}.`);
+      }
     }
 
     if (name) {

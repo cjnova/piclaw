@@ -146,6 +146,56 @@ test("container exec decodes multiplexed Docker stream output", async () => {
   });
 });
 
+test("container exec decodes multiplexed Docker output from raw bytes without UTF-8 round-trip corruption", async () => {
+  await withPortainerContext(async ({ keychain, portainer }) => {
+    await keychain.setKeychainEntry({
+      name: "portainer/relay",
+      type: "secret",
+      username: "https://portainer.example.com:9443",
+      secret: "portainer-token",
+    });
+
+    const payload = Uint8Array.from([0xc3, 0x28, 0x0a]);
+    const multiplexedBytes = Buffer.concat([
+      Buffer.from([1, 0, 0, 0, 0, 0, 0, payload.length]),
+      Buffer.from(payload),
+    ]);
+
+    portainer.setPortainerRequestExecutorForTests(async (input) => {
+      if (input.url.endsWith("/api/endpoints/2/docker/containers/abc123/exec")) {
+        return { status: 201, statusText: "Created", bodyText: '{"Id":"exec1"}' };
+      }
+      if (input.url.endsWith("/api/endpoints/2/docker/exec/exec1/start")) {
+        return {
+          status: 200,
+          statusText: "OK",
+          bodyText: new TextDecoder().decode(multiplexedBytes),
+          bodyBytes: multiplexedBytes,
+        };
+      }
+      if (input.url.endsWith("/api/endpoints/2/docker/exec/exec1/json")) {
+        return { status: 200, statusText: "OK", bodyText: '{"ExitCode":0,"Running":false}' };
+      }
+      throw new Error(`unexpected url ${input.url}`);
+    });
+
+    const client = new portainer.PortainerClient({
+      base_url: "https://portainer.example.com:9443",
+      api_token_keychain: "portainer/relay",
+      allow_insecure_tls: true,
+    });
+
+    await expect(client.execContainer(2, "abc123", {
+      command: "printf",
+      command_args: ["bad-bytes"],
+    })).resolves.toEqual({
+      exec_id: "exec1",
+      output: "\uFFFD(\n",
+      inspect: { ExitCode: 0, Running: false },
+    });
+  });
+});
+
 test("container exec supports PowerShell wrappers", async () => {
   await withPortainerContext(async ({ keychain, portainer }) => {
     await keychain.setKeychainEntry({
@@ -194,6 +244,75 @@ test("container exec supports PowerShell wrappers", async () => {
       "$ErrorActionPreference = 'Stop'; & 'Write-Output' '$env:STRIPE_KEY'; if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }",
     );
     expect(seenExecBody?.Env).toEqual(["STRIPE_KEY=stripe-secret"]);
+  });
+});
+
+test("resolveContainer rejects short container id prefixes", async () => {
+  await withPortainerContext(async ({ keychain, portainer }) => {
+    await keychain.setKeychainEntry({
+      name: "portainer/relay",
+      type: "secret",
+      username: "https://portainer.example.com:9443",
+      secret: "portainer-token",
+    });
+
+    portainer.setPortainerRequestExecutorForTests(async (input) => {
+      if (input.url.endsWith("/api/endpoints/2/docker/containers/json?all=1")) {
+        return {
+          status: 200,
+          statusText: "OK",
+          bodyText: JSON.stringify([
+            { Id: "abc123456789abcdef", Names: ["/web"] },
+          ]),
+        };
+      }
+      throw new Error(`unexpected url ${input.url}`);
+    });
+
+    const client = new portainer.PortainerClient({
+      base_url: "https://portainer.example.com:9443",
+      api_token_keychain: "portainer/relay",
+      allow_insecure_tls: true,
+    });
+
+    await expect(client.resolveContainer(2, { container_id: "abc123" })).rejects.toThrow(
+      "Container id prefixes must be at least 12 characters.",
+    );
+  });
+});
+
+test("resolveContainer rejects ambiguous container id prefixes", async () => {
+  await withPortainerContext(async ({ keychain, portainer }) => {
+    await keychain.setKeychainEntry({
+      name: "portainer/relay",
+      type: "secret",
+      username: "https://portainer.example.com:9443",
+      secret: "portainer-token",
+    });
+
+    portainer.setPortainerRequestExecutorForTests(async (input) => {
+      if (input.url.endsWith("/api/endpoints/2/docker/containers/json?all=1")) {
+        return {
+          status: 200,
+          statusText: "OK",
+          bodyText: JSON.stringify([
+            { Id: "123456789abc0000", Names: ["/web-a"] },
+            { Id: "123456789abcffff", Names: ["/web-b"] },
+          ]),
+        };
+      }
+      throw new Error(`unexpected url ${input.url}`);
+    });
+
+    const client = new portainer.PortainerClient({
+      base_url: "https://portainer.example.com:9443",
+      api_token_keychain: "portainer/relay",
+      allow_insecure_tls: true,
+    });
+
+    await expect(client.resolveContainer(2, { container_id: "123456789abc" })).rejects.toThrow(
+      'Container id prefix "123456789abc" is ambiguous on endpoint 2.',
+    );
   });
 });
 
@@ -259,6 +378,7 @@ test("requestPortainerApi builds requests with X-API-Key auth", async () => {
       status: 200,
       body: [{ Id: 2, Name: "diskstation" }],
       raw_body: '[{"Id":2,"Name":"diskstation"}]',
+      raw_body_bytes: new TextEncoder().encode('[{"Id":2,"Name":"diskstation"}]'),
       path: "/api/endpoints",
       method: "GET",
     });
