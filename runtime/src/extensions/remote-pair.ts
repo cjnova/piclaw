@@ -7,7 +7,6 @@
  * Commands:
  *   /pair request <url>    – initiate pairing with a remote piclaw instance
  *   /pair list             – list known remote peers
- *   /pair discover <url>   – fetch and display peer identity without pairing
  *   /unpair <id|fp>        – revoke a pairing locally and notify the remote peer
  */
 
@@ -620,7 +619,7 @@ export const remotePair: ExtensionFactory = (pi: ExtensionAPI) => {
   });
 
   pi.registerCommand("pair", {
-    description: "Manage remote peer connections. Usage: /pair request <url> | /pair list | /pair discover <url> | /pair revoke <id>",
+    description: "Manage remote peer connections. Usage: /pair request <url> | /pair list | /pair accept <id> | /pair revoke <id>",
     handler: async (args: string) => {
       const trimmed = (args || "").trim();
       const spaceIdx = trimmed.indexOf(" ");
@@ -739,7 +738,6 @@ export const remotePair: ExtensionFactory = (pi: ExtensionAPI) => {
           "Usage:",
           "  `/pair request <url>` — initiate pairing",
           "  `/pair list` — show known peers",
-          "  `/pair discover <url>` — inspect remote peer",
           "  `/pair accept <id>` — accept an inbound pair request",
           "  `/pair deny <id>` — deny an inbound pair request",
           "  `/pair block <id>` — block an inbound pair request and peer",

@@ -1,5 +1,5 @@
 /**
- * test/remote/remote-pair-commands.test.ts – Tests for /pair command flows (request, discover, revoke).
+ * test/remote/remote-pair-commands.test.ts – Tests for /pair command flows (request, revoke, accept, etc.).
  */
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import "../helpers.js";
@@ -32,7 +32,6 @@ let initDatabase: () => void;
 let RemoteInteropService: any;
 let runPairFlow: (targetBaseUrl: string, pi: any) => Promise<void>;
 let runUnpairFlow: (id: string, pi: any) => Promise<void>;
-let runDiscoverFlow: (targetBaseUrl: string, pi: any) => Promise<void>;
 let runAcceptPairFlow: (id: string, pi: any) => Promise<void>;
 let runDenyPairFlow: (id: string, pi: any) => Promise<void>;
 let runBlockPairFlow: (id: string, pi: any) => Promise<void>;
@@ -167,7 +166,6 @@ describe("remote pair commands", () => {
     const pairMod = await importFresh("../src/extensions/remote-pair.js");
     runPairFlow = pairMod.runPairFlow;
     runUnpairFlow = pairMod.runUnpairFlow;
-    runDiscoverFlow = pairMod.runDiscoverFlow;
     runAcceptPairFlow = pairMod.runAcceptPairFlow;
     runDenyPairFlow = pairMod.runDenyPairFlow;
     runBlockPairFlow = pairMod.runBlockPairFlow;
@@ -214,49 +212,6 @@ describe("remote pair commands", () => {
 
     const successMsg = pi.messages.find((m: string) => m.includes("Paired with"));
     expect(successMsg).toBeTruthy();
-  });
-
-  // ─── runDiscoverFlow ─────────────────────────────────────────────────────
-
-  test("runDiscoverFlow displays peer fingerprint and display_name", async () => {
-    const pi = makeMockPi();
-
-    globalThis.fetch = async () =>
-      new Response(
-        JSON.stringify({
-          instance_id: "abcdef123456789012345678",
-          fingerprint: "abcdef-123456-789012",
-          public_key: "fake-public-key",
-          display_name: "test-agent",
-          protocol_versions: ["1"],
-          time: new Date().toISOString(),
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
-
-    await runDiscoverFlow("https://example.com", pi);
-
-    expect(pi.messages.length).toBeGreaterThan(0);
-    const msg = pi.messages[0];
-    expect(msg).toContain("abcdef-123456-789012");
-    expect(msg).toContain("test-agent");
-  });
-
-  test("runDiscoverFlow reports error on non-200 response", async () => {
-    const pi = makeMockPi();
-    globalThis.fetch = async () =>
-      new Response(JSON.stringify({ error: "Not found" }), { status: 404 });
-
-    await runDiscoverFlow("https://example.com", pi);
-    expect(pi.messages[0]).toContain("404");
-  });
-
-  test("runDiscoverFlow reports error on network failure", async () => {
-    const pi = makeMockPi();
-    globalThis.fetch = async () => { throw new Error("ECONNREFUSED"); };
-
-    await runDiscoverFlow("https://example.com", pi);
-    expect(pi.messages[0]).toContain("ECONNREFUSED");
   });
 
   // ─── /pair revoke (runUnpairFlow) ─────────────────────────────────────────
