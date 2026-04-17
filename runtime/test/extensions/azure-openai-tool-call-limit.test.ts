@@ -138,6 +138,24 @@ test("applyToolCallLimit truncates summary output", () => {
   expect(summaryText).toContain("…");
 });
 
+test("applyToolCallLimit keeps truncated summary output surrogate-safe", () => {
+  const messages = [
+    makeReasoning("rs_old"),
+    makeCall("call1", "fc_old", "bash", { command: "echo" }),
+    makeOutput("call1", "😀😀😀"),
+    makeReasoning("rs_keep"),
+    makeCall("call2", "fc_keep", "bash", { command: "ls" }),
+    makeOutput("call2", "short"),
+  ];
+
+  const result = applyToolCallLimit(messages, { ...config, limit: 1, summaryMax: 1, outputChars: 1 });
+  const summary = result.messages.find((item) => item?.type === "message" && item?.role === "assistant");
+  const summaryText = summary?.content?.[0]?.text || "";
+
+  expect(summaryText).toContain("…");
+  expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(summaryText)).toBe(false);
+});
+
 test("applyToolCallLimit proactively trims by estimated token budget", () => {
   const largeOutput = "x".repeat(4000);
   const messages = [

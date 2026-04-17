@@ -11,6 +11,7 @@ import "../helpers.js";
 import {
   splitLines,
   buildPreviewLines,
+  truncateWithEllipsis,
   truncateLine,
   countSoftLines,
   countSoftLine,
@@ -28,6 +29,12 @@ describe("preview utils", () => {
     expect(truncateLine("short", 10)).toBe("short");
     expect(truncateLine("longer", 3)).toBe("lon…");
     expect(truncateLine("same", 0)).toBe("same");
+  });
+
+  test("truncateWithEllipsis avoids dangling surrogate pairs", () => {
+    expect(truncateWithEllipsis("😀emoji", 1)).toBe("…");
+    expect(truncateWithEllipsis("😀emoji", 2)).toBe("😀…");
+    expect(truncateLine("😀emoji", 1)).toBe("…");
   });
 
   test("buildPreviewLines returns preview and omitted count", () => {

@@ -36,11 +36,27 @@ export function splitLines(text: string): string[] {
   return normalized.split("\n");
 }
 
+function endsWithHighSurrogate(text: string): boolean {
+  if (!text) return false;
+  const code = text.charCodeAt(text.length - 1);
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+/** Truncate text and append an ellipsis without leaving a dangling surrogate. */
+export function truncateWithEllipsis(text: string, maxLength?: number): string {
+  if (!maxLength || maxLength <= 0) return text;
+  if (text.length <= maxLength) return text;
+
+  let truncated = text.slice(0, maxLength);
+  if (endsWithHighSurrogate(truncated)) {
+    truncated = truncated.slice(0, -1);
+  }
+  return `${truncated}…`;
+}
+
 /** Truncate a single line to `maxLength` characters, adding an ellipsis if cut. */
 export function truncateLine(line: string, maxLength?: number): string {
-  if (!maxLength || maxLength <= 0) return line;
-  if (line.length <= maxLength) return line;
-  return `${line.slice(0, maxLength)}…`;
+  return truncateWithEllipsis(line, maxLength);
 }
 
 /**
