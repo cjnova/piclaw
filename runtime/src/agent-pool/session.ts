@@ -112,11 +112,11 @@ const OPTIONAL_EXTENSIONS: OptionalBundledExtension[] = [
   { path: resolve(EXTENSIONS_DIR, "integrations", "proxmox", "index.ts") },
   { path: resolve(EXTENSIONS_DIR, "integrations", "portainer", "index.ts") },
   { path: resolve(EXTENSIONS_DIR, "integrations", "mcp-status-hints", "index.ts") },
-  { path: resolve(EXTENSIONS_DIR, "browser", "cdp-browser", "index.ts") },
+  { path: resolve(EXTENSIONS_DIR, "browser", "cdp-browser-tool", "index.ts") },
   { path: resolve(EXTENSIONS_DIR, "platform", "windows", "powershell", "index.ts"), platforms: ["win32"] },
   { path: resolve(EXTENSIONS_DIR, "platform", "windows", "win-ui", "index.ts"), platforms: ["win32"] },
   { path: resolve(EXTENSIONS_DIR, "viewers", "office-viewer-tool", "index.ts"), channels: ["web"] },
-  { path: resolve(EXTENSIONS_DIR, "integrations", "office-tools", "index.ts") },
+  { path: resolve(EXTENSIONS_DIR, "integrations", "office-tools-tool", "index.ts") },
   { path: resolve(EXTENSIONS_DIR, "viewers", "drawio-editor-tool", "index.ts"), channels: ["web"] },
   { path: resolve(EXTENSIONS_DIR, "experimental", "m365", "index.ts"), envGate: "PICLAW_ENABLE_M365_EXPERIMENTAL" },
 ];

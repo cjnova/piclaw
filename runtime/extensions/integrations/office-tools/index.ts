@@ -854,6 +854,82 @@ async function mdToPdf(markdown: string, outputPath: string, signal?: MaybeAbort
   }
 }
 
+export const officeReadParameters = Type.Object({
+  path: Type.String({ description: "Workspace path to the Office document (.docx, .xlsx, or .pptx)" }),
+});
+
+export const officeWriteParameters = Type.Object({
+  path: Type.String({ description: "Workspace output path (.docx, .xlsx, .pptx, or .pdf)" }),
+  markdown: Type.String({ description: "Markdown content to convert" }),
+});
+
+export async function executeOfficeRead(params: { path: string }, ctx?: { cwd?: string }): Promise<any> {
+  try {
+    const baseDir = ctx?.cwd ?? process.cwd();
+    const filePath = resolveWorkspacePath(baseDir, params.path);
+    if (!existsSync(filePath)) return { content: [{ type: "text", text: `File not found: ${params.path}` }], details: { ok: false } };
+    const ext = extname(filePath).toLowerCase();
+    if (!READABLE_FORMATS.has(ext)) {
+      return { content: [{ type: "text", text: `Unsupported format: ${ext}. Supported: .docx, .xlsx, .pptx.` }], details: { ok: false } };
+    }
+
+    const buf = readFileSync(filePath);
+    if (buf[0] === 0xD0 && buf[1] === 0xCF && buf[2] === 0x11 && buf[3] === 0xE0) {
+      return { content: [{ type: "text", text: `Legacy Office format (OLE2), not OOXML. Re-save as ${ext}x in Office first.` }], details: { ok: false } };
+    }
+
+    let markdown = "";
+    if (ext === ".docx") markdown = docxToMarkdown(buf);
+    else if (ext === ".xlsx") markdown = xlsxToMarkdown(buf);
+    else if (ext === ".pptx") markdown = pptxToMarkdown(buf);
+
+    const truncated = markdown.length > 100_000;
+    return {
+      content: [{ type: "text", text: (truncated ? `${markdown.slice(0, 100_000)}\n\n…(truncated)` : markdown) || "(empty document)" }],
+      details: { ok: true, path: filePath, format: ext, chars: markdown.length, truncated },
+    };
+  } catch (error: any) {
+    return {
+      content: [{ type: "text", text: `Failed to read Office document: ${error.message}` }],
+      details: { ok: false, error: error.message },
+    };
+  }
+}
+
+export async function executeOfficeWrite(
+  params: { path: string; markdown: string },
+  signal?: MaybeAbortSignal,
+  ctx?: { cwd?: string },
+): Promise<any> {
+  try {
+    const baseDir = ctx?.cwd ?? process.cwd();
+    const filePath = resolveWorkspacePath(baseDir, params.path);
+    const ext = extname(filePath).toLowerCase();
+    if (!WRITABLE_FORMATS.has(ext)) {
+      return { content: [{ type: "text", text: `Unsupported format: ${ext}. Use .docx, .xlsx, .pptx, or .pdf.` }], details: { ok: false } };
+    }
+    mkdirSync(dirname(filePath), { recursive: true });
+
+    let buf: Buffer | null = null;
+    if (ext === ".docx") buf = await mdToDocx(params.markdown);
+    else if (ext === ".xlsx") buf = mdToXlsx(params.markdown);
+    else if (ext === ".pptx") buf = await mdToPptx(params.markdown);
+    else if (ext === ".pdf") await mdToPdf(params.markdown, filePath, signal);
+
+    if (buf) writeFileSync(filePath, buf);
+    const size = existsSync(filePath) ? readFileSync(filePath).length : 0;
+    return {
+      content: [{ type: "text", text: `Written: ${params.path} (${Math.max(1, Math.round(size / 1024))} KB)` }],
+      details: { ok: true, path: filePath, format: ext, size },
+    };
+  } catch (error: any) {
+    return {
+      content: [{ type: "text", text: `Failed to generate Office output: ${error.message}` }],
+      details: { ok: false, error: error.message },
+    };
+  }
+}
+
 export default function register(pi: ExtensionAPI) {
   pi.registerTool({
     name: "office_read",
@@ -861,40 +937,9 @@ export default function register(pi: ExtensionAPI) {
     description:
       "Read a Microsoft Office document (.docx, .xlsx, .pptx) and return its content as Markdown. " +
       "OOXML only; legacy .doc/.xls/.ppt formats are rejected.",
-    parameters: Type.Object({
-      path: Type.String({ description: "Workspace path to the Office document (.docx, .xlsx, or .pptx)" }),
-    }),
+    parameters: officeReadParameters,
     async execute(_id, params, _signal, _onUpdate, ctx) {
-      try {
-        const baseDir = ctx?.cwd ?? process.cwd();
-        const filePath = resolveWorkspacePath(baseDir, params.path);
-        if (!existsSync(filePath)) return { content: [{ type: "text", text: `File not found: ${params.path}` }], details: { ok: false } };
-        const ext = extname(filePath).toLowerCase();
-        if (!READABLE_FORMATS.has(ext)) {
-          return { content: [{ type: "text", text: `Unsupported format: ${ext}. Supported: .docx, .xlsx, .pptx.` }], details: { ok: false } };
-        }
-
-        const buf = readFileSync(filePath);
-        if (buf[0] === 0xD0 && buf[1] === 0xCF && buf[2] === 0x11 && buf[3] === 0xE0) {
-          return { content: [{ type: "text", text: `Legacy Office format (OLE2), not OOXML. Re-save as ${ext}x in Office first.` }], details: { ok: false } };
-        }
-
-        let markdown = "";
-        if (ext === ".docx") markdown = docxToMarkdown(buf);
-        else if (ext === ".xlsx") markdown = xlsxToMarkdown(buf);
-        else if (ext === ".pptx") markdown = pptxToMarkdown(buf);
-
-        const truncated = markdown.length > 100_000;
-        return {
-          content: [{ type: "text", text: (truncated ? `${markdown.slice(0, 100_000)}\n\n…(truncated)` : markdown) || "(empty document)" }],
-          details: { ok: true, path: filePath, format: ext, chars: markdown.length, truncated },
-        };
-      } catch (error: any) {
-        return {
-          content: [{ type: "text", text: `Failed to read Office document: ${error.message}` }],
-          details: { ok: false, error: error.message },
-        };
-      }
+      return await executeOfficeRead(params, ctx as { cwd?: string } | undefined);
     },
   });
 
@@ -903,38 +948,9 @@ export default function register(pi: ExtensionAPI) {
     label: "Write Office Document",
     description:
       "Generate a Microsoft Office document (.docx, .xlsx, .pptx) or PDF (.pdf) from Markdown content.",
-    parameters: Type.Object({
-      path: Type.String({ description: "Workspace output path (.docx, .xlsx, .pptx, or .pdf)" }),
-      markdown: Type.String({ description: "Markdown content to convert" }),
-    }),
+    parameters: officeWriteParameters,
     async execute(_id, params, signal, _onUpdate, ctx) {
-      try {
-        const baseDir = ctx?.cwd ?? process.cwd();
-        const filePath = resolveWorkspacePath(baseDir, params.path);
-        const ext = extname(filePath).toLowerCase();
-        if (!WRITABLE_FORMATS.has(ext)) {
-          return { content: [{ type: "text", text: `Unsupported format: ${ext}. Use .docx, .xlsx, .pptx, or .pdf.` }], details: { ok: false } };
-        }
-        mkdirSync(dirname(filePath), { recursive: true });
-
-        let buf: Buffer | null = null;
-        if (ext === ".docx") buf = await mdToDocx(params.markdown);
-        else if (ext === ".xlsx") buf = mdToXlsx(params.markdown);
-        else if (ext === ".pptx") buf = await mdToPptx(params.markdown);
-        else if (ext === ".pdf") await mdToPdf(params.markdown, filePath, signal);
-
-        if (buf) writeFileSync(filePath, buf);
-        const size = existsSync(filePath) ? readFileSync(filePath).length : 0;
-        return {
-          content: [{ type: "text", text: `Written: ${params.path} (${Math.max(1, Math.round(size / 1024))} KB)` }],
-          details: { ok: true, path: filePath, format: ext, size },
-        };
-      } catch (error: any) {
-        return {
-          content: [{ type: "text", text: `Failed to generate Office output: ${error.message}` }],
-          details: { ok: false, error: error.message },
-        };
-      }
+      return await executeOfficeWrite(params, signal, ctx as { cwd?: string } | undefined);
     },
   });
 }

@@ -73,31 +73,27 @@ function truncate(text: string, max = 40000): string {
   return text.substring(0, max) + `\n\n[Truncated at ${max} chars]`;
 }
 
-export default function (pi: ExtensionAPI) {
-  pi.registerTool({
-    name: "cdp_browser",
-    label: "CDP Browser Control",
-    description:
-      "Control any Chromium browser (Edge/Chrome) via Chrome DevTools Protocol. " +
-      "Actions: tabs (list tabs), eval (run JS), navigate (go to URL), open (new tab), " +
-      "close (close tabs), click (click element), screenshot (capture page), print_pdf (export page to PDF), sleep (wait ms).",
-    promptSnippet: "Control Edge browser tabs, evaluate JS, navigate, screenshot or export PDF via CDP",
-    parameters: Type.Object({
-      action: Type.String({ description: "One of: tabs, eval, navigate, open, close, click, screenshot, print_pdf, sleep" }),
-      expr: Type.Optional(Type.String({ description: "JS expression (for eval action)" })),
-      url: Type.Optional(Type.String({ description: "URL (for navigate/open/print_pdf actions)" })),
-      selector: Type.Optional(Type.String({ description: "CSS selector (for click action)" })),
-      match: Type.Optional(Type.String({ description: "Tab title/URL substring to target a specific tab" })),
-      outPath: Type.Optional(Type.String({ description: "Output file path (for screenshot/print_pdf)" })),
-      ms: Type.Optional(Type.Number({ description: "Milliseconds to sleep (sleep) or wait before printing (print_pdf)" })),
-      landscape: Type.Optional(Type.Boolean({ description: "Landscape orientation for print_pdf" })),
-      displayHeaderFooter: Type.Optional(Type.Boolean({ description: "Whether print_pdf should render header/footer HTML" })),
-      headerTemplate: Type.Optional(Type.String({ description: "HTML header template for print_pdf" })),
-      footerTemplate: Type.Optional(Type.String({ description: "HTML footer template for print_pdf" })),
-      preferCSSPageSize: Type.Optional(Type.Boolean({ description: "Prefer CSS @page size for print_pdf (default true)" })),
-    }),
-    async execute(_id, params, signal, _onUpdate, ctx) {
-      const cdp = await getCdpModule();
+export const cdpBrowserParameters = Type.Object({
+  action: Type.String({ description: "One of: tabs, eval, navigate, open, close, click, screenshot, print_pdf, sleep" }),
+  expr: Type.Optional(Type.String({ description: "JS expression (for eval action)" })),
+  url: Type.Optional(Type.String({ description: "URL (for navigate/open/print_pdf actions)" })),
+  selector: Type.Optional(Type.String({ description: "CSS selector (for click action)" })),
+  match: Type.Optional(Type.String({ description: "Tab title/URL substring to target a specific tab" })),
+  outPath: Type.Optional(Type.String({ description: "Output file path (for screenshot/print_pdf)" })),
+  ms: Type.Optional(Type.Number({ description: "Milliseconds to sleep (sleep) or wait before printing (print_pdf)" })),
+  landscape: Type.Optional(Type.Boolean({ description: "Landscape orientation for print_pdf" })),
+  displayHeaderFooter: Type.Optional(Type.Boolean({ description: "Whether print_pdf should render header/footer HTML" })),
+  headerTemplate: Type.Optional(Type.String({ description: "HTML header template for print_pdf" })),
+  footerTemplate: Type.Optional(Type.String({ description: "HTML footer template for print_pdf" })),
+  preferCSSPageSize: Type.Optional(Type.Boolean({ description: "Prefer CSS @page size for print_pdf (default true)" })),
+});
+
+export async function executeCdpBrowserTool(
+  params: any,
+  signal?: AbortSignal,
+  ctx?: { cwd?: string },
+): Promise<any> {
+  const cdp = await getCdpModule();
       if (params.action === "sleep") {
         const ms = params.ms || 3000;
         await cdp.sleepWithSignal(ms, signal);
@@ -231,23 +227,41 @@ export default function (pi: ExtensionAPI) {
           };
         }
 
-        default:
-          throw new Error("Unknown action: " + params.action + ". Use: tabs, eval, navigate, open, close, click, screenshot, print_pdf, sleep");
-      }
+    default:
+      throw new Error("Unknown action: " + params.action + ". Use: tabs, eval, navigate, open, close, click, screenshot, print_pdf, sleep");
+  }
+}
+
+export async function executeCdpTabsCommand(_args: string[], ctx: any): Promise<void> {
+  const cdp = await getCdpModule();
+  const port = await cdp.findCdpPort();
+  if (!port) {
+    ctx.ui.notify("No CDP browser found", "warning");
+    return;
+  }
+  const pages = await cdp.getTargets(port);
+  ctx.ui.notify(`${pages.length} tabs: ${pages.map((page) => page.title).join(" | ")}`, "info");
+}
+
+export default function (pi: ExtensionAPI) {
+  pi.registerTool({
+    name: "cdp_browser",
+    label: "CDP Browser Control",
+    description:
+      "Control any Chromium browser (Edge/Chrome) via Chrome DevTools Protocol. " +
+      "Actions: tabs (list tabs), eval (run JS), navigate (go to URL), open (new tab), " +
+      "close (close tabs), click (click element), screenshot (capture page), print_pdf (export page to PDF), sleep (wait ms).",
+    promptSnippet: "Control Edge browser tabs, evaluate JS, navigate, screenshot or export PDF via CDP",
+    parameters: cdpBrowserParameters,
+    async execute(_id, params, signal, _onUpdate, ctx) {
+      return await executeCdpBrowserTool(params, signal, ctx as { cwd?: string } | undefined);
     },
   });
 
   pi.registerCommand("cdp-tabs", {
     description: "List browser tabs via CDP",
-    handler: async (_args, ctx) => {
-      const cdp = await getCdpModule();
-      const port = await cdp.findCdpPort();
-      if (!port) {
-        ctx.ui.notify("No CDP browser found", "warning");
-        return;
-      }
-      const pages = await cdp.getTargets(port);
-      ctx.ui.notify(`${pages.length} tabs: ${pages.map((page) => page.title).join(" | ")}`, "info");
+    handler: async (args, ctx) => {
+      await executeCdpTabsCommand(args, ctx);
     },
   });
 }
