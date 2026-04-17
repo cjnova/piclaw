@@ -140,7 +140,6 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
 
     const hasCorePanels = Boolean(status || hasDraft || hasPlan || hasThought || pendingRequest || intent);
     const hasExtensionPanels = Array.isArray(extensionPanels) && extensionPanels.length > 0;
-    if ((!showCorePanels || !hasCorePanels) && (!showExtensionPanels || !hasExtensionPanels)) return null;
 
     const [expandedPanels, setExpandedPanels] = useState(new Set());
     const [hoveredSeriesPoint, setHoveredSeriesPoint] = useState(null);
@@ -313,6 +312,7 @@ export function AgentStatus({ status, draft, plan, thought, pendingRequest, inte
         () => orderedStatusHints.filter((hint) => hint?.key !== 'ssh'),
         [orderedStatusHints],
     );
+    if ((!showCorePanels || !hasCorePanels) && (!showExtensionPanels || !hasExtensionPanels)) return null;
 
     const renderThinkingPanel = ({ panelTitle, text, fullText, totalLines, maxLines, titleClass, panelKey }) => {
         const isExpanded = expandedPanels.has(panelKey);
