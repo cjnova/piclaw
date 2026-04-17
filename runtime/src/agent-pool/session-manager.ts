@@ -63,6 +63,9 @@ export interface AgentSessionManagerInstrumentationSnapshot {
 export class AgentSessionManager {
   private readonly branchSeedRealizationInFlight = new Map<string, Promise<boolean>>();
   private readonly createInFlight = new Map<string, Promise<AgentSessionRuntime>>();
+  private readonly idleMainDisposalsInFlight = new Map<string, Promise<void>>();
+  private readonly idleSideDisposalsInFlight = new Map<string, Promise<void>>();
+  private readonly createSideInFlight = new Map<string, Promise<AgentSessionRuntime>>();
   private readonly invalidDeferredBranchSeedErrors = new Map<string, { error: Error; fingerprint: string | null }>();
   private readonly runtimeDisposeInFlight = new WeakMap<AgentSessionRuntime, Promise<void>>();
   private readonly prewarmInFlight = new Set<string>();
@@ -101,6 +104,11 @@ export class AgentSessionManager {
   }
 
   async getOrCreate(chatJid: string): Promise<AgentSessionRuntime> {
+    const pendingIdleDispose = this.idleMainDisposalsInFlight.get(chatJid);
+    if (pendingIdleDispose) {
+      await pendingIdleDispose;
+    }
+
     const knownInvalidSeedError = this.getBlockingInvalidSeedError(chatJid);
     if (knownInvalidSeedError) {
       throw knownInvalidSeedError;
@@ -170,38 +178,55 @@ export class AgentSessionManager {
   }
 
   async getOrCreateSide(chatJid: string): Promise<AgentSessionRuntime> {
+    const pendingIdleDispose = this.idleSideDisposalsInFlight.get(chatJid);
+    if (pendingIdleDispose) {
+      await pendingIdleDispose;
+    }
+
+    const pendingCreate = this.createSideInFlight.get(chatJid);
+    if (pendingCreate) {
+      return await pendingCreate;
+    }
+
     const existing = this.options.sidePool.get(chatJid);
     if (existing) {
       existing.lastUsed = Date.now();
       return existing.runtime;
     }
 
-    this.options.onInfo?.("Creating new side session", {
-      operation: "get_or_create_side.create_session",
-      chatJid,
+    const task = (async () => {
+      this.options.onInfo?.("Creating new side session", {
+        operation: "get_or_create_side.create_session",
+        chatJid,
+      });
+      const sideSessionDir = ensureNamedSessionDir(chatJid, "btw-side");
+
+      const extensionFactories = await this.options.getSessionExtensionFactories?.(chatJid) ?? [];
+      const runtime = this.options.createSideSession
+        ? await this.options.createSideSession(chatJid, sideSessionDir)
+        : await createSessionInDir(sideSessionDir, {
+            authStorage: this.options.authStorage,
+            modelRegistry: this.options.modelRegistry,
+            settingsManager: this.options.settingsManager,
+            tools: this.options.createDefaultTools(),
+            customTools: this.options.createCustomToolOverrides?.() ?? [],
+            extensionFactories,
+          });
+
+      this.options.sidePool.set(chatJid, { runtime, lastUsed: Date.now() });
+      return runtime;
+    })().finally(() => {
+      this.createSideInFlight.delete(chatJid);
     });
-    const sideSessionDir = ensureNamedSessionDir(chatJid, "btw-side");
 
-    const extensionFactories = await this.options.getSessionExtensionFactories?.(chatJid) ?? [];
-    const runtime = this.options.createSideSession
-      ? await this.options.createSideSession(chatJid, sideSessionDir)
-      : await createSessionInDir(sideSessionDir, {
-          authStorage: this.options.authStorage,
-          modelRegistry: this.options.modelRegistry,
-          settingsManager: this.options.settingsManager,
-          tools: this.options.createDefaultTools(),
-          customTools: this.options.createCustomToolOverrides?.() ?? [],
-          extensionFactories,
-        });
-
-    this.options.sidePool.set(chatJid, { runtime, lastUsed: Date.now() });
-    return runtime;
+    this.createSideInFlight.set(chatJid, task);
+    return await task;
   }
 
   async syncSideSessionFromMain(mainSession: AgentSession, sideRuntime: AgentSessionRuntime): Promise<void> {
     try {
       const mainContext = mainSession.sessionManager.buildSessionContext();
-      await sideRuntime.newSession({
+      const result = await sideRuntime.newSession({
         setup: async (sessionManager) => {
           seedRotatedSession(sessionManager, mainContext, {
             sessionName: "BTW",
@@ -209,11 +234,16 @@ export class AgentSessionManager {
           });
         },
       });
+      if (result.cancelled) {
+        throw new Error("Side-session reseed was cancelled.");
+      }
     } catch (err) {
       this.options.onWarn?.("Failed to reseed side session from main context", {
         operation: "sync_side_session_from_main.reseed",
         err,
       });
+      await this.disposeSideRuntimeAfterError(sideRuntime, "sync_side_session_from_main.dispose_after_reseed_failure");
+      throw err;
     }
 
     const sideSession = sideRuntime.session;
@@ -363,11 +393,7 @@ export class AgentSessionManager {
           operation: "evict_idle.side_session",
           chatJid: jid,
         });
-        this.options.sidePool.delete(jid);
-        this.disposeRuntimeOnce(entry.runtime, "Failed to dispose evicted side session", {
-          operation: "evict_idle.side_session",
-          chatJid: jid,
-        });
+        this.startIdleDispose(this.options.sidePool, this.idleSideDisposalsInFlight, jid, entry, "evict_idle.side_session", true);
       }
     }
   }
@@ -415,20 +441,45 @@ export class AgentSessionManager {
       poolSize: this.options.pool.size,
       maxSize: maxSizeOverride ?? this.options.mainSessionMaxSize ?? null,
     });
-    this.options.pool.delete(chatJid);
-    this.disposeRuntimeOnce(runtime, "Failed to dispose evicted session", {
-      operation,
-      chatJid,
-    });
+    this.startIdleDispose(this.options.pool, this.idleMainDisposalsInFlight, chatJid, { runtime, lastUsed: Date.now() }, operation, false);
   }
 
-  private disposeRuntimeOnce(
-    runtime: AgentSessionRuntime,
-    warnMessage: string,
-    details: Record<string, unknown>,
+  private startIdleDispose(
+    map: Map<string, PoolEntry>,
+    pendingDisposals: Map<string, Promise<void>>,
+    chatJid: string,
+    entry: PoolEntry,
+    operation: string,
+    side: boolean,
   ): void {
+    if (pendingDisposals.has(chatJid)) return;
+    if (map.get(chatJid)?.runtime === entry.runtime) {
+      map.delete(chatJid);
+    }
+
+    const warnMessage = side ? "Failed to dispose evicted side session" : "Failed to dispose evicted session";
+    const task = this.disposeRuntimeOnce(entry.runtime, warnMessage, {
+      operation,
+      chatJid,
+    }).finally(() => {
+      if (pendingDisposals.get(chatJid) === task) {
+        pendingDisposals.delete(chatJid);
+      }
+    });
+
+    pendingDisposals.set(chatJid, task);
+  }
+
+  private async disposeRuntimeOnce(
+    runtime: AgentSessionRuntime,
+    warnMessage = "Failed to dispose session",
+    details: Record<string, unknown> = {},
+  ): Promise<void> {
     const pendingDispose = this.runtimeDisposeInFlight.get(runtime);
-    if (pendingDispose) return;
+    if (pendingDispose) {
+      await pendingDispose;
+      return;
+    }
 
     const task = (async () => {
       try {
@@ -441,11 +492,10 @@ export class AgentSessionManager {
       }
     })();
     this.runtimeDisposeInFlight.set(runtime, task);
-    void task.finally(() => {
-      if (this.runtimeDisposeInFlight.get(runtime) === task) {
-        this.runtimeDisposeInFlight.delete(runtime);
-      }
-    });
+    await task;
+    if (this.runtimeDisposeInFlight.get(runtime) === task) {
+      this.runtimeDisposeInFlight.delete(runtime);
+    }
   }
 
   private async applyDefaultModel(session: AgentSession): Promise<void> {
@@ -611,31 +661,41 @@ export class AgentSessionManager {
     })();
   }
 
+  private findChatJidByRuntime(map: Map<string, PoolEntry>, runtime: AgentSessionRuntime): string | null {
+    for (const [chatJid, entry] of map) {
+      if (entry.runtime === runtime) return chatJid;
+    }
+    return null;
+  }
+
+  private async disposeSideRuntimeAfterError(runtime: AgentSessionRuntime, operation: string): Promise<void> {
+    const chatJid = this.findChatJidByRuntime(this.options.sidePool, runtime);
+    if (chatJid && this.options.sidePool.get(chatJid)?.runtime === runtime) {
+      this.options.sidePool.delete(chatJid);
+    }
+    try {
+      await this.disposeRuntimeOnce(runtime);
+    } catch (disposeErr) {
+      this.options.onWarn?.("Failed to dispose side session after initialization error", {
+        operation,
+        ...(chatJid ? { chatJid } : {}),
+        err: disposeErr,
+      });
+    }
+  }
+
   private async disposeMainRuntimeAfterError(chatJid: string, runtime: AgentSessionRuntime, operation: string): Promise<void> {
     if (this.options.pool.get(chatJid)?.runtime === runtime) {
       this.options.pool.delete(chatJid);
     }
-    const pendingDispose = this.runtimeDisposeInFlight.get(runtime);
-    if (pendingDispose) {
-      await pendingDispose;
-      return;
-    }
-
-    const task = (async () => {
-      try {
-        await runtime.dispose();
-      } catch (disposeErr) {
-        this.options.onWarn?.("Failed to dispose session after initialization error", {
-          operation,
-          chatJid,
-          err: disposeErr,
-        });
-      }
-    })();
-    this.runtimeDisposeInFlight.set(runtime, task);
-    await task;
-    if (this.runtimeDisposeInFlight.get(runtime) === task) {
-      this.runtimeDisposeInFlight.delete(runtime);
+    try {
+      await this.disposeRuntimeOnce(runtime);
+    } catch (disposeErr) {
+      this.options.onWarn?.("Failed to dispose session after initialization error", {
+        operation,
+        chatJid,
+        err: disposeErr,
+      });
     }
   }
 }

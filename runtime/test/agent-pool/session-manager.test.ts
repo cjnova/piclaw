@@ -120,6 +120,32 @@ test("AgentSessionManager singleflights concurrent main-session creation for the
   expect(fixture.state.bound).toEqual(["web:default"]);
 });
 
+test("AgentSessionManager singleflights concurrent side-session creation for the same chat", async () => {
+  let createCalls = 0;
+  let releaseCreate!: () => void;
+  const waitForCreate = new Promise<void>((resolve) => {
+    releaseCreate = resolve;
+  });
+  const session = {
+    dispose() {},
+  };
+  const fixture = createManager({
+    createSideSession: async () => {
+      createCalls += 1;
+      await waitForCreate;
+      return createRuntime(session) as any;
+    },
+  });
+
+  const first = fixture.manager.getOrCreateSide("web:default");
+  const second = fixture.manager.getOrCreateSide("web:default");
+  releaseCreate();
+
+  expect(await first).toBe(await second);
+  expect(createCalls).toBe(1);
+  expect(fixture.sidePool.get("web:default")?.runtime.session).toBe(session);
+});
+
 test("AgentSessionManager recreates cached main and side sessions", async () => {
   let disposed = 0;
   const mainSession = {
@@ -148,6 +174,52 @@ test("AgentSessionManager recreates cached main and side sessions", async () => 
   expect(fixture.pool.has("web:default")).toBe(false);
   expect(fixture.sidePool.has("web:default")).toBe(false);
   expect(disposed).toBe(2);
+});
+
+test("AgentSessionManager disposes a cached side runtime when reseeding it is cancelled", async () => {
+  let disposed = 0;
+  let setModelCalls = 0;
+  let setThinkingCalls = 0;
+  let setToolsCalls = 0;
+
+  const sideSession = {
+    model: null,
+    setModel: async () => {
+      setModelCalls += 1;
+    },
+    setThinkingLevel: () => {
+      setThinkingCalls += 1;
+    },
+    setActiveToolsByName: () => {
+      setToolsCalls += 1;
+    },
+    dispose() {
+      disposed += 1;
+    },
+  };
+  const sideRuntime = createRuntime(sideSession);
+  sideRuntime.newSession = async () => ({ cancelled: true });
+
+  const fixture = createManager();
+  fixture.sidePool.set("web:default", { runtime: sideRuntime, lastUsed: Date.now() });
+
+  await expect(fixture.manager.syncSideSessionFromMain({
+    sessionManager: {
+      buildSessionContext: () => ({
+        model: { provider: "test", id: "main-model" },
+      }),
+    },
+    model: { provider: "test", id: "main-model" },
+    thinkingLevel: "high",
+    getActiveToolNames: () => ["web_search"],
+  } as any, sideRuntime)).rejects.toThrow("Side-session reseed was cancelled.");
+
+  expect(fixture.sidePool.has("web:default")).toBe(false);
+  expect(disposed).toBe(1);
+  expect(setModelCalls).toBe(0);
+  expect(setThinkingCalls).toBe(0);
+  expect(setToolsCalls).toBe(0);
+  expect(fixture.state.warns).toContain("Failed to reseed side session from main context");
 });
 
 test("AgentSessionManager evicts idle sessions and shuts down remaining sessions", async () => {
