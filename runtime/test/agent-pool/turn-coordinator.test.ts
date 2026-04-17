@@ -359,3 +359,25 @@ test("AgentTurnCoordinator ignores late timeout callbacks after completion", asy
   expect(abortCalls).toBe(0);
   expect(errors).toEqual([]);
 });
+
+test("AgentTurnCoordinator reports timed-out abort failures without leaking rejections", async () => {
+  const warns: string[] = [];
+  const session = {
+    abort: async () => {
+      throw new Error("abort failed");
+    },
+  };
+
+  const coordinator = new AgentTurnCoordinator({
+    takeAttachments: () => [],
+    touchSession: () => {},
+    recordMessageUsage: () => {},
+    onWarn: (message) => warns.push(message),
+  });
+
+  const { timedOutRef } = coordinator.startPromptTimeout(session as any, "web:default", 5);
+  await Bun.sleep(20);
+
+  expect(timedOutRef.value).toBe(true);
+  expect(warns).toContain("Failed to abort timed-out prompt");
+});

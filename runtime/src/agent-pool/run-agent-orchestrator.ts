@@ -234,11 +234,18 @@ export async function runAgentPrompt(
     const unsub = options.turnCoordinator.subscribe(session, chatJid, tracker, runOptions.onEvent);
     const timeoutMs = typeof runOptions.timeoutMs === "number" ? runOptions.timeoutMs : getAgentRuntimeConfig().timeoutMs;
     const { timeoutId, timedOutRef, completedRef } = options.turnCoordinator.startPromptTimeout(session, chatJid, timeoutMs);
+    const finishPromptTimeout = () => {
+      if (!completedRef.value) {
+        completedRef.value = true;
+      }
+      if (timeoutId) clearTimeout(timeoutId);
+    };
 
     const channel = detectChannel(chatJid);
     return await withChatContext(chatJid, channel, async () => {
       try {
         await session.prompt(prompt);
+        finishPromptTimeout();
         options.onInfo?.("session.prompt() resolved", {
           operation: "run_agent.prompt_resolved",
           chatJid,
@@ -257,8 +264,7 @@ export async function runAgentPrompt(
           });
         }, idleMaxWaitMs);
       } finally {
-        completedRef.value = true;
-        if (timeoutId) clearTimeout(timeoutId);
+        finishPromptTimeout();
         unsub();
       }
 

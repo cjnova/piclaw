@@ -398,6 +398,74 @@ test("runAgentPrompt ignores commentary-only aborted output", async () => {
   expect(result.attachments).toBeUndefined();
 });
 
+test("runAgentPrompt disarms the prompt timeout as soon as prompt() resolves", async () => {
+  let abortCalls = 0;
+
+  class StubSession {
+    private listeners: Array<(event: any) => void> = [];
+    sessionManager = { getLeafId: () => "leaf-1" };
+    isStreaming = true;
+    isCompacting = false;
+    isRetrying = false;
+    subscribe(listener: (event: any) => void) {
+      this.listeners.push(listener);
+      return () => {
+        this.listeners = this.listeners.filter((entry) => entry !== listener);
+      };
+    }
+    async prompt() {
+      for (const listener of this.listeners) {
+        listener({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "done" } });
+      }
+      setTimeout(() => {
+        this.isStreaming = false;
+      }, 5);
+    }
+    async abort() {
+      abortCalls += 1;
+    }
+  }
+
+  const session = new StubSession();
+  const turnCoordinator = new AgentTurnCoordinator({
+    takeAttachments: () => [],
+    touchSession: () => {},
+    recordMessageUsage: () => {},
+  });
+
+  let timeoutState: ReturnType<typeof turnCoordinator.startPromptTimeout> | null = null;
+  const originalStartPromptTimeout = turnCoordinator.startPromptTimeout.bind(turnCoordinator);
+  turnCoordinator.startPromptTimeout = ((...args: any[]) => {
+    timeoutState = originalStartPromptTimeout(...args);
+    return timeoutState!;
+  }) as any;
+
+  const result = await runAgentPrompt("test", "web:default", { timeoutMs: 50 }, {
+    getOrCreateRuntime: async () => createRuntime(session) as any,
+    turnCoordinator,
+    clearAttachments: () => {},
+    takeAttachments: () => [],
+    logsDir: createTestLogsDir(),
+    setActiveForkBaseLeaf: () => {},
+    clearActiveForkBaseLeaf: () => {},
+    onInfo: (message) => {
+      if (message !== "session.prompt() resolved" || !timeoutState) return;
+      queueMicrotask(async () => {
+        if (timeoutState?.completedRef.value) return;
+        timeoutState.timedOutRef.value = true;
+        await session.abort();
+      });
+    },
+  });
+
+  await Bun.sleep(20);
+
+  expect(result.status).toBe("success");
+  expect(result.result).toBe("done");
+  expect(timeoutState?.completedRef.value).toBe(true);
+  expect(abortCalls).toBe(0);
+});
+
 test("runAgentPrompt ignores a queued late-timeout callback after prompt completion", async () => {
   let abortCalls = 0;
 
