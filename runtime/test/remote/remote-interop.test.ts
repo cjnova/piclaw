@@ -27,6 +27,9 @@ let hashBody: (body: Uint8Array) => string;
 let signRequest: (identity: InteropIdentity, canonical: string) => string;
 let getRemotePeer: (id: string) => any;
 let getRemoteRequestById: (id: string) => any;
+let getPendingRemoteRequests: () => any[];
+let updateRemoteRequestDecision: (id: string, decision: string, result?: string | null, error?: string | null) => void;
+let storeRemoteRequest: (request: any) => void;
 let updatePairRequestStatus: (id: string, status: string) => void;
 let updateRemotePeer: (id: string, updates: any) => void;
 let upsertRemotePeer: (peer: any) => void;
@@ -161,6 +164,9 @@ describe("remote interop", () => {
     const remoteDbMod = await importFresh("../src/db/remote-interop.js");
     getRemotePeer = remoteDbMod.getRemotePeer;
     getRemoteRequestById = remoteDbMod.getRemoteRequestById;
+    getPendingRemoteRequests = remoteDbMod.getPendingRemoteRequests;
+    updateRemoteRequestDecision = remoteDbMod.updateRemoteRequestDecision;
+    storeRemoteRequest = remoteDbMod.storeRemoteRequest;
     updatePairRequestStatus = remoteDbMod.updatePairRequestStatus;
     updateRemotePeer = remoteDbMod.updateRemotePeer;
     upsertRemotePeer = remoteDbMod.upsertRemotePeer;
@@ -1286,5 +1292,205 @@ describe("remote interop", () => {
     );
 
     expect(res.status).toBe(403);
+  });
+
+  // ─── DB function tests ────────────────────────────────────────────────────
+
+  test("getPendingRemoteRequests returns only pending proposals", () => {
+    const peer = makeIdentity();
+    upsertRemotePeer({
+      instance_id: peer.instance_id,
+      public_key: peer.public_key,
+      display_name: "peer",
+      status: "paired",
+      mode: "mediated",
+      profile: "full",
+      trust_epoch: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_seen_at: null,
+      blocked_reason: null,
+      base_url: TEST_REMOTE_BASE_URL,
+    });
+
+    storeRemoteRequest({
+      id: "req-pending-1",
+      peer_instance_id: peer.instance_id,
+      request_type: "proposal",
+      status: "pending",
+      prompt: "do something",
+      created_at: new Date().toISOString(),
+      decision: null,
+      remote_mode: "mediated",
+      error: null,
+      result: null,
+    });
+    storeRemoteRequest({
+      id: "req-completed-1",
+      peer_instance_id: peer.instance_id,
+      request_type: "proposal",
+      status: "completed",
+      prompt: "already done",
+      created_at: new Date().toISOString(),
+      decision: "accepted",
+      remote_mode: "mediated",
+      error: null,
+      result: "done",
+    });
+
+    const pending = getPendingRemoteRequests();
+    expect(pending.length).toBe(1);
+    expect(pending[0].id).toBe("req-pending-1");
+  });
+
+  test("updateRemoteRequestDecision marks proposal as accepted with result", () => {
+    const peer = makeIdentity();
+    upsertRemotePeer({
+      instance_id: peer.instance_id,
+      public_key: peer.public_key,
+      display_name: "peer",
+      status: "paired",
+      mode: "mediated",
+      profile: "full",
+      trust_epoch: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_seen_at: null,
+      blocked_reason: null,
+      base_url: TEST_REMOTE_BASE_URL,
+    });
+
+    storeRemoteRequest({
+      id: "req-to-accept",
+      peer_instance_id: peer.instance_id,
+      request_type: "proposal",
+      status: "pending",
+      prompt: "test",
+      created_at: new Date().toISOString(),
+      decision: null,
+      remote_mode: "mediated",
+      error: null,
+      result: null,
+    });
+
+    updateRemoteRequestDecision("req-to-accept", "accepted", "result text");
+    const updated = getRemoteRequestById("req-to-accept");
+    expect(updated?.status).toBe("completed");
+    expect(updated?.decision).toBe("accepted");
+    expect(updated?.result).toBe("result text");
+  });
+
+  test("updateRemoteRequestDecision marks proposal as rejected", () => {
+    const peer = makeIdentity();
+    upsertRemotePeer({
+      instance_id: peer.instance_id,
+      public_key: peer.public_key,
+      display_name: "peer",
+      status: "paired",
+      mode: "mediated",
+      profile: "full",
+      trust_epoch: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_seen_at: null,
+      blocked_reason: null,
+      base_url: TEST_REMOTE_BASE_URL,
+    });
+
+    storeRemoteRequest({
+      id: "req-to-reject",
+      peer_instance_id: peer.instance_id,
+      request_type: "proposal",
+      status: "pending",
+      prompt: "test",
+      created_at: new Date().toISOString(),
+      decision: null,
+      remote_mode: "mediated",
+      error: null,
+      result: null,
+    });
+
+    updateRemoteRequestDecision("req-to-reject", "rejected", null, "not allowed");
+    const updated = getRemoteRequestById("req-to-reject");
+    expect(updated?.status).toBe("rejected");
+    expect(updated?.decision).toBe("rejected");
+    expect(updated?.error).toBe("not allowed");
+  });
+
+  // ─── Result callback endpoint tests ───────────────────────────────────────
+
+  test("result callback notifies operator with execution result", async () => {
+    const peer = makeIdentity();
+    upsertRemotePeer({
+      instance_id: peer.instance_id,
+      public_key: peer.public_key,
+      display_name: "callback-peer",
+      status: "paired",
+      mode: "mediated",
+      profile: "full",
+      trust_epoch: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_seen_at: null,
+      blocked_reason: null,
+      base_url: TEST_REMOTE_BASE_URL,
+    });
+
+    const res = await service.handleRequest(
+      buildSignedRequest(peer, "POST", "/api/remote/result", {
+        negotiation_id: "neg-123",
+        decision: "accept_execute",
+        result: "The answer is 42.",
+      })
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe("ok");
+  });
+
+  test("result callback rejects unpaired peer", async () => {
+    const peer = makeIdentity();
+    // No upsertRemotePeer call — peer is unknown, so signature verification
+    // fails before the pairing check (returns 401, not 403).
+
+    const res = await service.handleRequest(
+      buildSignedRequest(peer, "POST", "/api/remote/result", {
+        negotiation_id: "neg-456",
+        decision: "deny",
+        reason: "nope",
+      })
+    );
+
+    expect(res.status).toBe(401);
+  });
+
+  test("result callback rejects missing negotiation_id", async () => {
+    const peer = makeIdentity();
+    upsertRemotePeer({
+      instance_id: peer.instance_id,
+      public_key: peer.public_key,
+      display_name: "peer",
+      status: "paired",
+      mode: "mediated",
+      profile: "full",
+      trust_epoch: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      last_seen_at: null,
+      blocked_reason: null,
+      base_url: TEST_REMOTE_BASE_URL,
+    });
+
+    const res = await service.handleRequest(
+      buildSignedRequest(peer, "POST", "/api/remote/result", {
+        decision: "accept_execute",
+        result: "oops",
+      })
+    );
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toContain("negotiation_id");
   });
 });
