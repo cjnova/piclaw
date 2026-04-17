@@ -727,6 +727,7 @@ function createRemoteBashOps(transport: RemoteTransport): BashOperations {
       const resolvedEnv = await buildInjectedShellEnv({
         explicitEnv: env,
         includeProcessEnv: false,
+        referencedTexts: [command],
       });
       return transport.exec(resolvedCommand, cwd, { onData, signal, timeout, env: resolvedEnv });
     },

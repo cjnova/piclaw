@@ -29,12 +29,13 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 const KEYCHAIN_PREFIX = "keychain:";
-const KEYCHAIN_PLACEHOLDER = /keychain:[A-Za-z0-9._\/-]+(?::[A-Za-z0-9._-]+)?/g;
 const SHELL_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const KDF_ALGO = "pbkdf2-sha256";
 const KDF_ITERATIONS = 150_000;
 const SALT_BYTES = 16;
 const NONCE_BYTES = 12;
+const USERNAME_REF_FIELDS = new Set(["username", "user"]);
+const SECRET_REF_FIELDS = new Set(["secret", "password", "token"]);
 
 const toArrayBuffer = (value: Uint8Array): ArrayBuffer =>
   value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer;
@@ -236,17 +237,66 @@ export function deleteKeychainEntry(name: string): boolean {
 
 function parseKeychainReference(value: string): { name: string; field: "secret" | "username" } {
   const raw = value.slice(KEYCHAIN_PREFIX.length);
-  const [name, field = "secret"] = raw.split(":");
+  if (!raw || raw.startsWith(":")) {
+    throw new Error(`Invalid keychain reference: ${value}`);
+  }
+
+  const lastColon = raw.lastIndexOf(":");
+  if (lastColon < 0) {
+    return { name: raw, field: "secret" };
+  }
+
+  const name = raw.slice(0, lastColon);
+  const field = raw.slice(lastColon + 1);
   if (!name) {
     throw new Error(`Invalid keychain reference: ${value}`);
   }
-  if (field === "username" || field === "user") {
+
+  if (USERNAME_REF_FIELDS.has(field)) {
     return { name, field: "username" };
   }
-  if (field === "secret" || field === "password" || field === "token") {
+  if (SECRET_REF_FIELDS.has(field)) {
     return { name, field: "secret" };
   }
-  throw new Error(`Invalid keychain reference: ${value}`);
+
+  if (!name.includes(":")) {
+    throw new Error(`Invalid keychain reference: ${value}`);
+  }
+
+  return { name: raw, field: "secret" };
+}
+
+function isKeychainReferenceChar(char: string): boolean {
+  return /[A-Za-z0-9._\/:-]/.test(char);
+}
+
+function findKeychainPlaceholders(input: string): string[] {
+  const matches: string[] = [];
+  let cursor = 0;
+
+  while (cursor < input.length) {
+    const start = input.indexOf(KEYCHAIN_PREFIX, cursor);
+    if (start < 0) break;
+
+    let end = start + KEYCHAIN_PREFIX.length;
+    const firstChar = input[end];
+    if (!firstChar || !/[A-Za-z0-9._\/-]/.test(firstChar)) {
+      cursor = end;
+      continue;
+    }
+
+    while (end < input.length) {
+      if (input.startsWith(`:${KEYCHAIN_PREFIX}`, end)) break;
+      const char = input[end];
+      if (!isKeychainReferenceChar(char)) break;
+      end += 1;
+    }
+
+    matches.push(input.slice(start, end));
+    cursor = end;
+  }
+
+  return matches;
 }
 
 export function isInjectableKeychainEnvName(name: string): boolean {
@@ -300,8 +350,30 @@ export function listInjectableKeychainEnvNames(): string[] {
   return listInjectableKeychainEntries().map((entry) => entry.envName);
 }
 
-export async function loadAutoInjectedKeychainEnv(): Promise<Record<string, string>> {
-  const injectable = listInjectableKeychainEntries();
+function collectReferencedShellEnvNames(texts: string[]): Set<string> {
+  const names = new Set<string>();
+  const regexes = [
+    /\$env:([A-Za-z_][A-Za-z0-9_]*)/g,
+    /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g,
+    /\$([A-Za-z_][A-Za-z0-9_]*)/g,
+    /%([A-Za-z_][A-Za-z0-9_]*)%/g,
+  ];
+
+  for (const text of texts) {
+    for (const regex of regexes) {
+      regex.lastIndex = 0;
+      for (const match of text.matchAll(regex)) {
+        const name = match[1];
+        if (name) names.add(name);
+      }
+    }
+  }
+  return names;
+}
+
+export async function loadAutoInjectedKeychainEnv(referencedTexts?: string[]): Promise<Record<string, string>> {
+  const referencedEnvNames = Array.isArray(referencedTexts) ? collectReferencedShellEnvNames(referencedTexts) : null;
+  const injectable = listInjectableKeychainEntries().filter((entry) => referencedEnvNames === null || referencedEnvNames.has(entry.envName));
   const resolved: Record<string, string> = {};
   for (const { envName, keychainName } of injectable) {
     const entry = await getKeychainEntry(keychainName);
@@ -313,11 +385,12 @@ export async function loadAutoInjectedKeychainEnv(): Promise<Record<string, stri
 export async function buildInjectedShellEnv(options: {
   explicitEnv?: Record<string, string | undefined>;
   includeProcessEnv?: boolean;
+  referencedTexts?: string[];
 } = {}): Promise<Record<string, string>> {
   const merged: Record<string, string> = options.includeProcessEnv ? { ...process.env } as Record<string, string> : {};
 
   try {
-    const autoInjected = await loadAutoInjectedKeychainEnv();
+    const autoInjected = await loadAutoInjectedKeychainEnv(options.referencedTexts);
     for (const [key, value] of Object.entries(autoInjected)) {
       if (merged[key] === undefined) merged[key] = value;
     }
@@ -361,7 +434,7 @@ export async function resolveKeychainPlaceholders(input: string): Promise<string
     return input;
   }
 
-  const matches = input.match(KEYCHAIN_PLACEHOLDER);
+  const matches = findKeychainPlaceholders(input);
   if (!matches?.length) {
     return input;
   }
@@ -382,5 +455,9 @@ export async function resolveKeychainPlaceholders(input: string): Promise<string
     }
   }
 
-  return input.replace(KEYCHAIN_PLACEHOLDER, (match) => replacements.get(match) ?? match);
+  let output = input;
+  for (const placeholder of Array.from(replacements.keys()).sort((a, b) => b.length - a.length)) {
+    output = output.replaceAll(placeholder, replacements.get(placeholder) ?? placeholder);
+  }
+  return output;
 }

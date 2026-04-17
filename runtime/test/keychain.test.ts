@@ -149,7 +149,7 @@ test("buildInjectedShellEnv ignores auto-injected keychain env when the database
   );
 });
 
-test("auto-injects env-style keychain entries for shell use", async () => {
+test("auto-injects only referenced env-style keychain entries for shell use", async () => {
   await withKeychainContext(async ({ keychain }) => {
     await keychain.setKeychainEntry({
       name: "STRIPE_KEY",
@@ -166,15 +166,20 @@ test("auto-injects env-style keychain entries for shell use", async () => {
     expect(keychain.isInjectableKeychainEnvName("ssh/prod")).toBe(false);
     expect(keychain.toShellEnvName("ssh/prod")).toBe("SSH_PROD");
     expect(keychain.listInjectableKeychainEnvNames()).toEqual(["STRIPE_KEY", "SSH_PROD"]);
-    await expect(keychain.loadAutoInjectedKeychainEnv()).resolves.toEqual({
+    await expect(keychain.loadAutoInjectedKeychainEnv(["echo $STRIPE_KEY ${SSH_PROD}"])).resolves.toEqual({
       STRIPE_KEY: "stripe-secret",
       SSH_PROD: "PRIVATE_KEY_DATA",
     });
+    await expect(keychain.loadAutoInjectedKeychainEnv(["echo $STRIPE_KEY"])).resolves.toEqual({
+      STRIPE_KEY: "stripe-secret",
+    });
 
-    const env = await keychain.buildInjectedShellEnv({ includeProcessEnv: false });
+    const env = await keychain.buildInjectedShellEnv({
+      includeProcessEnv: false,
+      referencedTexts: ["echo $STRIPE_KEY"],
+    });
     expect(env).toEqual({
       STRIPE_KEY: "stripe-secret",
-      SSH_PROD: "PRIVATE_KEY_DATA",
     });
   });
 });
@@ -197,19 +202,22 @@ test("builds injected POSIX and PowerShell exec commands and redacts secret valu
     expect(wrapped.command).toBe("sh");
     expect(wrapped.commandArgs).toHaveLength(2);
     expect(wrapped.commandArgs[0]).toBe("-lc");
-    expect(wrapped.commandArgs[1]).toContain("STRIPE_KEY='stripe-secret' exec 'echo' '$STRIPE_KEY' 'stripe-secret'");
+    expect(wrapped.commandArgs[1]).toBe("exec 'echo' '$STRIPE_KEY' 'stripe-secret'");
+    expect(wrapped.env).toEqual({ STRIPE_KEY: "stripe-secret" });
 
     const wrappedWithQuote = await shellSecrets.buildInjectedPosixCommand("printf", ["%s", "keychain:QUOTE_KEY"]);
+    expect(wrappedWithQuote.env).toEqual({});
 
     const wrappedPowerShell = await shellSecrets.buildInjectedPowerShellCommand("Write-Output", ["$env:STRIPE_KEY", "keychain:STRIPE_KEY"]);
     expect(wrappedPowerShell.command).toBe("powershell");
     expect(wrappedPowerShell.commandArgs).toHaveLength(3);
     expect(wrappedPowerShell.commandArgs[0]).toBe("-NoProfile");
     expect(wrappedPowerShell.commandArgs[1]).toBe("-Command");
-    expect(wrappedPowerShell.commandArgs[2]).toContain("$env:STRIPE_KEY = 'stripe-secret'");
     expect(wrappedPowerShell.commandArgs[2]).toContain("& 'Write-Output' '$env:STRIPE_KEY' 'stripe-secret'");
+    expect(wrappedPowerShell.env).toEqual({ STRIPE_KEY: "stripe-secret" });
 
     const proc = Bun.spawn([wrapped.command, ...wrapped.commandArgs], {
+      env: { ...process.env, ...wrapped.env },
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -223,6 +231,7 @@ test("builds injected POSIX and PowerShell exec commands and redacts secret valu
     expect(stdout.trim()).toBe("$STRIPE_KEY stripe-secret");
 
     const procQuoted = Bun.spawn([wrappedWithQuote.command, ...wrappedWithQuote.commandArgs], {
+      env: { ...process.env, ...wrappedWithQuote.env },
       stdout: "pipe",
       stderr: "pipe",
     });
@@ -271,6 +280,38 @@ test("resolves keychain env references and inline placeholders", async () => {
       "curl -u api-user:api-secret https://example.test/?token=api-secret&again=api-secret"
     );
     expect(await keychain.resolveKeychainPlaceholders("plain text")).toBe("plain text");
+  });
+});
+
+test("resolves keychain references whose entry names contain colons", async () => {
+  await withKeychainContext(async ({ keychain }) => {
+    await keychain.setKeychainEntry({
+      name: "service:api",
+      type: "basic",
+      secret: "api-secret",
+      username: "api-user",
+    });
+    await keychain.setKeychainEntry({
+      name: "service:api:staging",
+      type: "secret",
+      secret: "staging-secret",
+    });
+
+    const env = await keychain.resolveKeychainEnv({
+      TOKEN: "keychain:service:api:token",
+      USERNAME: "keychain:service:api:username",
+      STAGING: "keychain:service:api:staging",
+    });
+    expect(env).toEqual({
+      TOKEN: "api-secret",
+      USERNAME: "api-user",
+      STAGING: "staging-secret",
+    });
+
+    const placeholderText = await keychain.resolveKeychainPlaceholders(
+      "curl -u keychain:service:api:username:keychain:service:api:token keychain:service:api:staging"
+    );
+    expect(placeholderText).toBe("curl -u api-user:api-secret staging-secret");
   });
 });
 

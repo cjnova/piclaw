@@ -122,8 +122,9 @@ test("guest agent exec injects env-style keychain entries and redacts output", a
     expect(seenExecBody?.getAll("command")).toEqual([
       "sh",
       "-lc",
-      expect.stringContaining("STRIPE_KEY='stripe-secret'"),
+      `exec 'sh' '-lc' 'printf %s "$STRIPE_KEY"'`,
     ]);
+    expect(seenExecBody?.getAll("env")).toEqual(["STRIPE_KEY=stripe-secret"]);
   });
 });
 
@@ -173,8 +174,9 @@ test("guest agent exec supports PowerShell wrappers", async () => {
       "powershell",
       "-NoProfile",
       "-Command",
-      expect.stringContaining("$env:STRIPE_KEY = 'stripe-secret'"),
+      "$ErrorActionPreference = 'Stop'; & 'Write-Output' '$env:STRIPE_KEY'; if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }",
     ]);
+    expect(seenExecBody?.getAll("env")).toEqual(["STRIPE_KEY=stripe-secret"]);
   });
 });
 

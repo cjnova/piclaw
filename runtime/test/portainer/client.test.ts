@@ -92,7 +92,8 @@ test("container exec injects env-style keychain entries and redacts output", asy
 
     expect(seenExecBody?.Cmd?.[0]).toBe("sh");
     expect(seenExecBody?.Cmd?.[1]).toBe("-lc");
-    expect(seenExecBody?.Cmd?.[2]).toContain("STRIPE_KEY='stripe-secret'");
+    expect(seenExecBody?.Cmd?.[2]).toBe(`exec 'sh' '-lc' 'printf %s "$STRIPE_KEY"'`);
+    expect(seenExecBody?.Env).toEqual(["STRIPE_KEY=stripe-secret"]);
   });
 });
 
@@ -189,7 +190,10 @@ test("container exec supports PowerShell wrappers", async () => {
     expect(seenExecBody?.Cmd?.[0]).toBe("powershell");
     expect(seenExecBody?.Cmd?.[1]).toBe("-NoProfile");
     expect(seenExecBody?.Cmd?.[2]).toBe("-Command");
-    expect(seenExecBody?.Cmd?.[3]).toContain("$env:STRIPE_KEY = 'stripe-secret'");
+    expect(seenExecBody?.Cmd?.[3]).toBe(
+      "$ErrorActionPreference = 'Stop'; & 'Write-Output' '$env:STRIPE_KEY'; if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }",
+    );
+    expect(seenExecBody?.Env).toEqual(["STRIPE_KEY=stripe-secret"]);
   });
 });
 

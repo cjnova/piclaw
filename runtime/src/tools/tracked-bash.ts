@@ -110,6 +110,7 @@ function createTrackedShellOperations(resolveCandidates: () => ShellConfig[]): B
             resolvedEnv = await buildInjectedShellEnv({
               explicitEnv: env,
               includeProcessEnv: true,
+              referencedTexts: [command],
             });
             resolvedCommand = await resolveKeychainPlaceholders(command);
             const outputRedactor = await createKeychainOutputRedactor();

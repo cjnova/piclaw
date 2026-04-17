@@ -160,34 +160,38 @@ export async function redactKeychainSecretsInValue(value: unknown): Promise<unkn
 async function resolveInjectedExecParts(command: string, args: string[]): Promise<{ resolvedCommand: string; resolvedArgs: string[]; injectedEnv: Record<string, string> }> {
   const resolvedCommand = await resolveKeychainPlaceholders(command);
   const resolvedArgs = await Promise.all(args.map((value) => resolveKeychainPlaceholders(value)));
-  const injectedEnv = await buildInjectedShellEnv({ includeProcessEnv: false });
+  const injectedEnv = await buildInjectedShellEnv({
+    includeProcessEnv: false,
+    referencedTexts: [command, ...args],
+  });
   return { resolvedCommand, resolvedArgs, injectedEnv };
 }
 
-export async function buildInjectedExecCommand(shellFamily: InjectedShellFamily, command: string, args: string[] = []): Promise<{ command: string; commandArgs: string[] }> {
+export async function buildInjectedExecCommand(
+  shellFamily: InjectedShellFamily,
+  command: string,
+  args: string[] = [],
+): Promise<{ command: string; commandArgs: string[]; env: Record<string, string> }> {
   const { resolvedCommand, resolvedArgs, injectedEnv } = await resolveInjectedExecParts(command, args);
-  const envEntries = Object.entries(injectedEnv);
 
   if (shellFamily === "powershell") {
     const lines = [
       "$ErrorActionPreference = 'Stop'",
-      ...envEntries.map(([key, value]) => `$env:${key} = ${powerShellQuote(value)}`),
       `& ${[resolvedCommand, ...resolvedArgs].map(powerShellQuote).join(" ")}`,
       "if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }",
     ];
     return {
       command: "powershell",
       commandArgs: ["-NoProfile", "-Command", lines.join("; ")],
+      env: injectedEnv,
     };
   }
 
   const execCommand = `exec ${[resolvedCommand, ...resolvedArgs].map(shellQuote).join(" ")}`;
-  const shellCommand = envEntries.length > 0
-    ? `${envEntries.map(([key, value]) => `${key}=${shellQuote(value)}`).join(" ")} ${execCommand}`
-    : execCommand;
   return {
     command: "sh",
-    commandArgs: ["-lc", shellCommand],
+    commandArgs: ["-lc", execCommand],
+    env: injectedEnv,
   };
 }
 
