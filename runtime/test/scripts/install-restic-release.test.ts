@@ -1,9 +1,11 @@
 import { expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 
-const SCRIPT_PATH = "/workspace/.tmp/piclaw-ops-02/scripts/docker/install-restic-release.sh";
+const SCRIPT_PATH = resolve(import.meta.dir, "../../..", "scripts", "docker", "install-restic-release.sh");
+const REPO_ROOT = resolve(import.meta.dir, "../../..");
+const TEST_SHELL = process.env.SHELL || "bash";
 
 test("install-restic-release cleans up its temp dir when curl fails", () => {
   const root = mkdtempSync(join(tmpdir(), "piclaw-restic-install-"));
@@ -21,8 +23,9 @@ test("install-restic-release cleans up its temp dir when curl fails", () => {
       { mode: 0o755 },
     );
 
-    const run = Bun.spawnSync(["bash", SCRIPT_PATH], {
-      cwd: "/workspace/.tmp/piclaw-ops-02",
+    const run = Bun.spawnSync({
+      cmd: [TEST_SHELL, SCRIPT_PATH],
+      cwd: REPO_ROOT,
       stdout: "pipe",
       stderr: "pipe",
       env: {

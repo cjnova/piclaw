@@ -8,6 +8,7 @@ ARG HOMEBREW_BREW_GIT_REMOTES=""
 ARG HOMEBREW_CORE_GIT_REMOTES=""
 ARG PI_CODING_AGENT_VERSION=""
 ARG BUN_VERSION=""
+ARG TAILSCALE_VERSION="1.96.4"
 # Keep x64 builds portable even on hosts without AVX2.
 ARG BUN_PREFER_BASELINE="always"
 
@@ -111,7 +112,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
 WORKDIR /tmp
 
 # Runtime-only system packages. Keep the operator toolbox, but drop the build toolchain.
-RUN apt-get update && \
+RUN set -eux; \
+    apt-get update && \
     apt-get install -y --no-install-recommends tzdata && \
     apt-get install -y --no-install-recommends \
     ca-certificates curl wget unzip bzip2 \
@@ -120,7 +122,25 @@ RUN apt-get update && \
     net-tools iproute2 dnsutils \
     rsync file strace make \
     procps psmisc supervisor sqlite3 openssh-client sshfs fuse3 && \
-    curl -fsSL https://tailscale.com/install.sh | sh && \
+    case "${TARGETARCH}" in \
+      amd64) tailscale_arch='amd64' ;; \
+      arm64) tailscale_arch='arm64' ;; \
+      arm) tailscale_arch='arm' ;; \
+      386) tailscale_arch='386' ;; \
+      *) echo "Unsupported Tailscale architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac && \
+    tailscale_pkg="tailscale_${TAILSCALE_VERSION}_${tailscale_arch}.tgz" && \
+    tailscale_url="https://pkgs.tailscale.com/stable/${tailscale_pkg}" && \
+    tailscale_tmp="$(mktemp -d)" && \
+    trap 'rm -rf "$tailscale_tmp"' EXIT && \
+    curl -fsSL "$tailscale_url" -o "$tailscale_tmp/tailscale.tgz" && \
+    curl -fsSL "${tailscale_url}.sha256" -o "$tailscale_tmp/tailscale.tgz.sha256" && \
+    printf '%s  %s\n' "$(cat "$tailscale_tmp/tailscale.tgz.sha256")" "$tailscale_tmp/tailscale.tgz" | sha256sum -c - && \
+    tar -xzf "$tailscale_tmp/tailscale.tgz" -C "$tailscale_tmp" && \
+    install -m 0755 "$tailscale_tmp/tailscale_${TAILSCALE_VERSION}_${tailscale_arch}/tailscale" /usr/local/bin/tailscale && \
+    install -m 0755 "$tailscale_tmp/tailscale_${TAILSCALE_VERSION}_${tailscale_arch}/tailscaled" /usr/local/bin/tailscaled && \
+    rm -rf "$tailscale_tmp" && \
+    trap - EXIT && \
     mkdir -p /etc/supervisor/conf.d /var/log/supervisor /var/log/piclaw /var/run/supervisor /etc/skel.agent && \
     apt-get autoremove -y && apt-get clean && rm -rf /var/lib/apt/lists/*
 
