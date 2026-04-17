@@ -135,7 +135,9 @@ export async function handleProposal(req: Request, context: RemoteOperationHandl
   logAudit(peer, "/api/remote/proposal", "queued", "human_required");
 
   const peerLabel = peer.display_name ?? `\`${peer.instance_id.slice(0, 6)}-${peer.instance_id.slice(6, 12)}-${peer.instance_id.slice(12, 18)}\``;
-  context.notify?.(`**Incoming request from ${peerLabel}:** ${prompt}`);
+  context.notify?.(
+    `**Incoming request from ${peerLabel}:** ${prompt}\n\nProposal ID: \`${requestId}\`. Run \`/pair inbox\` to review.`
+  );
 
   return jsonResponse({
     decision: "human_required",
