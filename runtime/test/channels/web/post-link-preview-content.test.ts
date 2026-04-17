@@ -8,7 +8,7 @@
 
 import { expect, test } from "bun:test";
 import "../../helpers.js";
-import { getDisplayContent } from "../../../web/src/components/post.ts";
+import { buildLinkPreviewBackgroundStyle, getDisplayContent } from "../../../web/src/components/post.ts";
 
 test("getDisplayContent keeps URL text when previews are present", () => {
   const content = "Check this out: https://example.com/article";
@@ -32,4 +32,20 @@ test("getDisplayContent preserves exact formatting (no trim/removal)", () => {
 test("getDisplayContent returns empty string for non-string content", () => {
   expect(getDisplayContent(null as any, [])).toBe("");
   expect(getDisplayContent(undefined as any, [])).toBe("");
+});
+
+test("buildLinkPreviewBackgroundStyle keeps image URLs confined to backgroundImage", () => {
+  const style = buildLinkPreviewBackgroundStyle("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'></svg>');color:red;/*");
+
+  expect(style).toEqual({
+    backgroundImage: `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'></svg>');color:red;/*")`,
+  });
+
+  if (typeof document !== "undefined") {
+    const node = document.createElement("a");
+    for (const [name, value] of Object.entries(style || {})) {
+      (node.style as any)[name] = value;
+    }
+    expect(node.style.color).toBe("");
+  }
 });

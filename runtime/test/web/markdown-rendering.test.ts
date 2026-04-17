@@ -1,7 +1,9 @@
 import { afterEach, expect, test } from 'bun:test';
 
 const PreviousDOMParser = globalThis.DOMParser;
-
+const PreviousNodeFilter = globalThis.NodeFilter;
+const PreviousWindow = globalThis.window;
+const PreviousMarked = globalThis.marked;
 function decodeEntities(value: string) {
   return String(value || '')
     .replace(/&lt;/g, '<')
@@ -17,7 +19,92 @@ afterEach(() => {
   } else {
     globalThis.DOMParser = PreviousDOMParser;
   }
+  if (PreviousNodeFilter === undefined) {
+    delete globalThis.NodeFilter;
+  } else {
+    globalThis.NodeFilter = PreviousNodeFilter;
+  }
+  if (PreviousWindow === undefined) {
+    delete globalThis.window;
+  } else {
+    globalThis.window = PreviousWindow;
+  }
+  if (PreviousMarked === undefined) {
+    delete globalThis.marked;
+  } else {
+    globalThis.marked = PreviousMarked;
+  }
 });
+
+function installSimpleHtmlDomParser() {
+  globalThis.NodeFilter = { SHOW_ELEMENT: 1, SHOW_TEXT: 4 } as any;
+  globalThis.DOMParser = class {
+    parseFromString(input: string) {
+      const html = String(input || '');
+      const match = html.match(/^<([a-z0-9]+)([^>]*)>([\s\S]*)<\/\1>$/i);
+      const textContent = decodeEntities(html.replace(/<[^>]+>/g, ''));
+      const body: any = {};
+
+      if (!match) {
+        body.innerHTML = html;
+        return {
+          body,
+          documentElement: { textContent },
+          createTreeWalker: (_root: unknown, whatToShow: number) => ({
+            nextNode: () => null,
+          }),
+        } as any;
+      }
+
+      const [, rawTag = '', rawAttrs = '', rawText = ''] = match;
+      const attrs = Array.from(rawAttrs.matchAll(/([a-zA-Z_:][\w:.-]*)="([^"]*)"/g)).map((entry) => ({
+        name: entry[1] || '',
+        value: entry[2] || '',
+      }));
+      const el: any = {
+        tagName: rawTag.toUpperCase(),
+        attributes: attrs,
+        getAttribute(name: string) {
+          const attr = this.attributes.find((entry: any) => entry.name === name);
+          return attr ? attr.value : null;
+        },
+        setAttribute(name: string, value: string) {
+          const attr = this.attributes.find((entry: any) => entry.name === name);
+          if (attr) {
+            attr.value = value;
+          } else {
+            this.attributes.push({ name, value });
+          }
+        },
+        removeAttribute(name: string) {
+          this.attributes = this.attributes.filter((entry: any) => entry.name !== name);
+        },
+      };
+
+      Object.defineProperty(body, 'innerHTML', {
+        get() {
+          const attrText = el.attributes.map((entry: any) => ` ${entry.name}="${entry.value}"`).join('');
+          return `<${rawTag.toLowerCase()}${attrText}>${rawText}</${rawTag.toLowerCase()}>`;
+        },
+      });
+
+      return {
+        body,
+        documentElement: { textContent },
+        createTreeWalker: (_root: unknown, whatToShow: number) => {
+          let used = false;
+          return {
+            nextNode: () => {
+              if (used) return null;
+              used = true;
+              return whatToShow === globalThis.NodeFilter.SHOW_ELEMENT ? el : null;
+            },
+          };
+        },
+      } as any;
+    }
+  } as any;
+}
 
 test('prepareMarkdownSource preserves blockquote markers while escaping raw tags', async () => {
   globalThis.DOMParser = class {
@@ -114,4 +201,30 @@ test('applySyntaxHighlighting falls back to escaped plaintext for unsupported la
   expect(highlighted).toContain('&lt;tag&gt;');
   expect(highlighted).not.toContain('tok-keyword');
   expect(highlighted).not.toContain('<span class="tok-');
+});
+
+test('isSanitizedHtmlAttributeAllowed rejects inline style while preserving safe attrs', async () => {
+  const { isSanitizedHtmlAttributeAllowed } = await import('../../web/src/markdown.ts');
+
+  expect(isSanitizedHtmlAttributeAllowed('span', 'style')).toBe(false);
+  expect(isSanitizedHtmlAttributeAllowed('span', 'title')).toBe(true);
+  expect(isSanitizedHtmlAttributeAllowed('a', 'href')).toBe(true);
+  expect(isSanitizedHtmlAttributeAllowed('img', 'src')).toBe(true);
+  expect(isSanitizedHtmlAttributeAllowed('span', 'aria-label')).toBe(true);
+  expect(isSanitizedHtmlAttributeAllowed('span', 'onclick')).toBe(false);
+});
+
+test('renderMarkdown honors sanitize: false for trusted surfaces', async () => {
+  installSimpleHtmlDomParser();
+  globalThis.window = {
+    marked: {
+      parse: () => '<a href="javascript:alert(1)">trusted</a>',
+    },
+  } as any;
+  globalThis.marked = globalThis.window.marked;
+
+  const { renderMarkdown } = await import('../../web/src/markdown.ts');
+
+  expect(renderMarkdown('trusted', null)).toBe('<a>trusted</a>');
+  expect(renderMarkdown('trusted', null, { sanitize: false })).toBe('<a href="javascript:alert(1)">trusted</a>');
 });

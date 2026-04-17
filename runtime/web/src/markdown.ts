@@ -99,7 +99,6 @@ const SAFE_TAGS = new Set([
 
 const GLOBAL_ALLOWED_ATTRS = new Set([
     'class',
-    'style',
     'title',
     'role',
     'aria-hidden',
@@ -117,6 +116,17 @@ const TAG_ALLOWED_ATTRS = {
 };
 
 const SAFE_PROTOCOLS = new Set(['http:', 'https:', 'mailto:', '']);
+
+export function isSanitizedHtmlAttributeAllowed(tagName, attrName) {
+    const normalizedTag = String(tagName || '').toLowerCase();
+    const normalizedAttr = String(attrName || '').toLowerCase();
+    if (!normalizedAttr || normalizedAttr.startsWith('on')) return false;
+    if (normalizedAttr.startsWith('data-') || normalizedAttr.startsWith('aria-')) {
+        return true;
+    }
+    const allowedAttrs = TAG_ALLOWED_ATTRS[normalizedTag] || new Set();
+    return allowedAttrs.has(normalizedAttr) || GLOBAL_ALLOWED_ATTRS.has(normalizedAttr);
+}
 
 function escapeHtmlAttr(value) {
     return String(value || '')
@@ -154,6 +164,7 @@ export function sanitizeUrl(url, options = {}) {
 
 function sanitizeHtml(html, options = {}) {
     if (!html) return '';
+    if (options?.sanitize === false) return html;
     const doc = new DOMParser().parseFromString(html, 'text/html');
     const nodes = [];
     const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_ELEMENT);
@@ -182,10 +193,7 @@ function sanitizeHtml(html, options = {}) {
                 el.removeAttribute(attr.name);
                 continue;
             }
-            if (name.startsWith('data-') || name.startsWith('aria-')) {
-                continue;
-            }
-            if (allowedAttrs.has(name) || GLOBAL_ALLOWED_ATTRS.has(name)) {
+            if (isSanitizedHtmlAttributeAllowed(tag, name)) {
                 if (name === 'href') {
                     const safe = sanitizeUrl(value);
                     if (!safe) {

@@ -293,18 +293,22 @@ function getMimeIcon(mimeType) {
 /**
  * Link preview component - card with image background
  */
+export function buildLinkPreviewBackgroundStyle(imageUrl) {
+    const safeImage = sanitizeUrl(imageUrl, { allowDataImage: true });
+    return safeImage
+        ? { backgroundImage: `url("${safeImage}")` }
+        : undefined;
+}
+
 function LinkPreview({ preview }) {
     const safeUrl = sanitizeUrl(preview.url);
-    const safeImage = sanitizeUrl(preview.image, { allowDataImage: true });
-    const bgStyle = safeImage
-        ? `background-image: url('${safeImage}')`
-        : '';
+    const bgStyle = buildLinkPreviewBackgroundStyle(preview.image);
     const siteName = resolveLinkPreviewSiteName(preview.site_name, safeUrl);
 
     return html`
         <a
             href=${safeUrl || '#'}
-            class="link-preview ${safeImage ? 'has-image' : ''}"
+            class="link-preview ${bgStyle ? 'has-image' : ''}"
             target=${safeUrl ? "_blank" : undefined}
             rel=${safeUrl ? "noopener noreferrer" : undefined}
             onClick=${(e) => e.stopPropagation()}
