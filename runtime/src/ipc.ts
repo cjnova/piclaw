@@ -67,6 +67,8 @@ export interface IpcDeps {
 /** Guard to prevent starting the watcher more than once. */
 let running = false;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let activePoll: Promise<void> | null = null;
+let activePollController: AbortController | null = null;
 
 type IpcScheduleType = "cron" | "interval" | "once";
 type JsonRecord = Record<string, unknown>;
@@ -83,7 +85,23 @@ function getStringField(data: JsonRecord, key: string): string | undefined {
 
 function getFiniteNumberField(data: JsonRecord, key: string): number | undefined {
   const value = data[key];
-  return Number.isFinite(value) ? Number(value) : undefined;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) return undefined;
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function getStringOrFiniteNumberField(data: JsonRecord, key: string): string | undefined {
+  const stringValue = getStringField(data, key);
+  if (typeof stringValue === "string") return stringValue;
+
+  const numericValue = getFiniteNumberField(data, key);
+  if (numericValue !== undefined) return String(numericValue);
+  return undefined;
 }
 
 function getBooleanField(data: JsonRecord, key: string): boolean | undefined {
@@ -186,11 +204,13 @@ async function processIpcDir(
   dirPath: string,
   ipcDir: string,
   kind: "message" | "task",
-  handler: (data: JsonRecord) => Promise<void>
+  handler: (data: JsonRecord) => Promise<void>,
+  signal?: AbortSignal
 ): Promise<void> {
   if (!existsSync(dirPath)) return;
 
   for (const file of readdirSync(dirPath).filter((f) => f.endsWith(".json"))) {
+    if (signal?.aborted) return;
     const fp = join(dirPath, file);
     try {
       const parsed = JSON.parse(readFileSync(fp, "utf-8"));
@@ -250,7 +270,7 @@ function computeScheduledNextRun(
  *
  * Called once by runtime.ts during application startup.
  */
-export function startIpcWatcher(deps: IpcDeps): () => void {
+export function startIpcWatcher(deps: IpcDeps): () => Promise<void> {
   if (running) return stopIpcWatcher;
   running = true;
 
@@ -261,9 +281,12 @@ export function startIpcWatcher(deps: IpcDeps): () => void {
   mkdirSync(messagesDir, { recursive: true });
 
   const poll = async () => {
+    activePollController = new AbortController();
+    const { signal } = activePollController;
+
     // --- Process outbound message files ---
     try {
-      await processIpcDir(messagesDir, ipcDir, "message", (data) => processMessageCommand(data, deps));
+      await processIpcDir(messagesDir, ipcDir, "message", (data) => processMessageCommand(data, deps), signal);
     } catch (e) {
       log.error("Failed to read IPC messages directory", {
         operation: "start_ipc_watcher.poll_messages",
@@ -273,7 +296,7 @@ export function startIpcWatcher(deps: IpcDeps): () => void {
 
     // --- Process task command files ---
     try {
-      await processIpcDir(tasksDir, ipcDir, "task", (data) => processTaskCommand(data, deps));
+      await processIpcDir(tasksDir, ipcDir, "task", (data) => processTaskCommand(data, deps), signal);
     } catch (e) {
       log.error("Failed to read IPC tasks directory", {
         operation: "start_ipc_watcher.poll_tasks",
@@ -282,21 +305,31 @@ export function startIpcWatcher(deps: IpcDeps): () => void {
     }
 
     if (!running) return;
-    pollTimer = setTimeout(poll, getRuntimeTimingConfig().ipcPollIntervalMs);
+    pollTimer = setTimeout(() => {
+      activePoll = poll().finally(() => {
+        activePoll = null;
+        activePollController = null;
+      });
+    }, getRuntimeTimingConfig().ipcPollIntervalMs);
   };
 
-  poll();
+  activePoll = poll().finally(() => {
+    activePoll = null;
+    activePollController = null;
+  });
   log.info("IPC watcher started", { operation: "start_ipc_watcher" });
   return stopIpcWatcher;
 }
 
 /** Stop the active IPC watcher and clear associated runtime state. */
-export function stopIpcWatcher(): void {
+export async function stopIpcWatcher(): Promise<void> {
   running = false;
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;
   }
+  activePollController?.abort();
+  if (activePoll) await activePoll;
 }
 
 /**
@@ -307,7 +340,9 @@ export async function processMessageCommand(data: JsonRecord, deps: IpcDeps): Pr
   const chatJid = resolveIpcChatJid(data);
   const text = getStringField(data, "text") || "";
 
-  if (type !== "message") return;
+  if (type !== "message") {
+    throw new Error(`Unsupported IPC message type: ${type || "missing"}`);
+  }
 
   const media = getArrayField(data, "media") || [];
   const { mediaIds, contentBlocks, warnings } = await buildMediaPayloadFromIpcEntries(media);
@@ -341,7 +376,7 @@ export async function processTaskCommand(data: JsonRecord, deps: IpcDeps): Promi
     // --- Create a new scheduled task ---
     case "schedule_task": {
       const scheduleTypeValue = getStringField(data, "schedule_type");
-      const scheduleValue = getStringField(data, "schedule_value");
+      const scheduleValue = getStringOrFiniteNumberField(data, "schedule_value");
       const chatJid = resolveIpcChatJid(data);
       if (!scheduleTypeValue || !scheduleValue || !isScheduleType(scheduleTypeValue)) return;
 
@@ -467,10 +502,14 @@ export async function processTaskCommand(data: JsonRecord, deps: IpcDeps): Promi
 
       const scheduleType = getStringField(data, "schedule_type");
       if (typeof scheduleType === "string") {
+        if (!isScheduleType(scheduleType)) {
+          if (chatJid) await deps.sendMessage(chatJid, `Cannot update task: invalid schedule_type "${scheduleType}".`);
+          return;
+        }
         updates.schedule_type = scheduleType as ScheduledTask["schedule_type"];
       }
 
-      const scheduleValue = getStringField(data, "schedule_value");
+      const scheduleValue = getStringOrFiniteNumberField(data, "schedule_value");
       if (typeof scheduleValue === "string") updates.schedule_value = scheduleValue;
 
       const taskKind = getStringField(data, "task_kind");
@@ -561,7 +600,17 @@ export async function processTaskCommand(data: JsonRecord, deps: IpcDeps): Promi
       const result = db.prepare("DELETE FROM scheduled_tasks WHERE status = 'completed'").run();
       const countValue = (result as { changes?: unknown }).changes;
       const count = typeof countValue === "number" ? countValue : 0;
-      if (chatJid) await deps.sendMessage(chatJid, `Cleaned up ${count} completed task(s).`);
+      if (chatJid) {
+        try {
+          await deps.sendMessage(chatJid, `Cleaned up ${count} completed task(s).`);
+        } catch (error) {
+          debugSuppressedError(log, "Cleanup completed but IPC cleanup notification failed to send.", error, {
+            operation: "process_task_command.cleanup_tasks.send_message",
+            chatJid,
+            deletedCount: count,
+          });
+        }
+      }
       break;
     }
 
@@ -595,5 +644,8 @@ export async function processTaskCommand(data: JsonRecord, deps: IpcDeps): Promi
       }
       break;
     }
+
+    default:
+      throw new Error(`Unsupported IPC task type: ${commandType || "missing"}`);
   }
 }

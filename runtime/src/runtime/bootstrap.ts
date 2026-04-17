@@ -110,7 +110,7 @@ export interface RuntimeBootstrapDeps {
   queueStartupResumePendingIpc(): void;
   startRuntimeLoop(deps: StartRuntimeLoopDeps): Promise<void>;
   log(message: string): void;
-  stopIpcWatcher(): void;
+  stopIpcWatcher(): Promise<void>;
   stopSchedulerLoop(): void;
 }
 

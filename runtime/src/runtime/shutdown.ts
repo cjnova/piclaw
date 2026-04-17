@@ -13,7 +13,7 @@ export type ShutdownDeps = {
   whatsapp: { disconnect: () => Promise<unknown> };
   web: { stop: () => Promise<unknown> };
   pushover?: { stop: () => Promise<unknown> } | null;
-  stopIpcWatcher: () => void;
+  stopIpcWatcher: () => Promise<void>;
   stopSchedulerLoop: () => void;
 };
 
@@ -56,7 +56,7 @@ export function createShutdownHandler(deps: ShutdownDeps): (signal: string) => P
       process.exit(0);
     }, 15000);
 
-    deps.stopIpcWatcher();
+    await withTimeout(deps.stopIpcWatcher(), 4000, "ipc watcher stop");
     deps.stopSchedulerLoop();
     await withTimeout(deps.queue.shutdown(5000), 7000, "queue shutdown");
     await withTimeout(deps.agentPool.shutdown(), 8000, "agent pool shutdown");
