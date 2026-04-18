@@ -145,12 +145,13 @@ export function watchChatSwitchShortcuts(callbacks: ChatSwitchShortcutCallbacks,
   const onKeyDown = (event: { ctrlKey?: boolean; shiftKey?: boolean; metaKey?: boolean; altKey?: boolean; key?: string; preventDefault?: () => void; target?: unknown }) => {
     if (isEditableKeyboardTarget(event?.target)) return;
     if (!event?.ctrlKey || !event?.shiftKey || event?.metaKey || event?.altKey) return;
-    if (event.key === '[') {
+    // Shift+[ = '{' and Shift+] = '}' on macOS; also accept the unshifted forms
+    if (event.key === '[' || event.key === '{') {
       event.preventDefault?.();
       callbacks?.previousChat?.();
       return;
     }
-    if (event.key === ']') {
+    if (event.key === ']' || event.key === '}') {
       event.preventDefault?.();
       callbacks?.nextChat?.();
     }

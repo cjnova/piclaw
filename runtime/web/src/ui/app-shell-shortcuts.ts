@@ -51,7 +51,6 @@ export function useAppShellShortcuts(options: {
   }, [chatOnlyMode, exitZenMode, toggleZenMode, zenMode]);
 
   useEffect(() => {
-    if (!isLikelySafariBrowser()) return;
     if (typeof previousChat !== 'function' && typeof nextChat !== 'function') return;
     return watchChatSwitchShortcuts({
       previousChat,
