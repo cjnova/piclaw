@@ -8,13 +8,28 @@ import {
   shouldTriggerTouchChatSwipe,
 } from '../../web/src/ui/chat-swipe-navigation.js';
 
-test('resolveSwipeableChatAgents includes all non-archived agents regardless of is_active', () => {
-  expect(resolveSwipeableChatAgents([
+test('resolveSwipeableChatAgents uses a stable sort independent of currentChatJid', () => {
+  const candidates = [
     { chat_jid: 'web:current', is_active: false },
     { chat_jid: 'web:a', is_active: true },
     { chat_jid: 'web:b', is_active: false },
     { chat_jid: 'web:c', archived_at: '2026-01-01' },
-  ], 'web:current')).toEqual(['web:current', 'web:a', 'web:b']);
+  ];
+  // Active agents first, then inactive, both alpha-sorted; same regardless of which is current
+  expect(resolveSwipeableChatAgents(candidates, 'web:current')).toEqual(['web:a', 'web:b', 'web:current']);
+  expect(resolveSwipeableChatAgents(candidates, 'web:a')).toEqual(['web:a', 'web:b', 'web:current']);
+});
+
+test('resolveSwipeableChatAgents loops consistently as a carousel', () => {
+  const candidates = [
+    { chat_jid: 'web:a', is_active: true },
+    { chat_jid: 'web:b', is_active: true },
+    { chat_jid: 'web:c', is_active: true },
+  ];
+  // Order stays [a, b, c] regardless of which is current
+  expect(resolveSwipeableChatAgents(candidates, 'web:a')).toEqual(['web:a', 'web:b', 'web:c']);
+  expect(resolveSwipeableChatAgents(candidates, 'web:b')).toEqual(['web:a', 'web:b', 'web:c']);
+  expect(resolveSwipeableChatAgents(candidates, 'web:c')).toEqual(['web:a', 'web:b', 'web:c']);
 });
 
 test('resolveSwipeNeighbours returns agent names for prev and next', () => {
@@ -30,16 +45,18 @@ test('resolveSwipeNeighbours returns agent names for prev and next', () => {
   expect(result.next?.name).toBe('Gamma');
 });
 
-test('resolveAdjacentSwipeChatJid cycles through active chats', () => {
+test('resolveAdjacentSwipeChatJid loops like a carousel (wraps at both ends)', () => {
   const candidates = [
-    { chat_jid: 'web:current', is_active: true },
     { chat_jid: 'web:a', is_active: true },
     { chat_jid: 'web:b', is_active: true },
+    { chat_jid: 'web:c', is_active: true },
   ];
-
-  expect(resolveAdjacentSwipeChatJid({ candidates, currentChatJid: 'web:current', direction: 'next' })).toBe('web:a');
-  expect(resolveAdjacentSwipeChatJid({ candidates, currentChatJid: 'web:current', direction: 'prev' })).toBe('web:b');
-  expect(resolveAdjacentSwipeChatJid({ candidates, currentChatJid: 'web:b', direction: 'next' })).toBe('web:current');
+  // Stable order: a, b, c
+  expect(resolveAdjacentSwipeChatJid({ candidates, currentChatJid: 'web:a', direction: 'next' })).toBe('web:b');
+  expect(resolveAdjacentSwipeChatJid({ candidates, currentChatJid: 'web:b', direction: 'next' })).toBe('web:c');
+  expect(resolveAdjacentSwipeChatJid({ candidates, currentChatJid: 'web:c', direction: 'next' })).toBe('web:a'); // wraps
+  expect(resolveAdjacentSwipeChatJid({ candidates, currentChatJid: 'web:a', direction: 'prev' })).toBe('web:c'); // wraps
+  expect(resolveAdjacentSwipeChatJid({ candidates, currentChatJid: 'web:b', direction: 'prev' })).toBe('web:a');
 });
 
 test('shouldTriggerTouchChatSwipe requires a fast, mostly-horizontal gesture', () => {
@@ -56,7 +73,6 @@ test('isEligibleChatSwipeTarget ignores compose and interactive controls', () =>
   const blockedTarget = {
     closest: (selector: string) => {
       if (selector.includes('.compose-box')) {
-        // Return an element that is NOT inside a passthrough container
         return { closest: (_s: string) => null } as unknown as Element;
       }
       return null;
@@ -68,7 +84,6 @@ test('isEligibleChatSwipeTarget ignores compose and interactive controls', () =>
 });
 
 test('isEligibleChatSwipeTarget allows swipe on agent-thinking buttons', () => {
-  // Simulates a button inside .agent-thinking (draft/thought/intent panel)
   const thinkingButton = {
     closest: (selector: string) => {
       if (selector.includes('button')) return {

@@ -105,7 +105,7 @@ export function isEligibleChatSwipeTarget(target: unknown): boolean {
 export function resolveSwipeableChatAgents(candidates: unknown, currentChatJid: string): string[] {
   if (!Array.isArray(candidates)) return currentChatJid ? [currentChatJid] : [];
   const seen = new Set<string>();
-  const rows = candidates
+  const candidateRows = candidates
     .filter((candidate): candidate is ChatSwipeCandidate => Boolean(candidate && typeof candidate === 'object'))
     .filter((candidate) => {
       const chatJid = typeof candidate.chat_jid === 'string' ? candidate.chat_jid.trim() : '';
@@ -113,8 +113,17 @@ export function resolveSwipeableChatAgents(candidates: unknown, currentChatJid: 
       if (candidate.archived_at) return false;
       seen.add(chatJid);
       return true;
-    })
-    .map((candidate) => String(candidate.chat_jid).trim());
+    });
+
+  // Stable sort: active first, then alphabetically by chat_jid.
+  // Must NOT depend on currentChatJid so the carousel order stays consistent
+  // as the user navigates between agents.
+  candidateRows.sort((a, b) => {
+    if (Boolean(a.is_active) !== Boolean(b.is_active)) return a.is_active ? -1 : 1;
+    return String(a.chat_jid).localeCompare(String(b.chat_jid));
+  });
+
+  const rows = candidateRows.map((candidate) => String(candidate.chat_jid).trim());
 
   if (currentChatJid && !seen.has(currentChatJid)) {
     rows.unshift(currentChatJid);
