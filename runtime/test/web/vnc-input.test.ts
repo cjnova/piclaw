@@ -8,6 +8,8 @@ import {
   mapClientToFramebufferPoint,
   normalizeVncPassword,
   resolveVncKeysymFromKeyboardEvent,
+  resolveVncPointerPressMask,
+  shouldReleaseVncPointerContact,
   vncButtonMaskForPointerButton,
 } from "../../web/src/panes/vnc-input.js";
 
@@ -27,6 +29,21 @@ test("vncButtonMaskForPointerButton maps primary mouse buttons", () => {
   expect(vncButtonMaskForPointerButton(1)).toBe(2);
   expect(vncButtonMaskForPointerButton(2)).toBe(4);
   expect(vncButtonMaskForPointerButton(5)).toBe(0);
+});
+
+test("resolveVncPointerPressMask falls back to left button for touch/pen", () => {
+  expect(resolveVncPointerPressMask({ button: -1, pointerType: "touch" })).toBe(1);
+  expect(resolveVncPointerPressMask({ button: -1, pointerType: "pen" })).toBe(1);
+  expect(resolveVncPointerPressMask({ button: 2, pointerType: "mouse" })).toBe(4);
+  expect(resolveVncPointerPressMask({ button: -1, buttons: 1, pointerType: "mouse" })).toBe(1);
+});
+
+test("shouldReleaseVncPointerContact detects implicit touch/pen release states", () => {
+  expect(shouldReleaseVncPointerContact({ type: "pointerup", pointerType: "pen", buttons: 1, pressure: 0.5 })).toBe(true);
+  expect(shouldReleaseVncPointerContact({ type: "pointermove", pointerType: "touch", buttons: 0, pressure: 0 })).toBe(true);
+  expect(shouldReleaseVncPointerContact({ type: "pointerleave", pointerType: "pen", buttons: 1, pressure: 0 })).toBe(true);
+  expect(shouldReleaseVncPointerContact({ type: "pointermove", pointerType: "mouse", buttons: 1, pressure: 0.5 })).toBe(false);
+  expect(shouldReleaseVncPointerContact({ type: "pointerdown", pointerType: "touch", buttons: 1, pressure: 0.5 })).toBe(false);
 });
 
 test("mapClientToFramebufferPoint maps scaled display coordinates into framebuffer space", () => {

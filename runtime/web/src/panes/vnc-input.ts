@@ -26,6 +26,47 @@ export function vncButtonMaskForPointerButton(button) {
     }
 }
 
+export function resolveVncPointerPressMask(event) {
+    const direct = vncButtonMaskForPointerButton(event?.button);
+    if (direct) return direct;
+
+    const pointerType = String(event?.pointerType || '').toLowerCase();
+    if (pointerType === 'touch' || pointerType === 'pen') {
+        return vncButtonMaskForPointerButton(0);
+    }
+
+    const buttons = Number(event?.buttons || 0);
+    if (buttons & 1) return vncButtonMaskForPointerButton(0);
+    if (buttons & 4) return vncButtonMaskForPointerButton(1);
+    if (buttons & 2) return vncButtonMaskForPointerButton(2);
+    return 0;
+}
+
+export function shouldReleaseVncPointerContact(event) {
+    const type = String(event?.type || '').toLowerCase();
+    if (type === 'pointerup' || type === 'pointercancel' || type === 'lostpointercapture') {
+        return true;
+    }
+
+    const buttons = Number(event?.buttons);
+    if (Number.isFinite(buttons) && buttons === 0 && type !== 'pointerdown') {
+        return true;
+    }
+
+    const pointerType = String(event?.pointerType || '').toLowerCase();
+    const pressure = Number(event?.pressure);
+    if ((pointerType === 'touch' || pointerType === 'pen')) {
+        if ((type === 'pointerleave' || type === 'pointerout') && type !== 'pointerdown') {
+            return true;
+        }
+        if (Number.isFinite(pressure) && pressure <= 0 && type !== 'pointerdown') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 export function mapClientToFramebufferPoint(clientX, clientY, rect, framebufferWidth, framebufferHeight) {
     const width = Math.max(1, Math.floor(Number(framebufferWidth || 0)));
     const height = Math.max(1, Math.floor(Number(framebufferHeight || 0)));
