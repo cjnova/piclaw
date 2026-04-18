@@ -39,7 +39,7 @@ test('resolveOobePanelState suppresses provider-missing when a current model is 
   });
 });
 
-test('resolveOobePanelState shows provider-ready guidance when models are available', () => {
+test('resolveOobePanelState shows provider-ready guidance when models are available and no model is already configured', () => {
   expect(resolveOobePanelState({
     modelsLoaded: true,
     modelPayload: { model_options: [{ label: 'openai/gpt-4.1' }] },
@@ -49,6 +49,22 @@ test('resolveOobePanelState shows provider-ready guidance when models are availa
     hasAvailableModels: true,
     availableModelCount: 1,
     hasConfiguredModelHint: false,
+  });
+});
+
+test('resolveOobePanelState hides provider-ready guidance when a model is already configured', () => {
+  expect(resolveOobePanelState({
+    modelsLoaded: true,
+    modelPayload: {
+      current: 'openai/gpt-4.1',
+      model_options: [{ label: 'openai/gpt-4.1' }],
+    },
+    activeModel: null,
+  })).toEqual({
+    kind: 'hidden',
+    hasAvailableModels: true,
+    availableModelCount: 1,
+    hasConfiguredModelHint: true,
   });
 });
 

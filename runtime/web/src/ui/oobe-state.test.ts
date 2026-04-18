@@ -22,7 +22,7 @@ test('configured-model hints suppress provider-missing when the current model ex
   });
 });
 
-test('configured instances show provider-ready guidance once actual available models exist', () => {
+test('configured instances keep provider-ready guidance hidden once actual available models exist', () => {
   expect(resolveOobePanelState({
     modelsLoaded: true,
     modelPayload: {
@@ -32,7 +32,7 @@ test('configured instances show provider-ready guidance once actual available mo
     providerMissingDismissed: false,
     providerReadyCompleted: false,
   })).toEqual({
-    kind: 'provider-ready',
+    kind: 'hidden',
     hasAvailableModels: true,
     availableModelCount: 1,
     hasConfiguredModelHint: true,

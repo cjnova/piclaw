@@ -75,7 +75,7 @@ export function resolveOobePanelState(options: {
   }
 
   return {
-    kind: providerReadyCompletedResolved ? 'hidden' : 'provider-ready',
+    kind: (providerReadyCompletedResolved || configuredModelHint) ? 'hidden' : 'provider-ready',
     hasAvailableModels,
     availableModelCount,
     hasConfiguredModelHint: configuredModelHint,
