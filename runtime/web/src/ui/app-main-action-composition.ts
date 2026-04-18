@@ -10,6 +10,9 @@ import {
 import {
   useAppShellShortcuts,
 } from './app-shell-shortcuts.js';
+import {
+  resolveAdjacentSwipeChatJid,
+} from './chat-swipe-navigation.js';
 
 type StateSetter<T> = (next: T | ((prev: T) => T)) => void;
 
@@ -234,9 +237,11 @@ interface ComposeShortcutOptionsInput {
   toggleZenMode: () => void;
   exitZenMode: () => void;
   zenMode: boolean;
+  activeChatAgents: any[];
+  currentChatJid: string;
 }
 
-export function composeShortcutOptions(input: ComposeShortcutOptionsInput) {
+export function composeShortcutOptions(input: ComposeShortcutOptionsInput & { handleBranchPickerChange?: (nextChatJid: unknown) => void }) {
   return {
     hasDockPanes: input.hasDockPanes,
     chatOnlyMode: input.chatOnlyMode,
@@ -244,6 +249,22 @@ export function composeShortcutOptions(input: ComposeShortcutOptionsInput) {
     toggleZenMode: input.toggleZenMode,
     exitZenMode: input.exitZenMode,
     zenMode: input.zenMode,
+    previousChat: () => {
+      const nextChatJid = resolveAdjacentSwipeChatJid({
+        candidates: input.activeChatAgents,
+        currentChatJid: input.currentChatJid,
+        direction: 'prev',
+      });
+      if (nextChatJid) input.handleBranchPickerChange?.(nextChatJid);
+    },
+    nextChat: () => {
+      const nextChatJid = resolveAdjacentSwipeChatJid({
+        candidates: input.activeChatAgents,
+        currentChatJid: input.currentChatJid,
+        direction: 'next',
+      });
+      if (nextChatJid) input.handleBranchPickerChange?.(nextChatJid);
+    },
   };
 }
 
@@ -257,7 +278,10 @@ export function useMainAppActionComposition(options: UseMainAppActionComposition
   }));
   const branchPaneActions = useBranchPaneLifecycle(composeBranchPaneActionOptions(options));
 
-  useAppShellShortcuts(composeShortcutOptions(options));
+  useAppShellShortcuts(composeShortcutOptions({
+    ...options,
+    handleBranchPickerChange: branchPaneActions.handleBranchPickerChange,
+  }));
 
   return {
     followupActions,

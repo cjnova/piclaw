@@ -3,6 +3,18 @@ interface DocumentEventTargetLike {
   removeEventListener(type: string, listener: (event: any) => void): void;
 }
 
+function isEditableKeyboardTarget(target: unknown): boolean {
+  if (!target || typeof target !== 'object') return false;
+  const el = target as {
+    closest?: (selector: string) => Element | null;
+    isContentEditable?: boolean;
+  };
+  if (typeof el.closest === 'function' && el.closest('input, textarea, select, [contenteditable="true"], .compose-box, .compose-model-popup, .compose-session-popup')) {
+    return true;
+  }
+  return Boolean(el.isContentEditable);
+}
+
 interface RuntimeLike {
   document?: DocumentEventTargetLike | null;
 }
@@ -93,6 +105,11 @@ export interface ZenModeShortcutCallbacks {
   isZenModeActive?: () => boolean;
 }
 
+export interface ChatSwitchShortcutCallbacks {
+  previousChat?: () => void;
+  nextChat?: () => void;
+}
+
 /** Register Ctrl+Shift+Z and Escape shortcuts for zen-mode control. */
 export function watchZenModeShortcuts(callbacks: ZenModeShortcutCallbacks, runtime: RuntimeLike = {}): () => void {
   const doc = runtime.document ?? (typeof document !== 'undefined' ? document : null);
@@ -104,7 +121,8 @@ export function watchZenModeShortcuts(callbacks: ZenModeShortcutCallbacks, runti
     ? callbacks.isZenModeActive
     : () => Boolean(callbacks?.zenMode);
 
-  const onKeyDown = (event: { ctrlKey?: boolean; shiftKey?: boolean; key?: string; preventDefault?: () => void }) => {
+  const onKeyDown = (event: { ctrlKey?: boolean; shiftKey?: boolean; key?: string; preventDefault?: () => void; target?: unknown }) => {
+    if (isEditableKeyboardTarget(event?.target)) return;
     if (event?.ctrlKey && event.shiftKey && (event.key === 'Z' || event.key === 'z')) {
       event.preventDefault?.();
       toggleZenMode?.();
@@ -113,6 +131,28 @@ export function watchZenModeShortcuts(callbacks: ZenModeShortcutCallbacks, runti
     if (event?.key === 'Escape' && isZenModeActive()) {
       event.preventDefault?.();
       exitZenMode?.();
+    }
+  };
+
+  doc.addEventListener('keydown', onKeyDown);
+  return () => doc.removeEventListener('keydown', onKeyDown);
+}
+
+export function watchChatSwitchShortcuts(callbacks: ChatSwitchShortcutCallbacks, runtime: RuntimeLike = {}): () => void {
+  const doc = runtime.document ?? (typeof document !== 'undefined' ? document : null);
+  if (!doc) return () => {};
+
+  const onKeyDown = (event: { ctrlKey?: boolean; shiftKey?: boolean; metaKey?: boolean; altKey?: boolean; key?: string; preventDefault?: () => void; target?: unknown }) => {
+    if (isEditableKeyboardTarget(event?.target)) return;
+    if (!event?.ctrlKey || !event?.shiftKey || event?.metaKey || event?.altKey) return;
+    if (event.key === '[') {
+      event.preventDefault?.();
+      callbacks?.previousChat?.();
+      return;
+    }
+    if (event.key === ']') {
+      event.preventDefault?.();
+      callbacks?.nextChat?.();
     }
   };
 
