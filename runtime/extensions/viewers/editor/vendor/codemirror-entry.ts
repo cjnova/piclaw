@@ -54,6 +54,24 @@ export { indentationMarkers } from "@replit/codemirror-indentation-markers";
 export { githubLight, githubDark } from "@uiw/codemirror-theme-github";
 export { MergeView } from "@codemirror/merge";
 
+// Additional exports for shared vendor usage by app-side syntax highlighting.
+export { javascriptLanguage, jsxLanguage, tsxLanguage, typescriptLanguage } from "@codemirror/lang-javascript";
+export { pythonLanguage } from "@codemirror/lang-python";
+export { goLanguage } from "@codemirror/lang-go";
+export { jsonLanguage } from "@codemirror/lang-json";
+export { cssLanguage } from "@codemirror/lang-css";
+export { htmlLanguage } from "@codemirror/lang-html";
+export { yamlLanguage } from "@codemirror/lang-yaml";
+export { xmlLanguage } from "@codemirror/lang-xml";
+export { StandardSQL } from "@codemirror/lang-sql";
+export { highlightTree } from "@lezer/highlight";
+export { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
+export { powerShell } from "@codemirror/legacy-modes/mode/powershell";
+export { ruby } from "@codemirror/legacy-modes/mode/ruby";
+export { rust } from "@codemirror/legacy-modes/mode/rust";
+export { swift } from "@codemirror/legacy-modes/mode/swift";
+export { toml } from "@codemirror/legacy-modes/mode/toml";
+
 /**
  * Keep the editor bootstrap on the direct @codemirror/* packages only.
  * Importing minimalSetup from the aggregate `codemirror` package can pull a

@@ -1,22 +1,28 @@
-import { classHighlighter, highlightTree } from '@lezer/highlight';
-import { StreamLanguage } from '@codemirror/language';
-import { cssLanguage } from '@codemirror/lang-css';
-import { goLanguage } from '@codemirror/lang-go';
-import { htmlLanguage } from '@codemirror/lang-html';
-import { javascriptLanguage, jsxLanguage, tsxLanguage, typescriptLanguage } from '@codemirror/lang-javascript';
-import { jsonLanguage } from '@codemirror/lang-json';
-import { markdownLanguage } from '@codemirror/lang-markdown';
-import { pythonLanguage } from '@codemirror/lang-python';
-import { StandardSQL } from '@codemirror/lang-sql';
-import { xmlLanguage } from '@codemirror/lang-xml';
-import { yamlLanguage } from '@codemirror/lang-yaml';
-import { dockerFile } from '@codemirror/legacy-modes/mode/dockerfile';
-import { powerShell } from '@codemirror/legacy-modes/mode/powershell';
-import { ruby } from '@codemirror/legacy-modes/mode/ruby';
-import { rust } from '@codemirror/legacy-modes/mode/rust';
-import { shell } from '@codemirror/legacy-modes/mode/shell';
-import { swift } from '@codemirror/legacy-modes/mode/swift';
-import { toml } from '@codemirror/legacy-modes/mode/toml';
+import {
+  classHighlighter,
+  highlightTree,
+  StreamLanguage,
+  cssLanguage,
+  goLanguage,
+  htmlLanguage,
+  javascriptLanguage,
+  jsxLanguage,
+  tsxLanguage,
+  typescriptLanguage,
+  jsonLanguage,
+  markdownLanguage,
+  pythonLanguage,
+  StandardSQL,
+  xmlLanguage,
+  yamlLanguage,
+  dockerFile,
+  powerShell,
+  ruby,
+  rust,
+  shell,
+  swift,
+  toml,
+} from '#editor-vendor/codemirror';
 
 interface TokenSegment {
   from: number;

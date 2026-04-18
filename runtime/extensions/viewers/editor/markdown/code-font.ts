@@ -4,7 +4,7 @@ import {
     ViewPlugin,
     RangeSet,
     syntaxTree,
-} from '../vendor/codemirror.js';
+} from '#editor-vendor/codemirror';
 import type { DecorationSet, ViewUpdate } from '@codemirror/view';
 import type { Range } from '@codemirror/state';
 
