@@ -177,17 +177,14 @@ export function resolveSwipeNeighbours(options: {
 export function shouldTriggerTouchChatSwipe(options: {
   dx: number;
   dy: number;
-  elapsedMs: number;
+  elapsedMs?: number;
   minDistancePx?: number;
   axisRatio?: number;
-  maxElapsedMs?: number;
 }): boolean {
   const minDistancePx = Number.isFinite(options.minDistancePx) ? Number(options.minDistancePx) : 72;
   const axisRatio = Number.isFinite(options.axisRatio) ? Number(options.axisRatio) : 1.35;
-  const maxElapsedMs = Number.isFinite(options.maxElapsedMs) ? Number(options.maxElapsedMs) : 850;
   return Math.abs(options.dx) >= minDistancePx
-    && Math.abs(options.dx) > Math.abs(options.dy) * axisRatio
-    && options.elapsedMs <= maxElapsedMs;
+    && Math.abs(options.dx) > Math.abs(options.dy) * axisRatio;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -360,8 +357,7 @@ export function attachChatSwipeNavigation(options: UseChatSwipeNavigationOptions
     if (!state.active) return;
     const dx = state.lastX - state.startX;
     const dy = state.lastY - state.startY;
-    const elapsedMs = Date.now() - state.startedAt;
-    const shouldNavigate = !state.cancelled && shouldTriggerTouchChatSwipe({ dx, dy, elapsedMs });
+    const shouldNavigate = !state.cancelled && shouldTriggerTouchChatSwipe({ dx, dy });
 
     hideIndicator(getIndicator());
     resetChatSwipeTouchState(state);

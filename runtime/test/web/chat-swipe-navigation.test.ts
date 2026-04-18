@@ -59,11 +59,12 @@ test('resolveAdjacentSwipeChatJid loops like a carousel (wraps at both ends)', (
   expect(resolveAdjacentSwipeChatJid({ candidates, currentChatJid: 'web:b', direction: 'prev' })).toBe('web:a');
 });
 
-test('shouldTriggerTouchChatSwipe requires a fast, mostly-horizontal gesture', () => {
-  expect(shouldTriggerTouchChatSwipe({ dx: 120, dy: 20, elapsedMs: 250 })).toBe(true);
-  expect(shouldTriggerTouchChatSwipe({ dx: 50, dy: 4, elapsedMs: 250 })).toBe(false);
-  expect(shouldTriggerTouchChatSwipe({ dx: 120, dy: 110, elapsedMs: 250 })).toBe(false);
-  expect(shouldTriggerTouchChatSwipe({ dx: 120, dy: 20, elapsedMs: 1200 })).toBe(false);
+test('shouldTriggerTouchChatSwipe requires sufficient horizontal distance and axis ratio', () => {
+  expect(shouldTriggerTouchChatSwipe({ dx: 120, dy: 20 })).toBe(true);
+  expect(shouldTriggerTouchChatSwipe({ dx: 50, dy: 4 })).toBe(false);  // too short
+  expect(shouldTriggerTouchChatSwipe({ dx: 120, dy: 110 })).toBe(false); // too vertical
+  // slow swipes should still trigger if distance is sufficient
+  expect(shouldTriggerTouchChatSwipe({ dx: 120, dy: 20, elapsedMs: 3000 })).toBe(true);
 });
 
 test('isEligibleChatSwipeTarget ignores compose and interactive controls', () => {
