@@ -24,7 +24,7 @@
  * Consumers: channels/web.ts delegates each request to handle().
  */
 
-import { extname, isAbsolute, relative, resolve } from "path";
+import { extname, resolve } from "path";
 import { createUuid } from "../../utils/ids.js";
 import type { WebChannelLike } from "./core/web-channel-contracts.js";
 import { rememberWebOrigin } from "./auth/request-origin.js";
@@ -53,10 +53,7 @@ const STATIC_MIME_TYPES: Record<string, string> = {
   ".json": "application/manifest+json; charset=utf-8",
 };
 
-function isPathWithin(baseDir: string, filePath: string): boolean {
-  const rel = relative(baseDir, filePath);
-  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
-}
+import { isPathWithin } from "../../utils/path-safety.js";
 
 /** Business logic for handling compose-box submissions and agent runs. */
 export class RequestRouterService {

@@ -14,6 +14,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import { existsSync, statSync } from "node:fs";
 import { resolve, basename, extname, dirname, join } from "node:path";
+import { stripBaseDirForDisplay } from "../utils/path-safety.js";
 import { WORKSPACE_DIR } from "../core/config.js";
 import { createLogger, debugSuppressedError } from "../utils/logger.js";
 
@@ -442,7 +443,7 @@ async function executeImageProcess(
       mkFs(tilePath, { recursive: true });
       await sharp(inputPath).tile({ size: tileSize, layout: "dz" }).toFile(join(tilePath, "output"));
       const workspaceDir = getWorkspaceDir();
-      const relTile = tilePath.startsWith(workspaceDir) ? tilePath.slice(workspaceDir.length + 1) : tilePath;
+      const relTile = stripBaseDirForDisplay(workspaceDir, tilePath);
       return {
         content: [{ type: "text", text: `Deep zoom tiles generated in ${relTile}/ (tile size: ${tileSize}px)` }],
         details: { action: "tile", input: params.input, outputDir: relTile, tileSize },
@@ -487,7 +488,7 @@ async function executeImageProcess(
         extracted.push(framePath);
       }
       const workspaceDir = getWorkspaceDir();
-      const relDir = frameDir.startsWith(workspaceDir) ? frameDir.slice(workspaceDir.length + 1) : frameDir;
+      const relDir = stripBaseDirForDisplay(workspaceDir, frameDir);
       return {
         content: [{ type: "text", text: `Extracted ${extracted.length} frames to ${relDir}/` }],
         details: { action: "frames", input: params.input, frameCount: extracted.length, outputDir: relDir },
@@ -566,7 +567,7 @@ async function executeImageProcess(
 
       const gifStat = statSync(gifOutputPath);
       const workspaceDir = getWorkspaceDir();
-      const relOutput = gifOutputPath.startsWith(workspaceDir) ? gifOutputPath.slice(workspaceDir.length + 1) : gifOutputPath;
+      const relOutput = stripBaseDirForDisplay(workspaceDir, gifOutputPath);
       return {
         content: [{ type: "text", text: `Animated GIF created: ${relOutput} (${frameW}x${frameH}, ${frameCount} frames, ${formatBytes(gifStat.size)})` }],
         details: {
@@ -622,9 +623,7 @@ async function executeImageProcess(
   const outputMeta = await sharp(outputPath).metadata();
   const savings = inputStat.size - outputStat.size;
   const workspaceDir = getWorkspaceDir();
-  const relativeOutput = outputPath.startsWith(workspaceDir)
-    ? outputPath.slice(workspaceDir.length + 1)
-    : outputPath;
+  const relativeOutput = stripBaseDirForDisplay(workspaceDir, outputPath);
 
   return {
     content: [{ type: "text", text: `${action} complete: ${relativeOutput} (${outputMeta.width}x${outputMeta.height}, ${formatBytes(outputStat.size)}${savings > 0 ? `, saved ${formatBytes(savings)}` : ""})` }],

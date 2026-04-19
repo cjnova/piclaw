@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { isPathWithin } from "../utils/path-safety.js";
 import { Type } from "@sinclair/typebox";
 import type { AgentToolResult, ExtensionAPI, ExtensionFactory } from "@mariozechner/pi-coding-agent";
 import { WORKSPACE_DIR } from "../core/config.js";
@@ -274,7 +275,7 @@ export function loadScriptCatalogEntries(options?: { workspaceDir?: string; scop
       const metadata = parseScriptJDocFromSource(sourceText);
       const detectedRole = detectRole(absolutePath, sourceText, metadata);
       if (role !== "all" && detectedRole !== role) continue;
-      const workspacePath = absolutePath.startsWith(workspaceDir + path.sep)
+      const workspacePath = isPathWithin(workspaceDir, absolutePath)
         ? path.relative(workspaceDir, absolutePath).replace(/\\/g, "/")
         : null;
       const displayPath = workspacePath || path.relative(packageRoot, absolutePath).replace(/\\/g, "/");
