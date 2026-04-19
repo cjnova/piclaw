@@ -232,18 +232,25 @@ export function useAppShellEnvironmentEffects(options: UseAppShellEnvironmentEff
       const cacheBust = avatarUrl
         ? `${baseHref}&v=${avatarVersion || Date.now()}`
         : baseHref;
-      // Update the existing node first (works in Chrome/Edge/Firefox).
+
+      // Remove competing static <link rel="icon"> elements so Safari doesn't
+      // prefer a sized PNG over our dynamic favicon.  Keep apple-touch-icon
+      // links intact (those are only used for home-screen bookmarks).
+      if (avatarUrl) {
+        document.querySelectorAll('link[rel="icon"]:not(#dynamic-favicon)').forEach((el) => el.remove());
+      }
+
+      // Set type so Safari knows this is a PNG image.
+      favicon.setAttribute('type', 'image/png');
       favicon.href = cacheBust;
+
       // Safari aggressively caches favicons and often ignores href changes.
       // Force a re-evaluation by briefly removing and re-appending the node.
-      // Wrapped in rAF so the removal and re-insert happen in separate
-      // microtask/paint cycles, which Safari needs to notice the change.
       const parent = favicon.parentNode;
       if (parent) {
         requestAnimationFrame(() => {
           try {
             parent.removeChild(favicon);
-            // Safari needs a forced style recalc between remove and re-add
             void (document.head || document.documentElement).offsetHeight;
             parent.appendChild(favicon);
           } catch { /* node already moved / disposed */ }
