@@ -1348,6 +1348,13 @@
     color: var(--text-secondary);
 }
 
+.send-btn.abort-mode {
+    color: #e05252 !important;
+}
+.send-btn.abort-mode:hover {
+    color: #ff6b6b !important;
+}
+
 .media-files-preview {
     display: flex;
     flex-wrap: wrap;
