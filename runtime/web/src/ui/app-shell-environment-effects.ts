@@ -221,34 +221,14 @@ export function useAppShellEnvironmentEffects(options: UseAppShellEnvironmentEff
     const favicon = document.getElementById('dynamic-favicon') as HTMLLinkElement | null;
     if (!favicon) return;
 
+    // The server already serves /favicon.ico as the agent avatar PNG (with
+    // WebP→PNG conversion).  We only need to cache-bust the URL so the
+    // browser refetches when the avatar changes.
     const avatarKey = avatarUrl ? `${avatarUrl}|${avatarVersion || ''}` : '';
     if (brandingRef.current.avatarBase !== avatarKey) {
       brandingRef.current.avatarBase = avatarKey;
-
-      if (!avatarUrl) return;
-
-      // Remove competing static <link rel="icon"> elements so Safari doesn't
-      // prefer a sized PNG over our dynamic favicon.
-      document.querySelectorAll('link[rel="icon"]:not(#dynamic-favicon)').forEach((el) => el.remove());
-
-      // Fetch the avatar as PNG and convert to a data URI.  This completely
-      // bypasses Safari's aggressive URL-based favicon cache.
-      const pngUrl = `${avatarUrl}${avatarUrl.includes('?') ? '&' : '?'}format=png&v=${avatarVersion || Date.now()}`;
-      fetch(pngUrl)
-        .then((res) => (res.ok ? res.blob() : Promise.reject(res.status)))
-        .then((blob) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            if (typeof reader.result !== 'string') return;
-            favicon.setAttribute('type', 'image/png');
-            favicon.href = reader.result;
-          };
-          reader.readAsDataURL(blob);
-        })
-        .catch(() => {
-          // Fallback: set the URL directly (works in Chrome/Edge/Firefox)
-          favicon.href = pngUrl;
-        });
+      const buster = avatarVersion || Date.now();
+      favicon.href = `/favicon.ico?v=${buster}`;
     }
   }, [brandingRef]);
 
