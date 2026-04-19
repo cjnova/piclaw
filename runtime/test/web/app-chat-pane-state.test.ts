@@ -5,6 +5,7 @@ import {
   captureChatPaneStateSnapshot,
   createEmptyChatPaneState,
 } from '../../web/src/ui/app-chat-pane-state.js';
+import { isComposeBoxAgentActiveState } from '../../web/src/ui/app-main-orchestration-composition.js';
 
 test('createEmptyChatPaneState returns the default per-chat pane snapshot shape', () => {
   expect(createEmptyChatPaneState()).toEqual({
@@ -238,4 +239,78 @@ test('applyChatPaneStateSnapshot falls back to an empty snapshot when no prior c
     activeModelUsage: null,
     contextUsage: null,
   });
+});
+
+test('restoring an in-progress chat snapshot keeps the compose button in active mode after chat switch', () => {
+  const restoredState: Record<string, unknown> = {};
+  const snapshot = captureChatPaneStateSnapshot({
+    agentStatus: { type: 'waiting', turn_id: 'turn-live' },
+    agentDraft: { text: '', totalLines: 0 },
+    agentPlan: '',
+    agentThought: { text: '', totalLines: 0 },
+    pendingRequest: null,
+    currentTurnId: 'turn-live',
+    steerQueuedTurnId: null,
+    isAgentTurnActive: true,
+    followupQueueItems: [],
+    activeModel: null,
+    activeThinkingLevel: null,
+    supportsThinking: false,
+    activeModelUsage: null,
+    contextUsage: null,
+    isAgentRunning: true,
+    wasAgentActive: true,
+    draftBuffer: '',
+    thoughtBuffer: '',
+    lastAgentEvent: { type: 'status' },
+    lastSilenceNotice: 0,
+    lastAgentResponse: null,
+    currentTurnIdRef: 'turn-live',
+    steerQueuedTurnIdRef: null,
+    thoughtExpanded: false,
+    draftExpanded: false,
+    agentStatusRef: { type: 'waiting', turn_id: 'turn-live' },
+    silentRecovery: { inFlight: false, lastAttemptAt: 0, turnId: 'turn-live' },
+  });
+
+  const refs = {
+    isAgentRunningRef: { current: false },
+    wasAgentActiveRef: { current: false },
+    lastAgentEventRef: { current: null },
+    lastSilenceNoticeRef: { current: 0 },
+    draftBufferRef: { current: '' },
+    thoughtBufferRef: { current: '' },
+    pendingRequestRef: { current: null },
+    lastAgentResponseRef: { current: null },
+    currentTurnIdRef: { current: null },
+    steerQueuedTurnIdRef: { current: null },
+    agentStatusRef: { current: null },
+    silentRecoveryRef: { current: { inFlight: false, lastAttemptAt: 0, turnId: null } },
+    thoughtExpandedRef: { current: false },
+    draftExpandedRef: { current: false },
+  };
+
+  applyChatPaneStateSnapshot({
+    snapshot,
+    refs,
+    setters: {
+      setIsAgentTurnActive: (value) => { restoredState.isAgentTurnActive = value; },
+      setAgentStatus: (value) => { restoredState.agentStatus = value; },
+      setAgentDraft: () => undefined,
+      setAgentPlan: () => undefined,
+      setAgentThought: () => undefined,
+      setPendingRequest: () => undefined,
+      setCurrentTurnId: (value) => { restoredState.currentTurnId = value; },
+      setSteerQueuedTurnId: () => undefined,
+      setFollowupQueueItems: () => undefined,
+      setActiveModel: () => undefined,
+      setActiveThinkingLevel: () => undefined,
+      setSupportsThinking: () => undefined,
+      setActiveModelUsage: () => undefined,
+      setContextUsage: () => undefined,
+    },
+  });
+
+  expect(restoredState.currentTurnId).toBe('turn-live');
+  expect(isComposeBoxAgentActiveState(Boolean(restoredState.isAgentTurnActive), restoredState.agentStatus)).toBe(true);
 });

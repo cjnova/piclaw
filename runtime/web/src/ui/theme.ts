@@ -14,6 +14,7 @@ const DEFAULT_LIGHT = {
     borderColor: '#eff3f4',
     accent: '#1d9bf0',
     accentHover: '#1a8cd8',
+    warning: '#f0b429',
     danger: '#f4212e',
     success: '#00ba7c',
 };
@@ -27,6 +28,7 @@ const DEFAULT_DARK = {
     borderColor: '#2f3336',
     accent: '#1d9bf0',
     accentHover: '#1a8cd8',
+    warning: '#f0b429',
     danger: '#f4212e',
     success: '#00ba7c',
 };
@@ -301,6 +303,7 @@ const THEME_VAR_KEYS = [
     '--accent-contrast-text',
     '--accent-soft',
     '--accent-soft-strong',
+    '--warning-color',
     '--danger-color',
     '--success-color',
     '--search-highlight-color',
@@ -455,9 +458,25 @@ function buildTintedPalette(basePalette, tintHex, mode) {
         borderColor: tintPaletteColor(basePalette.borderColor, tint, 0.1),
         accent: tint.hex,
         accentHover: contrast ? mixColors(tint, contrast, 0.18) : tint.hex,
+        warning: tintPaletteColor(basePalette.warning || DEFAULT_LIGHT.warning, tint, 0.14),
         danger: tintPaletteColor(basePalette.danger, tint, 0.16),
         success: tintPaletteColor(basePalette.success, tint, 0.16),
     };
+}
+
+function resolveWarningColor(palette, mode) {
+    const explicit = parseColor(palette?.warning);
+    if (explicit) return explicit.hex;
+
+    const defaultWarning = parseColor(mode === 'dark' ? DEFAULT_DARK.warning : DEFAULT_LIGHT.warning)
+        || parseColor(DEFAULT_LIGHT.warning);
+    const accent = parseColor(palette?.accent);
+
+    if (defaultWarning && accent) {
+        return mixColors(defaultWarning, accent, mode === 'dark' ? 0.18 : 0.14);
+    }
+
+    return mode === 'dark' ? DEFAULT_DARK.warning : DEFAULT_LIGHT.warning;
 }
 
 function applyCssVariables(palette, mode) {
@@ -480,6 +499,7 @@ function applyCssVariables(palette, mode) {
     const accentColorAlpha = accentHex
         ? rgbaColor(accentHex, mode === 'dark' ? 0.35 : 0.25)
         : 'rgba(29, 155, 240, 0.25)';
+    const warningColor = resolveWarningColor(palette, mode);
 
     const vars = {
         '--bg-primary': palette.bgPrimary,
@@ -494,6 +514,7 @@ function applyCssVariables(palette, mode) {
         '--accent-soft': accentSoft,
         '--accent-soft-strong': accentSoftStrong,
         '--accent-contrast-text': accentContrastText,
+        '--warning-color': warningColor,
         '--danger-color': palette.danger || DEFAULT_LIGHT.danger,
         '--success-color': palette.success || DEFAULT_LIGHT.success,
         '--search-highlight-color': searchHighlight || 'rgba(29, 155, 240, 0.2)',

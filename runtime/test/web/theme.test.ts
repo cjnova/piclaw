@@ -130,8 +130,31 @@ test('/tint updates derived highlight vars and tints the full default palette', 
   expect(runtime.styleValues.get('--text-primary')).not.toBe('#0f1419');
   expect(runtime.styleValues.get('--text-secondary')).not.toBe('#536471');
   expect(runtime.styleValues.get('--border-color')).not.toBe('#eff3f4');
+  expect(runtime.styleValues.get('--warning-color')).not.toBe('#f0b429');
   expect(runtime.styleValues.get('--danger-color')).not.toBe('#f4212e');
   expect(runtime.styleValues.get('--success-color')).not.toBe('#00ba7c');
+});
+
+
+test('named themes still expose a distinct warning token instead of falling back to accent', async () => {
+  const runtime = createThemeRuntime();
+  (globalThis as any).window = runtime.window;
+  (globalThis as any).document = runtime.document;
+  (globalThis as any).CustomEvent = class CustomEventStub {
+    type: string;
+    detail: unknown;
+    constructor(type: string, init?: { detail?: unknown }) {
+      this.type = type;
+      this.detail = init?.detail;
+    }
+  };
+
+  const theme = await importFresh<typeof import('../../web/src/ui/theme.js')>('../web/src/ui/theme.ts');
+  theme.applyThemeFromEvent({ theme: 'dracula', chat_jid: 'web:default' });
+
+  expect(runtime.styleValues.get('--accent-color')).toBe('#bd93f9');
+  expect(runtime.styleValues.get('--warning-color')).toBeTruthy();
+  expect(runtime.styleValues.get('--warning-color')).not.toBe(runtime.styleValues.get('--accent-color'));
 });
 
 test('theme parser falls back to inline css color when computed-style resolution fails', async () => {

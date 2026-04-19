@@ -1381,7 +1381,8 @@
 
 .compose-submit-spinner-ring {
     stroke: currentColor;
-    stroke-dasharray: 16 12;
+    stroke-dasharray: 11 15.7035;
+    stroke-dashoffset: 5.5;
     transform-origin: 12px 12px;
     animation: composeSubmitSpinnerRotate 0.9s linear infinite;
 }
@@ -1391,8 +1392,11 @@
 }
 
 @keyframes composeSubmitSpinnerRotate {
+    from {
+        transform: rotate(-90deg);
+    }
     to {
-        transform: rotate(360deg);
+        transform: rotate(270deg);
     }
 }
 

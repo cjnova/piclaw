@@ -45,6 +45,7 @@
     --accent-hover: #1a8cd8;
     --accent-color-alpha: rgba(29, 155, 240, 0.25);
     --accent-contrast-text: #0f1419;
+    --warning-color: #f0b429;
     --danger-color: #f4212e;
     --success-color: #00ba7c;
 
@@ -127,6 +128,7 @@
         --border-color: #2f3336;
         --accent-color-alpha: rgba(29, 155, 240, 0.35);
         --accent-contrast-text: #0f1419;
+        --warning-color: #f0b429;
         --search-highlight-color: rgba(29, 155, 240, 0.35);
     }
 }
@@ -165,6 +167,7 @@
     --border-color: #2f3336;
     --accent-color-alpha: rgba(29, 155, 240, 0.35);
     --accent-contrast-text: #0f1419;
+    --warning-color: #f0b429;
     --search-highlight-color: rgba(29, 155, 240, 0.35);
 }
 
@@ -177,6 +180,7 @@
     --text-secondary: #536471;
     --border-color: #eff3f4;
     --accent-color-alpha: rgba(29, 155, 240, 0.25);
+    --warning-color: #f0b429;
     --search-highlight-color: rgba(29, 155, 240, 0.2);
 }
 
