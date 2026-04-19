@@ -1,10 +1,11 @@
 ---
 id: evaluate-visual-explainer-for-piclaw
 title: Evaluate visual-explainer as a Piclaw integration and vendoring target
-status: inbox
+status: done
 priority: medium
 created: 2026-04-14
-updated: 2026-04-14
+updated: 2026-04-19
+completed: 2026-04-19
 target_release: later
 estimate: M
 risk: medium
@@ -256,6 +257,13 @@ bounded follow-up implementation ticket with:
 - Reuse lessons from existing vendored viewers/editors and pop-out/route audits.
 
 ## Updates
+
+### 2026-04-19
+- Evaluation completed. Full feasibility presentation generated and attached.
+- Upstream evaluation concluded: **adapt selectively, do not vendor as runtime**.
+- Superseded by implementation ticket:
+  - `workitems/20-doing/adopt-visual-explainer-skill-for-piclaw.md`
+- Lane change: `00-inbox` → `50-done`.
 
 ### 2026-04-14
 - Created from request to track `nicobailon/visual-explainer` as a potential Piclaw integration and vendoring target.
