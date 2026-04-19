@@ -2291,7 +2291,7 @@ export function ComposeBox({
                                             </span>
                                         `
                                         : submitButtonState.mode === 'abort'
-                                            ? html`<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2.25"/></svg>`
+                                            ? html`<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2.5"/></svg>`
                                             : html`<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`}
                                 </button>
                             `}
