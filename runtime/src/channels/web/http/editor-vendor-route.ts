@@ -67,7 +67,7 @@ function handleEditorVendorRoute(req: Request, pathname: string): Response | nul
     headers: {
       "Content-Type": getMimeType(realPath),
       "Content-Length": String(stat.size),
-      "Cache-Control": "public, max-age=86400",
+      "Cache-Control": "public, max-age=300",
     },
   });
 }

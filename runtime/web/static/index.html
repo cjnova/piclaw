@@ -35,8 +35,8 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>PiClaw</title>
     <meta name="apple-mobile-web-app-title" content="PiClaw">
-    <link rel="stylesheet" href="/static/dist/app.bundle.css?v=__APP_ASSET_VERSION__">
-    <link rel="manifest" href="/manifest.json?v=__APP_ASSET_VERSION__">
+    <link rel="stylesheet" href="/static/dist/app.bundle.css?v=1776561410">
+    <link rel="manifest" href="/manifest.json?v=1776561410">
     <link id="dynamic-favicon" rel="icon" href="/favicon.ico" data-default="/favicon.ico">
     <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-192.png">
     <link rel="icon" type="image/png" sizes="512x512" href="/static/icon-512.png">
@@ -144,14 +144,14 @@
     <script type="importmap">
     {
       "imports": {
-        "#editor-vendor/codemirror": "/editor-vendor/codemirror.js"
+        "#editor-vendor/codemirror": "/editor-vendor/codemirror.js?v=f040d05910de"
       }
     }
     </script>
-    <script type="module" src="/static/dist/app.bundle.js?v=__APP_ASSET_VERSION__"></script>
+    <script type="module" src="/static/dist/app.bundle.js?v=1776561410"></script>
     <script type="module">
         // Fallback error display for module errors
-        import('/static/dist/app.bundle.js?v=__APP_ASSET_VERSION__').catch(function(e) {
+        import('/static/dist/app.bundle.js?v=1776561410').catch(function(e) {
             document.getElementById('app').innerHTML = '<pre style="padding:20px;color:red;">Module Error: ' + e.message + '</pre>';
         });
     </script>
