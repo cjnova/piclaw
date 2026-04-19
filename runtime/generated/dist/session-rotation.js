@@ -4,7 +4,7 @@
  * Provides a single safe rotation implementation used by both the manual
  * control command (`/session-rotate`) and automatic rotation in AgentPool.
  */
-import { copyFileSync, existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, extname, join } from "path";
 import { formatBytes } from "./agent-control/agent-control-helpers.js";
 /** Default compaction prompt used before a rotation handoff. */
@@ -19,6 +19,26 @@ export function getSessionFileSize(sessionFile) {
         return null;
     try {
         return statSync(sessionFile).size;
+    }
+    catch {
+        return null;
+    }
+}
+/** Return the line count for a persisted session file, or null if unavailable. */
+export function getSessionFileLineCount(sessionFile) {
+    if (!sessionFile)
+        return null;
+    try {
+        const content = readFileSync(sessionFile, "utf8");
+        if (!content)
+            return 0;
+        // Each JSONL entry is one line; count newlines for a fast approximation.
+        let count = 0;
+        for (let i = 0; i < content.length; i++) {
+            if (content.charCodeAt(i) === 10)
+                count++;
+        }
+        return count;
     }
     catch {
         return null;

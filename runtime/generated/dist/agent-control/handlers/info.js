@@ -12,6 +12,7 @@ import { formatBytes, formatCompactNumber, formatCurrency } from "../agent-contr
 import { CONTROL_COMMAND_DEFINITIONS } from "../command-registry.js";
 import { getChatJid } from "../../core/chat-context.js";
 import { getSessionStorageConfig } from "../../core/config.js";
+import { getSessionFileLineCount } from "../../session-rotation.js";
 import { getTokenUsageByModel, getTokenUsageByProvider, getTokenUsageTotals } from "../../db.js";
 import { createLogger, debugSuppressedError } from "../../utils/logger.js";
 import { searchWorkspace } from "../../workspace-search.js";
@@ -49,6 +50,10 @@ export async function handleState(session, _command) {
         `Session file: ${session.sessionFile || "none"}`,
         `Session file size: ${sessionFileSize === null ? "unknown" : formatBytes(sessionFileSize)}`,
     ];
+    const sessionLineCount = getSessionFileLineCount(session.sessionFile);
+    if (sessionLineCount !== null) {
+        lines.push(`Session file lines: ${sessionLineCount}${sessionStorageConfig.maxLines > 0 ? ` / ${sessionStorageConfig.maxLines} max` : ""}`);
+    }
     if (isOversizedSession && sessionFileSize !== null) {
         lines.push(`Session file warning: exceeds configured threshold (${formatBytes(sessionFileSize)} >= ${sessionStorageConfig.maxSizeMb} MB). Consider /session-rotate.`);
     }

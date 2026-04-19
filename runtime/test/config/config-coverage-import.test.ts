@@ -110,6 +110,7 @@ test("plain import covers config module init branches with isolated argv and env
         expect(cfg.SESSION_STORAGE_CONFIG).toEqual({
           maxSizeMb: 64,
           maxSizeBytes: 64 * 1024 * 1024,
+          maxLines: 8000,
           autoRotate: true,
         });
         expect(cfg.getSessionStorageConfig()).toBe(cfg.SESSION_STORAGE_CONFIG);

@@ -7,7 +7,7 @@ import { getAgentRuntimeConfig, getSessionStorageConfig } from "../core/config.j
 import { detectChannel } from "../router.js";
 import { pruneOrphanToolResults } from "./orphan-tool-results.js";
 import { writeAgentLog } from "./logging.js";
-import { getSessionFileSize, rotateSession } from "../session-rotation.js";
+import { getSessionFileLineCount, getSessionFileSize, rotateSession } from "../session-rotation.js";
 import { withChatContext } from "../core/chat-context.js";
 import { formatTimeoutDuration, resolveSessionIdleMaxWaitMs, waitForSessionIdle, } from "./prompt-utils.js";
 async function maybeAutoRotateSession(session, runtime, chatJid, options) {
@@ -21,7 +21,12 @@ async function maybeAutoRotateSession(session, runtime, chatJid, options) {
         ? envThresholdMb * 1024 * 1024
         : sessionStorageConfig.maxSizeBytes;
     const sessionFileSize = getSessionFileSize(session.sessionFile);
-    if (sessionFileSize === null || sessionFileSize < thresholdBytes)
+    const sessionFileLines = getSessionFileLineCount(session.sessionFile);
+    const exceedsSize = sessionFileSize !== null && sessionFileSize >= thresholdBytes;
+    const exceedsLines = sessionStorageConfig.maxLines > 0
+        && sessionFileLines !== null
+        && sessionFileLines >= sessionStorageConfig.maxLines;
+    if (!exceedsSize && !exceedsLines)
         return session;
     const result = await rotateSession(session, runtime, { reason: "automatic" });
     if (result.status === "success") {
@@ -29,7 +34,9 @@ async function maybeAutoRotateSession(session, runtime, chatJid, options) {
             operation: "maybe_auto_rotate_session",
             chatJid,
             previousSize: result.previousSize ?? sessionFileSize,
+            previousLines: sessionFileLines,
             nextSize: result.nextSize ?? "unknown",
+            trigger: exceedsLines ? "lines" : "size",
         });
         return runtime.session;
     }
