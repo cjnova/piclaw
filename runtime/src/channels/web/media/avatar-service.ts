@@ -279,7 +279,7 @@ export async function buildAvatarResponse(kind: AvatarKind, source: string, req:
         headers: {
           "Content-Type": "image/png",
           "Content-Length": String(pngBuf.byteLength),
-          "Cache-Control": "public, max-age=3600",
+          "Cache-Control": "no-cache",
         },
       });
     } catch {
