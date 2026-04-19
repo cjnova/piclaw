@@ -111,6 +111,26 @@ export function resolveUiOnlyCommandNotice(commandText, response) {
     return null;
 }
 
+export function resolveComposeSubmitButtonState(isAgentActive, canSend) {
+    if (isAgentActive) {
+        return {
+            mode: 'abort',
+            className: 'icon-btn send-btn abort-mode',
+            title: 'Stop response',
+            ariaLabel: 'Stop response',
+            disabled: false,
+        };
+    }
+
+    return {
+        mode: 'send',
+        className: 'icon-btn send-btn',
+        title: 'Send (Enter)',
+        ariaLabel: 'Send message',
+        disabled: !canSend,
+    };
+}
+
 /**
  * Tiny SVG pie chart showing context window usage.
  * Green when <75%, amber 75–90%, red >90%. Tooltip shows exact numbers.
@@ -714,6 +734,7 @@ export function ComposeBox({
     const connectionStatusPresentation = useConnectionStatusPresentation(connectionStatus);
     const connectionStatusLabel = connectionStatusPresentation.label;
     const connectionStatusTitle = connectionStatusPresentation.title;
+    const submitButtonState = resolveComposeSubmitButtonState(isAgentActive, canSend);
 
     const mentionAgents = (Array.isArray(activeChatAgents) ? activeChatAgents : [])
         .filter((chat) => !chat?.archived_at);
@@ -2232,29 +2253,24 @@ export function ComposeBox({
                                 </span>
                             `}
                             ${!searchMode && html`
-                                ${isAgentActive ? html`
-                                    <button 
-                                        class="icon-btn send-btn abort-mode" 
-                                        type="button"
-                                        style="color: #e05252"
-                                        onClick=${() => { void handleSubmit('/abort', 'steer'); }}
-                                        title="Stop response"
-                                        aria-label="Stop response"
-                                    >
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                                    </button>
-                                ` : html`
-                                    <button 
-                                        class="icon-btn send-btn" 
-                                        type="button"
-                                        onClick=${() => { void handleSubmit(); }}
-                                        disabled=${!canSend}
-                                        title="Send (Enter)"
-                                        aria-label="Send message"
-                                    >
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-                                    </button>
-                                `}
+                                <button 
+                                    class=${submitButtonState.className}
+                                    type="button"
+                                    onClick=${() => {
+                                        if (submitButtonState.mode === 'abort') {
+                                            void handleSubmit('/abort', 'steer');
+                                            return;
+                                        }
+                                        void handleSubmit();
+                                    }}
+                                    disabled=${submitButtonState.disabled}
+                                    title=${submitButtonState.title}
+                                    aria-label=${submitButtonState.ariaLabel}
+                                >
+                                    ${submitButtonState.mode === 'abort'
+                                        ? html`<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`
+                                        : html`<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`}
+                                </button>
                             `}
                         </div>
                     `}

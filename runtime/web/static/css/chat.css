@@ -1341,7 +1341,7 @@
 
 .send-btn {
     color: var(--accent-color);
-    transition: color var(--ui-transition-fast);
+    transition: color var(--ui-transition-fast), background-color var(--ui-transition-fast);
 }
 
 .send-btn:disabled {
@@ -1349,10 +1349,13 @@
 }
 
 .send-btn.abort-mode {
-    color: #e05252 !important;
+    color: var(--warning-color, var(--danger-color));
 }
-.send-btn.abort-mode:hover {
-    color: #ff6b6b !important;
+
+.send-btn.abort-mode:hover,
+.send-btn.abort-mode:focus-visible {
+    color: var(--warning-color, var(--danger-color));
+    background-color: color-mix(in srgb, var(--warning-color, var(--danger-color)) 12%, transparent);
 }
 
 .media-files-preview {

@@ -10,6 +10,7 @@ import {
   resolveComposeModelPickerState,
   parseQueuedContent,
   resolveComposePrefillRequest,
+  resolveComposeSubmitButtonState,
   resolveUiOnlyCommandNotice,
 } from '../../web/src/components/compose-box.ts';
 import { CONTROL_COMMAND_DEFINITIONS } from '../../src/agent-control/command-registry.ts';
@@ -174,6 +175,32 @@ test('resolveComposeModelPickerState keeps the model picker visible for cold cha
     showPicker: false,
     label: '',
     hasAvailableModels: false,
+  });
+});
+
+test('resolveComposeSubmitButtonState swaps send for stop while preserving button identity', () => {
+  expect(resolveComposeSubmitButtonState(true, false)).toEqual({
+    mode: 'abort',
+    className: 'icon-btn send-btn abort-mode',
+    title: 'Stop response',
+    ariaLabel: 'Stop response',
+    disabled: false,
+  });
+
+  expect(resolveComposeSubmitButtonState(false, true)).toEqual({
+    mode: 'send',
+    className: 'icon-btn send-btn',
+    title: 'Send (Enter)',
+    ariaLabel: 'Send message',
+    disabled: false,
+  });
+
+  expect(resolveComposeSubmitButtonState(false, false)).toEqual({
+    mode: 'send',
+    className: 'icon-btn send-btn',
+    title: 'Send (Enter)',
+    ariaLabel: 'Send message',
+    disabled: true,
   });
 });
 
