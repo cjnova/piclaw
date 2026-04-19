@@ -335,14 +335,15 @@
 .post-recovery-chip {
     display: inline-flex;
     align-items: center;
-    padding: 1px 6px;
+    padding: 1px 5px;
     border-radius: 999px;
     font-size: var(--font-size-xs);
-    font-weight: 600;
+    font-weight: 500;
     line-height: 1.4;
-    color: var(--success-color, #34d399);
-    background: color-mix(in srgb, var(--success-color, #34d399) 16%, transparent);
-    border: 1px solid color-mix(in srgb, var(--success-color, #34d399) 32%, transparent);
+    color: var(--text-secondary);
+    background: transparent;
+    border: 1px solid var(--border-color, color-mix(in srgb, var(--text-secondary) 24%, transparent));
+    opacity: 0.7;
 }
 
 .post-time {

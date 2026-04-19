@@ -997,10 +997,10 @@ export function Post({ post, onClick, onHashtagClick, onMessageRef, onScrollToMe
                         <span
                             class="post-recovery-chip"
                             title=${recoveryMarker.classifier
-                                ? `${recoveryMarker.label || 'Recovered automatically'} · ${recoveryMarker.classifier}`
-                                : (recoveryMarker.label || 'Recovered automatically')}
+                                ? `${recoveryMarker.label || 'Recovered'} · ${recoveryMarker.classifier}`
+                                : (recoveryMarker.label || 'Recovered')}
                         >
-                            ${recoveryMarker.label || 'Recovered automatically'}
+                            ${recoveryMarker.label || 'recovered'}
                         </span>
                     `}
                     <a class="post-time" href=${`#msg-${post.id}`} onClick=${(e) => {
