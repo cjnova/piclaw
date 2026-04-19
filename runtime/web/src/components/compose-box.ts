@@ -2232,15 +2232,29 @@ export function ComposeBox({
                                 </span>
                             `}
                             ${!searchMode && html`
-                                <button 
-                                    class="icon-btn send-btn" 
-                                    type="button"
-                                    onClick=${() => { void handleSubmit(); }}
-                                    disabled=${!canSend}
-                                    title="Send (Enter)"
-                                >
-                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-                                </button>
+                                ${isAgentActive ? html`
+                                    <button 
+                                        class="icon-btn send-btn abort-mode" 
+                                        type="button"
+                                        style="color: #e05252"
+                                        onClick=${() => { void handleSubmit('/abort', 'steer'); }}
+                                        title="Stop response"
+                                        aria-label="Stop response"
+                                    >
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                                    </button>
+                                ` : html`
+                                    <button 
+                                        class="icon-btn send-btn" 
+                                        type="button"
+                                        onClick=${() => { void handleSubmit(); }}
+                                        disabled=${!canSend}
+                                        title="Send (Enter)"
+                                        aria-label="Send message"
+                                    >
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                                    </button>
+                                `}
                             `}
                         </div>
                     `}
