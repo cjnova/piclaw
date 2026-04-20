@@ -7,6 +7,7 @@
  */
 
 import type { PaneCapability, PaneContext, PaneInstance, WebPaneExtension } from './pane-types.js';
+import { createFileConflictMonitor, type FileConflictMonitor } from './file-conflict-monitor.js';
 
 const MINDMAP_EXTENSION = /\.mindmap\.ya?ml$/i;
 
@@ -153,6 +154,8 @@ class MindmapEditorInstance implements PaneInstance {
     private mindmapEl: HTMLElement | null = null;
     private pendingContent: string | null = null;
     private lastContent = '';
+    private currentMtime: string | null = null;
+    private conflictMonitor: FileConflictMonitor | null = null;
     private readonly themeListener = () => {
         (window as any).__mindmapEditor?.setTheme?.(isDarkThemeActive());
     };
@@ -169,6 +172,7 @@ class MindmapEditorInstance implements PaneInstance {
         try {
             const res = await fetch(`/workspace/file?path=${encodeURIComponent(this.filePath)}&max=1000000&mode=edit`);
             const data = await res.json();
+            if (data?.mtime) this.currentMtime = data.mtime;
             return data?.text || '';
         } catch {
             return '';
@@ -227,6 +231,7 @@ class MindmapEditorInstance implements PaneInstance {
                 this.pendingContent = null;
             }
             window.addEventListener('piclaw-theme-change', this.themeListener as EventListener);
+            this.initConflictMonitor();
         } catch (err) {
             console.error('[mindmap] Failed to load mindmap renderer:', err);
             if (this.mindmapEl) {
@@ -244,11 +249,51 @@ class MindmapEditorInstance implements PaneInstance {
                 body: JSON.stringify({ path: this.filePath, content: yamlContent }),
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const result = await res.json().catch(() => ({}));
+            this.currentMtime = result?.mtime || this.currentMtime;
+            this.conflictMonitor?.onSaved(this.currentMtime);
             this.dirty = false;
             this.dirtyCallback?.(false);
         } catch (err) {
             console.error('[mindmap] Save failed:', err);
         }
+    }
+
+    private initConflictMonitor(): void {
+        this.conflictMonitor?.dispose();
+        if (!this.filePath) return;
+        this.conflictMonitor = createFileConflictMonitor({
+            path: this.filePath,
+            getCurrentMtime: () => this.currentMtime,
+            anchorParent: this.container,
+            anchorBefore: this.mindmapEl || this.container.firstElementChild as HTMLElement,
+            onReload: async () => {
+                try {
+                    const res = await fetch(`/workspace/file?path=${encodeURIComponent(this.filePath)}&max=1000000&mode=edit`);
+                    const data = await res.json();
+                    if (this.disposed) return;
+                    this.currentMtime = data?.mtime || null;
+                    const content = data?.text || '';
+                    this.lastContent = content;
+                    const api = (window as any).__mindmapEditor;
+                    if (api?.update) api.update(content);
+                    this.dirty = false;
+                    this.dirtyCallback?.(false);
+                    this.conflictMonitor?.onSaved(this.currentMtime);
+                } catch (err) { console.error('[mindmap] Reload failed:', err); }
+            },
+            onSaveCopy: async (copyPath) => {
+                try {
+                    await fetch('/workspace/file', {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ path: copyPath, content: this.lastContent }),
+                    });
+                } catch (err) { console.error('[mindmap] Save copy failed:', err); }
+            },
+            onOverwrite: () => this.saveToWorkspace(this.lastContent),
+        });
+        this.conflictMonitor.start();
     }
 
     getContent(): string | undefined { return undefined; }
@@ -277,6 +322,7 @@ class MindmapEditorInstance implements PaneInstance {
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
+        this.conflictMonitor?.dispose();
         window.removeEventListener('piclaw-theme-change', this.themeListener as EventListener);
         (window as any).__mindmapEditor?.destroy();
         this.pendingContent = null;
