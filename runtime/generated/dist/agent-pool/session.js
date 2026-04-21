@@ -17,7 +17,7 @@ import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createInterface } from "readline";
 import { finished } from "stream/promises";
-import { createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices, getAgentDir, SessionManager, } from "@mariozechner/pi-coding-agent";
+import { createAgentSession, DefaultResourceLoader, getAgentDir, SessionManager, } from "@mariozechner/pi-coding-agent";
 import { SESSIONS_DIR, WORKSPACE_DIR } from "../core/config.js";
 import { buildChannelSystemPromptAppendix } from "../channels/formatting.js";
 import { detectChannel } from "../router.js";
@@ -389,40 +389,47 @@ export async function createSessionInDir(sessionDir, options) {
     const channelSystemPromptAppendix = getChannelSystemPromptAppendix(options.chatJid);
     const appendSystemPromptOverride = getAppendSystemPromptOverride(channelSystemPromptAppendix);
     const additionalExtensionPaths = getBundledExtensionPaths(options.chatJid);
-    const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }) => {
-        const services = await createAgentSessionServices({
-            cwd,
-            agentDir: AGENT_DIR,
-            authStorage: options.authStorage,
-            modelRegistry: options.modelRegistry,
-            settingsManager: options.settingsManager,
-            resourceLoaderOptions: {
-                extensionFactories: options.extensionFactories?.length
-                    ? [...builtinExtensionFactories, ...options.extensionFactories]
-                    : builtinExtensionFactories,
-                additionalExtensionPaths,
-                ...(appendSystemPromptOverride ? { appendSystemPromptOverride } : {}),
-            },
-        });
-        return {
-            ...(await createAgentSessionFromServices({
-                services,
-                sessionManager,
-                sessionStartEvent,
-                tools: options.tools,
-                customTools: options.customTools,
-            })),
-            services,
-            diagnostics: services.diagnostics,
-        };
-    };
     const workspaceDir = getWorkspaceDir();
     await sanitizePersistedSessionFileBeforeLoad(sessionDir);
-    const runtime = await createAgentSessionRuntime(createRuntime, {
+    const resourceLoader = new DefaultResourceLoader({
         cwd: workspaceDir,
         agentDir: AGENT_DIR,
+        settingsManager: options.settingsManager,
+        extensionFactories: options.extensionFactories?.length
+            ? [...builtinExtensionFactories, ...options.extensionFactories]
+            : builtinExtensionFactories,
+        additionalExtensionPaths,
+        ...(appendSystemPromptOverride ? { appendSystemPromptOverride } : {}),
+    });
+    await resourceLoader.reload();
+    const result = await createAgentSession({
+        cwd: workspaceDir,
+        agentDir: AGENT_DIR,
+        authStorage: options.authStorage,
+        modelRegistry: options.modelRegistry,
+        settingsManager: options.settingsManager,
+        tools: options.tools?.length ? options.tools : undefined,
+        customTools: options.customTools,
+        resourceLoader,
         sessionManager: SessionManager.continueRecent(workspaceDir, sessionDir),
     });
+    const diagnostics = [
+        ...(result.extensionsResult?.errors ?? []),
+        ...(resourceLoader.getSkills().diagnostics ?? []),
+        ...(resourceLoader.getPrompts().diagnostics ?? []),
+        ...(resourceLoader.getThemes().diagnostics ?? []),
+    ];
+    const runtime = {
+        session: result.session,
+        cwd: workspaceDir,
+        diagnostics,
+        modelFallbackMessage: result.modelFallbackMessage,
+        extensionsResult: result.extensionsResult,
+        services: { resourceLoader },
+        dispose: async () => {
+            result.session.dispose();
+        },
+    };
     installPersistedToolResultSanitizer(runtime);
     bindImmediateToolActivation(runtime.session);
     return runtime;
