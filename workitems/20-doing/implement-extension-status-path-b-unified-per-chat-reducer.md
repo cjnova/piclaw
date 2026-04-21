@@ -2,7 +2,7 @@
 id: implement-extension-status-path-b-unified-per-chat-reducer
 title: "Impl: extension status Path B — unified per-chat reducer"
 status: doing
-priority: medium
+priority: high
 created: 2026-04-21
 updated: 2026-04-21
 estimate: M
