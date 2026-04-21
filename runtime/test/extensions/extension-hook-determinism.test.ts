@@ -24,6 +24,7 @@ describe("built-in extension hook determinism", () => {
       "sendAdaptiveCard",
       "sendDashboardWidget",
       "openWorkspaceFile",
+      "envTools",
       "exitProcess",
       "autoresearchSupervisor",
       "imageProcessing",

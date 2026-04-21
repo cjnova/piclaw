@@ -82,11 +82,10 @@ export function decideAutomaticRecovery(input) {
         };
     }
     if (input.snapshot.hadToolActivity) {
-        // Tool activity normally prevents automatic retry because replaying
-        // side-effecting tools is unsafe. However, when no completed assistant
-        // turn was emitted, compacting and retrying is still safe — tool results
-        // are already persisted in session history and the retry is attempting to
-        // recover the missing assistant reply, not replay tool side effects.
+        // Conservative rule: once tool activity happened, automatic recovery is
+        // only allowed for clearly context-related failures. Generic retries could
+        // re-run side-effecting tools, so exhausted/no-terminal runs are held for
+        // explicit retry/skip resolution instead.
         if (isContextPressureFailure(errorText) || input.snapshot.sawCompactionIntent) {
             return {
                 recover: true,
@@ -95,21 +94,13 @@ export function decideAutomaticRecovery(input) {
                 reason: "Failure looks context-related despite tool activity; compacting before retrying.",
             };
         }
-        if (!input.snapshot.hadCompletedTurnOutput) {
-            return {
-                recover: true,
-                classifier: "context_pressure",
-                strategy: "compact_then_retry",
-                reason: input.snapshot.hadPartialOutput
-                    ? "Tool activity without a completed assistant turn; compacting before retrying."
-                    : "Tool activity without any text output; compacting before retrying.",
-            };
-        }
         return {
             recover: false,
             classifier: "tool_activity",
             strategy: null,
-            reason: "Automatic recovery skipped because tool activity with a completed turn already occurred during the failed run.",
+            reason: input.snapshot.hadCompletedTurnOutput
+                ? "Automatic recovery skipped because tool activity with a completed turn already occurred during the failed run."
+                : "Automatic recovery skipped because tool activity already occurred and the failure was not clearly context-related.",
         };
     }
     if (input.snapshot.hadCompletedTurnOutput) {

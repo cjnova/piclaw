@@ -565,7 +565,10 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
     const identity = getIdentityConfig();
     const withAgentProfile = createAgentProfileBuilder(chatJid, identity.assistantName, resolveAvatarUrl("agent", identity.assistantAvatar), identity.userName || null, resolveAvatarUrl("user", identity.userAvatar), identity.userAvatarBackground || null);
     const emitCommandStatus = (payload) => {
-        const nextPayload = withAgentStatusProgressMetadata(payload, channel.getAgentStatus(chatJid));
+        const activeStatus = typeof channel.getAgentStatus === "function"
+            ? channel.getAgentStatus(chatJid)
+            : null;
+        const nextPayload = withAgentStatusProgressMetadata(payload, activeStatus);
         channel.updateAgentStatus(chatJid, nextPayload);
         channel.broadcastEvent("agent_status", withAgentProfile(nextPayload));
     };

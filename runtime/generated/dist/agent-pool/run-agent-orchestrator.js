@@ -521,13 +521,22 @@ export async function runAgentPrompt(prompt, chatJid, runOptions, options) {
         });
         const timeoutMs = typeof runOptions.timeoutMs === "number" ? runOptions.timeoutMs : getAgentRuntimeConfig().timeoutMs;
         const channel = detectChannel(chatJid);
-        const recoveryConfig = getAutomaticRecoveryConfig();
+        const baseRecoveryConfig = getAutomaticRecoveryConfig();
+        const recoveryConfig = timeoutMs > 0
+            ? { ...baseRecoveryConfig, totalBudgetMs: Math.min(baseRecoveryConfig.totalBudgetMs, timeoutMs) }
+            : baseRecoveryConfig;
         let recoveryAttemptsUsed = 0;
         let lastClassifier = null;
         const strategyHistory = [];
         const recoveryDiagnostics = [];
         let recoveryBudgetStartedAt = null;
-        const getRecoveryBudgetElapsedMs = () => (recoveryBudgetStartedAt == null ? 0 : Math.max(0, Date.now() - recoveryBudgetStartedAt));
+        const useWholeRunAsRecoveryBudget = timeoutMs > 0 && timeoutMs < baseRecoveryConfig.totalBudgetMs;
+        const getRecoveryBudgetElapsedMs = () => {
+            const anchor = recoveryBudgetStartedAt == null
+                ? (useWholeRunAsRecoveryBudget ? startTime : Date.now())
+                : recoveryBudgetStartedAt;
+            return Math.max(0, Date.now() - anchor);
+        };
         return await withChatContext(chatJid, channel, async () => {
             while (true) {
                 const attempt = await runPromptAttempt(prompt, chatJid, session, timeoutMs, runOptions, options, startTime);
