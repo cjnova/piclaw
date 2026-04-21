@@ -19,6 +19,7 @@
  *   - sendAdaptiveCard: send_adaptive_card for agent-owned Adaptive Card posting.
  *   - sendDashboardWidget: send_dashboard_widget for posting the built-in live dashboard widget.
  *   - openWorkspaceFile: open_workspace_file for browser-side editor tab/popout launches.
+ *   - envTools: env for persistent workspace-scoped environment variables.
  *
  * Note: bun_run, keychain, ssh, proxmox, and portainer now live as packaged
  * runtime extensions under runtime/extensions/integrations/* and are loaded via
@@ -45,6 +46,7 @@ import { smartCompaction } from "./smart-compaction.js";
 import { sendAdaptiveCard } from "./send-adaptive-card.js";
 import { sendDashboardWidget } from "./send-dashboard-widget.js";
 import { openWorkspaceFile } from "./open-workspace-file.js";
+import { envTools } from "./env-tools.js";
 import { exitProcess } from "./exit-process.js";
 import { autoresearchSupervisor } from "./autoresearch-supervisor.js";
 import { imageProcessing } from "./image-processing.js";
@@ -70,6 +72,7 @@ export function createBuiltinExtensionFactories(options?: {
     sendAdaptiveCard,
     sendDashboardWidget,
     openWorkspaceFile,
+    envTools,
     exitProcess,
     autoresearchSupervisor,
     imageProcessing,
