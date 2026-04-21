@@ -1,7 +1,7 @@
 ---
 id: expand-desktop-ui-automation-to-macos-and-linux
 title: Expand desktop UI automation to macOS and Linux using pi-computer-use as reference
-status: inbox
+status: doing
 priority: medium
 created: 2026-04-21
 updated: 2026-04-21

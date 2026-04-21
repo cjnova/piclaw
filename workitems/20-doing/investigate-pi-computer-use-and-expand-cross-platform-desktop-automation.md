@@ -1,7 +1,7 @@
 ---
 id: investigate-pi-computer-use-and-expand-cross-platform-desktop-automation
 title: Investigate pi-computer-use and expand desktop automation beyond Windows
-status: inbox
+status: doing
 priority: medium
 created: 2026-04-21
 updated: 2026-04-21
