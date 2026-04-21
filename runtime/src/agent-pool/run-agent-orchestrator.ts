@@ -2,7 +2,7 @@
  * agent-pool/run-agent-orchestrator.ts – Main runAgent prompt lifecycle orchestration.
  */
 
-import { shouldCompact, type AgentSession, type AgentSessionEvent, type AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
+import { type AgentSession, type AgentSessionEvent, type AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 
 import type { AttachmentInfo } from "./attachments.js";
 
@@ -196,11 +196,17 @@ async function maybeAutoCompactSessionBeforePrompt(
   const settings = typeof settingsManager?.getCompactionSettings === "function"
     ? settingsManager.getCompactionSettings()
     : null;
-  if (!settings?.enabled) return;
+  // Piclaw manages compaction at safe pre-prompt boundaries regardless of
+  // upstream auto-compaction being disabled.  Only bail when there is no
+  // settings object at all (no model / no session).
+  if (!settings) return;
 
   try {
     const contextTokens = estimateContextTokensFromSession(session);
-    if (!shouldCompact(contextTokens, contextWindow, settings)) return;
+    // Inline threshold check — bypasses upstream settings.enabled flag since
+    // piclaw disables upstream auto-compaction and owns the compaction schedule.
+    const reserveTokens = settings.reserveTokens ?? 16384;
+    if (contextTokens <= contextWindow - reserveTokens) return;
 
     options.onInfo?.("Auto-compacting session before prompt", {
       operation: "maybe_auto_compact_session_before_prompt",

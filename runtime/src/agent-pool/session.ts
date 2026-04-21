@@ -505,6 +505,14 @@ export async function createSessionInDir(
     },
   } as unknown as AgentSessionRuntime;
 
+  // Disable upstream auto-compaction — piclaw manages compaction at safe
+  // boundaries via maybeAutoCompactSessionBeforePrompt and recovery paths.
+  // Upstream auto-compaction fires at agent_end which can interfere with
+  // multi-step tool sequences and break generated file context.
+  if (typeof result.session.setAutoCompactionEnabled === "function") {
+    result.session.setAutoCompactionEnabled(false);
+  }
+
   installPersistedToolResultSanitizer(runtime);
   bindImmediateToolActivation(runtime.session as any);
   return runtime;

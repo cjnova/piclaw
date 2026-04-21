@@ -187,7 +187,7 @@ test("runAgentPrompt auto-compacts before prompting when estimated context excee
   expect(calls).toEqual(["compact", "prompt"]);
 });
 
-test("runAgentPrompt skips pre-prompt auto-compaction when it is disabled", async () => {
+test("runAgentPrompt still pre-prompt compacts even when upstream auto-compaction is disabled", async () => {
   const calls: string[] = [];
 
   class StubSession {
@@ -247,7 +247,9 @@ test("runAgentPrompt skips pre-prompt auto-compaction when it is disabled", asyn
   });
 
   expect(result.status).toBe("success");
-  expect(calls).toEqual(["prompt"]);
+  // Piclaw manages compaction at safe pre-prompt boundaries regardless of
+  // upstream auto-compaction setting — compact fires before prompt.
+  expect(calls).toEqual(["compact", "prompt"]);
 });
 
 test("runAgentPrompt prompts the rotated runtime session after auto-rotation swaps objects", async () => {
