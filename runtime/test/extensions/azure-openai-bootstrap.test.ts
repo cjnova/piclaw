@@ -61,11 +61,13 @@ describe("azure-openai bootstrap lifecycle", () => {
       messages: [] as Array<string | undefined>,
       indicators: [] as Array<{ frames?: string[]; intervalMs?: number } | undefined>,
       statuses: [] as Array<[string, string | undefined]>,
+      notifications: [] as Array<[string, string | undefined]>,
     };
     const ui = {
       setWorkingMessage(message?: string) { calls.messages.push(message); },
       setWorkingIndicator(options?: { frames?: string[]; intervalMs?: number }) { calls.indicators.push(options); },
       setStatus(key: string, value: string | undefined) { calls.statuses.push([key, value]); },
+      notify(message: string, level?: string) { calls.notifications.push([message, level]); },
     };
 
     await sessionStart?.({}, { hasUI: true, ui });
@@ -79,6 +81,70 @@ describe("azure-openai bootstrap lifecycle", () => {
       intervalMs: 90,
     });
     expect(calls.statuses[calls.statuses.length - 1]).toEqual(["azure-openai", "Azure providers ready"]);
+    expect(calls.messages[calls.messages.length - 1]).toBeUndefined();
+    expect(calls.indicators[calls.indicators.length - 1]).toEqual({ frames: [] });
+  });
+
+  test("session_start clears status and notifies on bootstrap failure", async () => {
+    const handlers: Handler[] = [];
+
+    const api: ExtensionAPI = {
+      on(event: string, handler: (...args: any[]) => any) { handlers.push({ event, handler }); },
+      registerTool() {},
+      registerCommand() {},
+      registerShortcut() {},
+      registerFlag() {},
+      getFlag() { return undefined; },
+      registerMessageRenderer() {},
+      sendMessage() {},
+      sendUserMessage() {},
+      appendEntry() {},
+      setSessionName() {},
+      getSessionName() { return undefined; },
+      setLabel() {},
+      exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+      getActiveTools: () => [],
+      getAllTools: () => [],
+      setActiveTools() {},
+      getCommands: () => [],
+      setModel: async () => true,
+      getThinkingLevel: () => "off" as any,
+      setThinkingLevel() {},
+      registerProvider() {},
+      unregisterProvider() {},
+    } as unknown as ExtensionAPI;
+
+    let stopCalls = 0;
+    setAzureProviderBootstrapFactoryForTests(() => ({
+      stop() { stopCalls += 1; },
+      async refresh() {
+        throw new Error("token unavailable");
+      },
+    }));
+
+    azureOpenAiExtension(api);
+
+    const sessionStart = handlers.find((entry) => entry.event === "session_start")?.handler;
+    expect(typeof sessionStart).toBe("function");
+
+    const calls = {
+      messages: [] as Array<string | undefined>,
+      indicators: [] as Array<{ frames?: string[]; intervalMs?: number } | undefined>,
+      statuses: [] as Array<[string, string | undefined]>,
+      notifications: [] as Array<[string, string | undefined]>,
+    };
+    const ui = {
+      setWorkingMessage(message?: string) { calls.messages.push(message); },
+      setWorkingIndicator(options?: { frames?: string[]; intervalMs?: number }) { calls.indicators.push(options); },
+      setStatus(key: string, value: string | undefined) { calls.statuses.push([key, value]); },
+      notify(message: string, level?: string) { calls.notifications.push([message, level]); },
+    };
+
+    await expect(sessionStart?.({}, { hasUI: true, ui })).rejects.toThrow("token unavailable");
+
+    expect(stopCalls).toBe(1);
+    expect(calls.statuses).toContainEqual(["azure-openai", undefined]);
+    expect(calls.notifications).toContainEqual(["Azure provider bootstrap failed: token unavailable", "error"]);
     expect(calls.messages[calls.messages.length - 1]).toBeUndefined();
     expect(calls.indicators[calls.indicators.length - 1]).toEqual({ frames: [] });
   });

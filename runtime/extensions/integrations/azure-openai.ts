@@ -1661,6 +1661,15 @@ export default function (pi: ExtensionAPI) {
       if (ctx.hasUI && ctx.ui.setStatus) {
         ctx.ui.setStatus("azure-openai", "Azure providers ready");
       }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      bootstrap?.stop();
+      bootstrap = null;
+      if (ctx.hasUI) {
+        ctx.ui.setStatus?.("azure-openai", undefined);
+        ctx.ui.notify?.(`Azure provider bootstrap failed: ${message}`, "error");
+      }
+      throw error;
     } finally {
       if (ctx.hasUI) finishAzureBootstrapUi(ctx.ui);
     }
