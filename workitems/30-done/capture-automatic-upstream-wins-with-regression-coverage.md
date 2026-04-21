@@ -1,7 +1,7 @@
 ---
 id: capture-automatic-upstream-wins-with-regression-coverage
 title: Capture automatic upstream wins with regression coverage
-status: doing
+status: done
 priority: medium
 created: 2026-04-21
 updated: 2026-04-21
@@ -48,10 +48,10 @@ Likely beneficiaries:
 
 ## Acceptance Criteria
 
-- [ ] Each automatic upstream win is mapped to Piclaw-owned surfaces.
-- [ ] Regression coverage exists for the highest-value implicit wins.
-- [ ] We can point to concrete tests proving the wins instead of relying on changelog assumptions.
-- [ ] Any discovered gaps are turned into explicit follow-up tickets.
+- [x] Each automatic upstream win is mapped to Piclaw-owned surfaces.
+- [x] Regression coverage exists for the highest-value implicit wins.
+- [x] We can point to concrete tests proving the wins instead of relying on changelog assumptions.
+- [x] Any discovered gaps are turned into explicit follow-up tickets — none identified; all audit items resolved.
 
 ## Detailed audit and test work
 
@@ -108,14 +108,14 @@ Likely beneficiaries:
 
 ## Definition of Done
 
-- [ ] All acceptance criteria satisfied and verified
-- [ ] Tests added or updated — passing locally
-- [ ] Type check clean
-- [ ] Docs and notes updated with links to ticket
-- [ ] Operational impact assessed
-- [ ] Follow-up tickets created for deferred scope
-- [ ] Update history complete with evidence
-- [ ] Ticket front matter updated
+- [x] All acceptance criteria satisfied and verified
+- [x] Tests added or updated — passing locally (context-mode, keychain hooks, Azure API, ssh-core)
+- [x] Type check clean
+- [x] Docs and notes updated with links to ticket
+- [x] Operational impact assessed — additive coverage only, no behavioral changes
+- [x] Follow-up tickets created for deferred scope — none required
+- [x] Update history complete with evidence
+- [x] Ticket front matter updated
 
 ## Updates
 

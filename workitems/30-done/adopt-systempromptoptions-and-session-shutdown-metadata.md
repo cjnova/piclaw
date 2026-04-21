@@ -1,7 +1,7 @@
 ---
 id: adopt-systempromptoptions-and-session-shutdown-metadata
 title: Adopt systemPromptOptions and session_shutdown metadata
-status: doing
+status: done
 priority: medium
 created: 2026-04-21
 updated: 2026-04-21
@@ -60,14 +60,14 @@ This ticket adopts them selectively where they actually improve correctness or U
 
 ## Acceptance Criteria
 
-- [ ] Each extension using `before_agent_start` is classified as:
+- [x] Each extension using `before_agent_start` is classified as:
   - [ ] static hint only, no action
   - [ ] candidate for `systemPromptOptions`
   - [ ] should adopt now
-- [ ] `ssh-core` adopts shutdown reason/target metadata.
-- [ ] `azure-openai` adopts shutdown reason/target metadata.
-- [ ] At least one concrete use of `systemPromptOptions` is implemented or explicitly rejected with rationale.
-- [ ] Tests cover any lifecycle behavior change introduced.
+- [x] `ssh-core` adopts shutdown reason/target metadata.
+- [x] `azure-openai` adopts shutdown reason/target metadata.
+- [x] At least one concrete use of `systemPromptOptions` is implemented or explicitly rejected with rationale.
+- [x] Tests cover any lifecycle behavior change introduced.
 
 ## Recommended adoption scope
 
@@ -139,14 +139,14 @@ Adopt when shutdown cause affects:
 
 ## Definition of Done
 
-- [ ] All acceptance criteria satisfied and verified
-- [ ] Tests added or updated — passing locally
-- [ ] Type check clean
-- [ ] Docs and notes updated with links to ticket
-- [ ] Operational impact assessed
-- [ ] Follow-up tickets created for deferred scope
-- [ ] Update history complete with evidence
-- [ ] Ticket front matter updated
+- [x] All acceptance criteria satisfied and verified
+- [x] Tests added or updated — passing locally (ssh-core lifecycle, Azure bootstrap/harness)
+- [x] Type check clean
+- [x] Docs and notes updated with links to ticket
+- [x] Operational impact assessed — additive; shutdown metadata is diagnostic-only
+- [x] Follow-up tickets created for deferred scope — none required
+- [x] Update history complete with evidence
+- [x] Ticket front matter updated
 
 ## Updates
 
