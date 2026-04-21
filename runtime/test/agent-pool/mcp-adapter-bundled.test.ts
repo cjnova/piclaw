@@ -23,10 +23,12 @@ describe("bundled pi-mcp-adapter integration", () => {
       });
 
       const session: any = runtime.session;
-      expect(session._toolRegistry.has("mcp")).toBe(true);
-      const tool = session._toolRegistry.get("mcp");
-      expect(typeof tool?.description).toBe("string");
-      expect(tool.description).toContain("MCP");
+      const allTools = session._extensionRunner?.getAllRegisteredTools?.() ?? [];
+      const mcpTool = allTools.find((t: any) => t.definition?.name === "mcp");
+      expect(mcpTool).toBeTruthy();
+      const tool = mcpTool;
+      expect(typeof tool?.definition?.description).toBe("string");
+      expect(tool.definition.description).toContain("MCP");
 
       expect(typeof session.extensionRunner?.getCommand).toBe("function");
       expect(session.extensionRunner.getCommand("mcp")).toBeTruthy();

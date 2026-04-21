@@ -317,6 +317,20 @@ export function formatImageGenerationError(providerLabel: string, error: unknown
   return `${prefix}: ${String(error).slice(0, 500)}`;
 }
 
+let generateAzureImageImpl = generateImage;
+let generateFoundryImageImpl = generateFoundryImage;
+let saveAzureImagesImpl = saveImages;
+
+export function setAzureImageHandlersForTests(handlers?: {
+  generateImage?: typeof generateImage | null;
+  generateFoundryImage?: typeof generateFoundryImage | null;
+  saveImages?: typeof saveImages | null;
+} | null): void {
+  generateAzureImageImpl = handlers?.generateImage ?? generateImage;
+  generateFoundryImageImpl = handlers?.generateFoundryImage ?? generateFoundryImage;
+  saveAzureImagesImpl = handlers?.saveImages ?? saveImages;
+}
+
 function deliverAzureImageResult(
   pi: AzureImageMessenger,
   customType: "image" | "flux",
@@ -351,8 +365,8 @@ export async function executeAzureImageCommand(
 
   void (async () => {
     try {
-      const images = await generateImage(BASE_URL, AOAI_IMAGE_MODEL_ID, parsed, true);
-      const files = saveImages("azure-image", parsed.prompt, images);
+      const images = await generateAzureImageImpl(BASE_URL, AOAI_IMAGE_MODEL_ID, parsed, true);
+      const files = saveAzureImagesImpl("azure-image", parsed.prompt, images);
       const caption = `Azure image (${AOAI_IMAGE_MODEL_ID}, ${snappedSize}) — ${parsed.prompt}`;
       deliverAzureImageResult(pi, "image", formatGeneratedImageMessage(caption, files));
     } catch (error) {
@@ -391,8 +405,8 @@ export async function executeAzureFluxCommand(
 
   void (async () => {
     try {
-      const images = await generateFoundryImage(FOUNDRY_IMAGE_MODEL_ID, parsed);
-      const files = saveImages("foundry-image", parsed.prompt, images);
+      const images = await generateFoundryImageImpl(FOUNDRY_IMAGE_MODEL_ID, parsed);
+      const files = saveAzureImagesImpl("foundry-image", parsed.prompt, images);
       const caption = `Foundry image (${FOUNDRY_IMAGE_MODEL_ID}, ${size.width}×${size.height}) — ${parsed.prompt}`;
       deliverAzureImageResult(pi, "flux", formatGeneratedImageMessage(caption, files));
     } catch (error) {

@@ -124,7 +124,7 @@ describe("smart-compaction", () => {
 
   function makeCtx(overrides: Partial<any> = {}) {
     return {
-      ui: { notify: vi.fn() },
+      ui: { notify: vi.fn(), setWorkingIndicator: vi.fn(), clearWorkingIndicator: vi.fn(), setWorkingMessage: vi.fn() },
       model: { provider: "test", id: "test-model", reasoning: false },
       modelRegistry: {
         getApiKeyAndHeaders: vi.fn().mockResolvedValue({ ok: true, apiKey: "test-key" }),

@@ -480,7 +480,7 @@ export async function createSessionInDir(
     authStorage: options.authStorage,
     modelRegistry: options.modelRegistry,
     settingsManager: options.settingsManager,
-    tools: options.tools,
+    tools: options.tools?.length ? options.tools : undefined,
     customTools: options.customTools as any,
     resourceLoader,
     sessionManager: SessionManager.continueRecent(workspaceDir, sessionDir),
