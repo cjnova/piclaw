@@ -41,7 +41,7 @@ import { loadOrCreateIdentity, deriveFingerprint } from "../remote/identity.js";
 import { buildCanonicalRequest, hashBody, signRequest } from "../remote/signature.js";
 import { verifyCallbackProof } from "../remote/service-security.js";
 import { WEB_SERVER_CONFIG, DATA_DIR } from "../core/config.js";
-import { createLogger } from "../utils/logger.js";
+import { createLogger, debugSuppressedError } from "../utils/logger.js";
 
 const log = createLogger("extensions.remote-pair");
 
@@ -130,7 +130,7 @@ export async function runPairFlow(targetBaseUrl: string, pi: ExtensionAPI): Prom
     try {
       const b = await pairRes.json() as Record<string, unknown>;
       detail = typeof b.error === "string" ? b.error : "";
-    } catch { /* ignore */ }
+    } catch (err) { debugSuppressedError(log, "Failed to parse pair-request error body.", err, {}); }
     pi.sendMessage({
       customType: "remote-pair",
       content: `Pairing failed: pair-request rejected (${pairRes.status})${detail ? " — " + detail : ""}`,
@@ -543,7 +543,7 @@ export async function runAcceptPairFlow(idOrFingerprint: string, pi: ExtensionAP
     try {
       const u = new URL(req.callback_url);
       base_url = `${u.protocol}//${u.host}`;
-    } catch { /* ignore malformed URL */ }
+    } catch (err) { debugSuppressedError(log, "Malformed callback URL in pair request.", err, { callback_url: req.callback_url }); }
   }
 
   // Step D – mark initiator as paired locally on the receiver side.

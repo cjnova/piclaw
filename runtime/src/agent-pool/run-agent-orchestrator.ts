@@ -17,6 +17,7 @@ import { getAgentRuntimeConfig, getSessionStorageConfig } from "../core/config.j
 import { detectChannel } from "../router.js";
 import { pruneOrphanToolResults } from "./orphan-tool-results.js";
 import { writeAgentLog } from "./logging.js";
+import { createLogger, debugSuppressedError } from "../utils/logger.js";
 import { getSessionFileLineCount, getSessionFileSize, rotateSession } from "../session-rotation.js";
 import { withChatContext } from "../core/chat-context.js";
 import {
@@ -26,6 +27,8 @@ import {
 } from "./prompt-utils.js";
 import type { AgentTurnCoordinator } from "./turn-coordinator.js";
 import type { AgentOutput, AgentRecoveryDiagnosticEntry, AgentRecoveryMetadata, RunAgentOptions } from "./contracts.js";
+
+const log = createLogger("agent-pool.run-agent-orchestrator");
 
 /** Dependencies required to run a main agent prompt. */
 export interface RunAgentOrchestratorOptions {
@@ -481,7 +484,7 @@ export async function runAgentPrompt(
           toolCallCount += 1;
           if (toolCallCount >= cap) {
             toolCallCapRef.exceeded = true;
-            session.abort().catch(() => { /* best-effort */ });
+            session.abort().catch((err) => { debugSuppressedError(log, "Failed to abort session after tool-call cap exceeded.", err, {}); });
           }
         }
       });

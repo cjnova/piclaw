@@ -803,8 +803,8 @@ function ensureRemotePeerBaseUrl(database: Database): void {
   if (cols.some((c) => c.name === "base_url")) return;
   try {
     database.exec("ALTER TABLE remote_peers ADD COLUMN base_url TEXT");
-  } catch {
-    /* expected: column may have been added in a race or concurrent migration. */
+  } catch (err) {
+    debugSuppressedError(log, "remote_peers base_url column may already exist.", err, {});
   }
 }
 

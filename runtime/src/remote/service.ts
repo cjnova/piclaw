@@ -6,7 +6,7 @@ import type { AgentPool } from "../agent-pool.js";
 import { getRemoteInteropConfig, DATA_DIR, type RemoteInteropConfig } from "../core/config.js";
 import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
-import { createLogger } from "../utils/logger.js";
+import { createLogger, debugSuppressedError } from "../utils/logger.js";
 import {
   DEFAULT_NONCE_CACHE_SIZE,
   DEFAULT_NONCE_TTL_MS,
@@ -95,7 +95,7 @@ export class RemoteInteropService {
       mkdirSync(dir, { recursive: true });
       const payload = JSON.stringify({ type: "message", chatJid: "web:default", text });
       writeFileSync(join(dir, `pair-notify-${Date.now()}.json`), payload);
-    } catch { /* best-effort */ }
+    } catch (err) { debugSuppressedError(log, "Failed to write IPC notification file.", err, {}); }
   }
 
   private operationContext(): RemoteOperationHandlersContext {
