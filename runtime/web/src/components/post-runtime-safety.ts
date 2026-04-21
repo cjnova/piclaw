@@ -62,6 +62,72 @@ export function writeClipboardDataViaExecCommand(
   }
 }
 
+function normalizeSelectionNode(node: unknown): any {
+  if (!node || typeof node !== 'object') return null;
+  const maybeNode = node as any;
+  if (typeof maybeNode.nodeType === 'number' && maybeNode.nodeType === 3) {
+    return maybeNode.parentNode || null;
+  }
+  return maybeNode;
+}
+
+export function copyPlainTextSelectionFromElement(
+  event: { clipboardData?: { setData?: (type: string, value: string) => void } | null; preventDefault?: () => void } | null | undefined,
+  options: {
+    root: { contains?: (node: unknown) => boolean } | null | undefined;
+    selection:
+      | {
+          isCollapsed?: boolean;
+          toString?: () => string;
+          anchorNode?: unknown;
+          focusNode?: unknown;
+          rangeCount?: number;
+          getRangeAt?: (index: number) => { intersectsNode?: (node: unknown) => boolean };
+        }
+      | null
+      | undefined;
+  },
+): boolean {
+  const clipboardData = event?.clipboardData;
+  const root = options?.root;
+  const selection = options?.selection;
+  if (!clipboardData || typeof clipboardData.setData !== 'function' || !root || !selection) return false;
+  if (selection.isCollapsed) return false;
+
+  let intersectsRoot = false;
+  const rangeCount = Number(selection.rangeCount || 0);
+  if (rangeCount > 0 && typeof selection.getRangeAt === 'function') {
+    try {
+      const range = selection.getRangeAt(0);
+      if (range && typeof range.intersectsNode === 'function') {
+        intersectsRoot = Boolean(range.intersectsNode(root));
+      }
+    } catch {
+      intersectsRoot = false;
+    }
+  }
+
+  if (!intersectsRoot && typeof root.contains === 'function') {
+    const anchorNode = normalizeSelectionNode(selection.anchorNode);
+    const focusNode = normalizeSelectionNode(selection.focusNode);
+    intersectsRoot = Boolean(
+      (anchorNode && root.contains(anchorNode)) ||
+      (focusNode && root.contains(focusNode)),
+    );
+  }
+
+  if (!intersectsRoot) return false;
+
+  const text = typeof selection.toString === 'function'
+    ? String(selection.toString() || '').replace(/\u00a0/g, ' ')
+    : '';
+  if (!text) return false;
+
+  clipboardData.setData('text/plain', text);
+  event?.preventDefault?.();
+  return true;
+}
+
 export function readSessionStorageFlagBestEffort(
   storage: { getItem?: (key: string) => string | null } | null | undefined,
   key: string,

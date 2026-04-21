@@ -11,7 +11,7 @@ import { buildAdaptiveCardSubmissionFallbackText, describeAdaptiveCardSubmission
 import { buildGeneratedWidgetPayload, canRenderGeneratedWidget } from '../ui/generated-widget.js';
 import { ImageModal } from './image-modal.js';
 import { FilePill } from './file-pill.js';
-import { readSessionStorageFlagBestEffort, resolveLinkPreviewSiteName, writeClipboardDataViaExecCommand, writeClipboardTextBestEffort, writeSessionStorageFlagBestEffort } from './post-runtime-safety.js';
+import { copyPlainTextSelectionFromElement, readSessionStorageFlagBestEffort, resolveLinkPreviewSiteName, writeClipboardDataViaExecCommand, writeClipboardTextBestEffort, writeSessionStorageFlagBestEffort } from './post-runtime-safety.js';
 
 /**
  * File attachment component - keeps single-click download on the main card while
@@ -476,6 +476,19 @@ function enhanceCodeBlocks(container) {
 
     const resetTimers = new Map();
     const cleanups = [];
+
+    const handleDocumentCopy = (event) => {
+        const selection = window.getSelection?.();
+        if (!selection || selection.isCollapsed) return;
+        for (const pre of blocks) {
+            if (copyPlainTextSelectionFromElement(event, { root: pre, selection })) {
+                return;
+            }
+        }
+    };
+
+    document.addEventListener('copy', handleDocumentCopy, true);
+    cleanups.push(() => document.removeEventListener('copy', handleDocumentCopy, true));
 
     const setButtonState = (button, state) => {
         const nextState = state || 'idle';

@@ -14,6 +14,7 @@ import { jsonResponse } from "../http/http-utils.js";
 
 export interface ExportTimelineContext {
   runtimeDir: string;
+  internalSecret?: string;
 }
 
 export function handleExportTimeline(req: Request, ctx: ExportTimelineContext): Response {
@@ -22,7 +23,7 @@ export function handleExportTimeline(req: Request, ctx: ExportTimelineContext): 
     return jsonResponse({ error: "Export endpoint is localhost-only" }, 403);
   }
 
-  const internalSecret = (getWebRuntimeConfig().internalSecret || "").trim();
+  const internalSecret = (ctx.internalSecret || getWebRuntimeConfig().internalSecret || "").trim();
   if (!internalSecret) {
     return jsonResponse({ error: "Internal export auth is not configured" }, 503);
   }
