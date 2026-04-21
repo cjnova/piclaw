@@ -1598,6 +1598,34 @@ export function startAzureProviderBootstrap(register: (name: string, config: any
   };
 }
 
+let createAzureProviderBootstrapImpl = startAzureProviderBootstrap;
+
+export function setAzureProviderBootstrapFactoryForTests(
+  factory: typeof startAzureProviderBootstrap | null,
+): void {
+  createAzureProviderBootstrapImpl = factory ?? startAzureProviderBootstrap;
+}
+
+function startAzureBootstrapUi(ui: {
+  setWorkingIndicator: (options?: { frames?: string[]; intervalMs?: number }) => void;
+  setWorkingMessage: (message?: string) => void;
+  setStatus?: (key: string, value: string | undefined) => void;
+} | undefined): void {
+  if (!ui) return;
+  ui.setWorkingIndicator({ frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"], intervalMs: 90 });
+  ui.setWorkingMessage("Azure: refreshing provider bootstrap…");
+}
+
+function finishAzureBootstrapUi(ui: {
+  setWorkingIndicator: (options?: { frames?: string[]; intervalMs?: number }) => void;
+  setWorkingMessage: (message?: string) => void;
+  setStatus?: (key: string, value: string | undefined) => void;
+} | undefined): void {
+  if (!ui) return;
+  ui.setWorkingMessage(undefined);
+  ui.setWorkingIndicator({ frames: [] });
+}
+
 export default function (pi: ExtensionAPI) {
   // Extension bootstrap:
   // - log the effective configuration once
@@ -1624,13 +1652,22 @@ export default function (pi: ExtensionAPI) {
 
   let bootstrap: ReturnType<typeof startAzureProviderBootstrap> | null = null;
 
-  pi.on("session_start", async () => {
-    bootstrap?.stop();
-    bootstrap = startAzureProviderBootstrap((name, config) => pi.registerProvider(name, config));
-    await bootstrap.refresh();
+  pi.on("session_start", async (_event, ctx) => {
+    if (ctx.hasUI) startAzureBootstrapUi(ctx.ui);
+    try {
+      bootstrap?.stop();
+      bootstrap = createAzureProviderBootstrapImpl((name, config) => pi.registerProvider(name, config));
+      await bootstrap.refresh();
+      if (ctx.hasUI && ctx.ui.setStatus) {
+        ctx.ui.setStatus("azure-openai", "Azure providers ready");
+      }
+    } finally {
+      if (ctx.hasUI) finishAzureBootstrapUi(ctx.ui);
+    }
   });
 
-  pi.on("session_shutdown", () => {
+  pi.on("session_shutdown", (event) => {
+    console.log(`[azure-openai] session shutdown (${event.reason})${event.targetSessionFile ? ` → ${event.targetSessionFile}` : ""}`);
     bootstrap?.stop();
     bootstrap = null;
   });
