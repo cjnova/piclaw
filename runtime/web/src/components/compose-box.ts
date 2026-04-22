@@ -667,7 +667,6 @@ export function ComposeBox({
     onMoveQueuedFollowup,
     onSubmitIntercept,
     onMessageResponse,
-    onPopOutChat,
     isAgentActive = false,
     activeChatAgents = [],
     currentChatJid = 'web:default',
@@ -2023,24 +2022,6 @@ export function ComposeBox({
                                 Clear all
                             </button>
                         </div>
-                    `}
-                    ${!searchMode && typeof onPopOutChat === 'function' && html`
-                        <button
-                            type="button"
-                            class="compose-popout-btn"
-                            onClick=${() => onPopOutChat?.()}
-                            title="Open this chat in a new chat-only window"
-                            aria-label="Open this chat in a new chat-only window"
-                        >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M14 5h5v5" />
-                                <path d="M10 14 19 5" />
-                                <path d="M19 14v5h-5" />
-                                <path d="M5 10V5h5" opacity="0" />
-                                <path d="M5 19h5" />
-                                <path d="M5 19v-5" />
-                            </svg>
-                        </button>
                     `}
                     <textarea
                         ref=${textareaRef}
