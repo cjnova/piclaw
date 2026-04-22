@@ -19,8 +19,8 @@
     {
       "package_path": null,
       "output_file": "extensions/viewers/editor/vendor/codemirror.js",
-      "sha256": "9cb7e1c0586992113f847502bf16e44d4ec683b5ac5cdda16d9b33e9ae0a524d",
-      "size_bytes": 1097220
+      "sha256": "f040d05910de234cb2963b3a96ea72a56672135747795ea4211158f696f9d96b",
+      "size_bytes": 927931
     }
   ],
   "metadata_file": "extensions/viewers/editor/vendor/codemirror.meta.json",
