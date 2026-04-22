@@ -81,6 +81,15 @@ export interface RunAgentOptions {
   onTurnComplete?: (turn: TurnOutput) => void;
   /** Override the default timeout (ms). Use 0 or a negative value to disable. */
   timeoutMs?: number;
+  /** Abort after this many tool calls complete. Undefined means no cap. */
+  maxToolCalls?: number;
+  /**
+   * If set, the active tool set is clamped to names passing this predicate for
+   * the entire run. The predicate is also enforced against any
+   * setActiveToolsByName calls made by the agent during the run, preventing
+   * LLM-driven self-escalation beyond the ceiling.
+   */
+  toolCeilingFilter?: (toolName: string) => boolean;
 }
 
 export interface RetrySettingsProvider {
