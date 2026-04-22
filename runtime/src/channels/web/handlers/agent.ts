@@ -1293,6 +1293,9 @@ export async function processChat(
 
     channel.saveState();
     const contextUsage = await channel.agentPool.getContextUsageForChat(chatJid);
+    channel.setContextUsage(chatJid, contextUsage
+      ? { tokens: contextUsage.tokens, contextWindow: contextUsage.contextWindow, percent: contextUsage.percent }
+      : null);
     trackedEmitter.status({
       thread_id: threadId,
       agent_id: agentId,

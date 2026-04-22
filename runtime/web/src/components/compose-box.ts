@@ -196,7 +196,7 @@ export function resolveComposeExtensionWorkingDisplay(workingState, frameIndex =
  * Tiny SVG pie chart showing context window usage.
  * Green when <75%, amber 75–90%, red >90%. Tooltip shows exact numbers.
  */
-function ContextPie({ usage, onCompact }) {
+function ContextPie({ usage, onCompact, compactionLabel = '', compactionTitle = '' }) {
     const pct = Math.min(100, Math.max(0, usage.percent || 0));
     const tokens = usage.tokens;
     const window = usage.contextWindow;
@@ -204,7 +204,11 @@ function ContextPie({ usage, onCompact }) {
     const label = tokens != null
         ? `Context: ${formatK(tokens)} / ${formatK(window)} tokens (${pct.toFixed(0)}%)`
         : `Context: ${pct.toFixed(0)}%`;
-    const title = `${label} — ${compactLabel}`;
+    const activeCompactionLabel = typeof compactionLabel === 'string' ? compactionLabel.trim() : '';
+    const activeCompactionTitle = typeof compactionTitle === 'string' ? compactionTitle.trim() : '';
+    const title = activeCompactionLabel
+        ? `${label} — ${activeCompactionTitle || 'Smart compaction'} · ${activeCompactionLabel}`
+        : `${label} — ${compactLabel}`;
 
     // Pie arc: SVG circle with stroke-dasharray trick.
     // Circle circumference = 2πr = 2π×9 ≈ 56.55
@@ -218,10 +222,10 @@ function ContextPie({ usage, onCompact }) {
 
     return html`
         <button
-            class="compose-context-pie icon-btn"
+            class=${`compose-context-pie icon-btn${activeCompactionLabel ? ' is-compacting' : ''}`}
             type="button"
             title=${title}
-            aria-label="Compact context"
+            aria-label=${activeCompactionLabel ? `Smart compaction ${activeCompactionLabel}` : 'Compact context'}
             onClick=${(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -241,6 +245,7 @@ function ContextPie({ usage, onCompact }) {
                     stroke-linecap="round"
                     transform="rotate(-90 12 12)" />
             </svg>
+            ${activeCompactionLabel && html`<span class="compose-context-pie-timer">${activeCompactionLabel}</span>`}
         </button>
     `;
 }
@@ -851,22 +856,6 @@ export function ComposeBox({
         return chats;
     }, [activeChatAgents, currentChatJid]);
     const hasSwitchableChatAgents = switchableChatAgents.length > 0;
-    const visibleSessionPickerChats = useMemo(() => {
-        const items = [];
-        const seen = new Set();
-        const pushChat = (chat) => {
-            const chatJid = typeof chat?.chat_jid === 'string' ? chat.chat_jid.trim() : '';
-            if (!chatJid || seen.has(chatJid) || chat?.archived_at) return;
-            seen.add(chatJid);
-            items.push(chat);
-        };
-        pushChat(currentSessionAgent);
-        for (const chat of switchableChatAgents) pushChat(chat);
-        return items;
-    }, [currentSessionAgent, switchableChatAgents]);
-    const currentSessionLabel = currentSessionAgent?.agent_name
-        ? `@${String(currentSessionAgent.agent_name).trim()}`
-        : String(currentChatJid || 'web:default').trim();
     const canSwitchSession = hasSwitchableChatAgents && typeof onSwitchChat === 'function';
     const canRestoreSession = hasSwitchableChatAgents && typeof onRestoreSession === 'function';
     const renameInProgress = Boolean(isRenameSessionInProgress || renameSessionInProgressRef.current);
@@ -1955,15 +1944,15 @@ export function ComposeBox({
                     </div>
                 </div>
             `}
-            ${statusNotice && html`
+            ${statusNotice && !statusNoticeIsCompaction && html`
                 <div
-                    class=${`compose-inline-status${statusNoticeIsCompaction ? ' compaction' : ''}`}
+                    class="compose-inline-status"
                     role="status"
                     aria-live="polite"
                     title=${statusNoticeDetail || ''}
                 >
                     <div class="compose-inline-status-row">
-                        <span class=${buildComposeStatusDotClass({ pulsing: statusNoticeIsCompaction })} aria-hidden="true"></span>
+                        <span class=${buildComposeStatusDotClass({ pulsing: false })} aria-hidden="true"></span>
                         <span class="compose-inline-status-title">${statusNoticeTitle}</span>
                         ${statusNoticeElapsedLabel && html`<span class="compose-inline-status-elapsed">${statusNoticeElapsedLabel}</span>`}
                     </div>
@@ -2257,28 +2246,50 @@ export function ComposeBox({
                             </div>
                         `}
                         ${!searchMode && contextUsage && contextUsage.percent != null && html`
-                            <${ContextPie} usage=${contextUsage} onCompact=${handleContextCompact} />
+                            <${ContextPie}
+                                usage=${contextUsage}
+                                onCompact=${handleContextCompact}
+                                compactionLabel=${statusNoticeIsCompaction ? statusNoticeElapsedLabel || '0:00' : ''}
+                                compactionTitle=${statusNoticeIsCompaction ? (statusNoticeTitle || 'Smart compaction') : ''}
+                            />
                         `}
                     </div>
                     `}
                     <div class="compose-actions ${searchMode ? 'search-mode' : ''}">
-                    ${!searchMode && currentSessionLabel && html`
-                        <div class="compose-session-inline" title=${currentSessionAgent?.chat_jid || currentChatJid}>
-                            <span class="compose-current-agent-label active">${currentSessionLabel}</span>
-                            ${visibleSessionPickerChats.length > 1 && canSwitchSession && html`
-                                <select
-                                    class="compose-session-picker"
-                                    value=${currentChatJid}
-                                    onChange=${(event) => onSwitchChat?.(event.currentTarget.value)}
-                                    aria-label="Switch chat"
+                    ${showSessionSwitcherButton && html`
+                        <div
+                            ref=${sessionTriggerRef}
+                            class="compose-session-trigger-group"
+                        >
+                            ${currentSessionAgent?.agent_name && html`
+                                <button
+                                    type="button"
+                                    class=${`compose-session-trigger compose-session-trigger-pill${showSessionPopup ? ' active' : ''}`}
+                                    onClick=${toggleSessionPopup}
+                                    title=${currentSessionAgent?.chat_jid || currentChatJid}
+                                    aria-label=${`Manage sessions for @${currentSessionAgent.agent_name}`}
+                                    aria-expanded=${showSessionPopup ? 'true' : 'false'}
                                 >
-                                    ${visibleSessionPickerChats.map((chat) => html`
-                                        <option key=${chat.chat_jid} value=${chat.chat_jid}>
-                                            ${formatBranchPickerLabel(chat, { currentChatJid })}
-                                        </option>
-                                    `)}
-                                </select>
+                                    <span class="compose-current-agent-label active">@${currentSessionAgent.agent_name}</span>
+                                </button>
                             `}
+                            <button
+                                type="button"
+                                class=${`compose-session-trigger compose-session-trigger-icon-btn${showSessionPopup ? ' active' : ''}`}
+                                onClick=${toggleSessionPopup}
+                                title=${currentSessionAgent?.chat_jid || currentChatJid}
+                                aria-label=${currentSessionAgent?.agent_name
+                                    ? `Manage sessions for @${currentSessionAgent.agent_name}`
+                                    : 'Manage Sessions/Agents'}
+                                aria-expanded=${showSessionPopup ? 'true' : 'false'}
+                            >
+                                <span class="compose-session-trigger-icon" aria-hidden="true">
+                                    <svg class="compose-mention-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                                        <circle cx="12" cy="12" r="4.25" />
+                                        <path d="M16.25 7.75v5.4a2.1 2.1 0 0 0 4.2 0V12a8.45 8.45 0 1 0-4.2 7.33" />
+                                    </svg>
+                                </span>
+                            </button>
                         </div>
                     `}
                     ${searchMode && html`

@@ -143,6 +143,14 @@ export class WebChannelRuntimePublicSurfaceService {
     return this.channel.runtimeFollowupFacade.getAgentStatus(chatJid);
   }
 
+  setContextUsage(chatJid: string, usage: Record<string, unknown> | null): void {
+    this.channel.runtimeFollowupFacade.setContextUsage(chatJid, usage);
+  }
+
+  getContextUsage(chatJid: string): Record<string, unknown> | null {
+    return this.channel.runtimeFollowupFacade.getContextUsage(chatJid);
+  }
+
   replaceQueuedFollowupPlaceholder(
     chatJid: string,
     rowId: number,
