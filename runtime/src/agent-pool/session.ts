@@ -19,10 +19,13 @@ import { fileURLToPath } from "url";
 import { createInterface } from "readline";
 import { finished } from "stream/promises";
 import {
-  createAgentSession,
+  createAgentSessionFromServices,
+  createAgentSessionRuntime,
   DefaultResourceLoader,
   type AgentSessionRuntime,
+  type AgentSessionServices,
   type ExtensionFactory,
+  type SessionStartEvent,
   getAgentDir,
   SessionManager,
   type AuthStorage,
@@ -79,7 +82,7 @@ function ensureValidProcessCwd(): void {
 }
 
 type AgentSessionCreateOptions = {
-  tools: NonNullable<NonNullable<Parameters<typeof createAgentSession>[0]>["tools"]>;
+  tools: NonNullable<NonNullable<Parameters<typeof createAgentSessionFromServices>[0]>["tools"]>;
   extensionFactories?: ExtensionFactory[];
 };
 
@@ -462,59 +465,85 @@ export async function createSessionInDir(
   const workspaceDir = getWorkspaceDir();
   await sanitizePersistedSessionFileBeforeLoad(sessionDir);
 
-  const resourceLoader = new DefaultResourceLoader({
-    cwd: workspaceDir,
-    agentDir: AGENT_DIR,
-    settingsManager: options.settingsManager,
-    extensionFactories: options.extensionFactories?.length
-      ? [...builtinExtensionFactories, ...options.extensionFactories]
-      : builtinExtensionFactories,
-    additionalExtensionPaths,
-    ...(appendSystemPromptOverride ? { appendSystemPromptOverride } : {}),
-  });
-  await resourceLoader.reload();
+  const createRuntime = async ({
+    cwd,
+    agentDir,
+    sessionManager,
+    sessionStartEvent,
+  }: {
+    cwd: string;
+    agentDir: string;
+    sessionManager: SessionManager;
+    sessionStartEvent?: SessionStartEvent;
+  }) => {
+    const resourceLoader = new DefaultResourceLoader({
+      cwd,
+      agentDir,
+      settingsManager: options.settingsManager,
+      extensionFactories: options.extensionFactories?.length
+        ? [...builtinExtensionFactories, ...options.extensionFactories]
+        : builtinExtensionFactories,
+      additionalExtensionPaths,
+      ...(appendSystemPromptOverride ? { appendSystemPromptOverride } : {}),
+    });
+    await resourceLoader.reload();
 
-  const result = await createAgentSession({
+    const services: AgentSessionServices = {
+      cwd,
+      agentDir,
+      authStorage: options.authStorage,
+      settingsManager: options.settingsManager,
+      modelRegistry: options.modelRegistry,
+      resourceLoader,
+      diagnostics: [],
+    };
+
+    const result = await createAgentSessionFromServices({
+      services,
+      sessionManager,
+      sessionStartEvent,
+      tools: options.tools?.length ? options.tools : undefined,
+      customTools: options.customTools as any,
+    });
+
+    const normalizeResourceDiagnostics = (items: Array<{ path?: string; error?: string }> = []) =>
+      items.map((item) => ({
+        type: "warning" as const,
+        message: item.path ? `${item.path}: ${item.error || "resource diagnostic"}` : (item.error || "resource diagnostic"),
+      }));
+
+    const diagnostics = [
+      ...normalizeResourceDiagnostics(result.extensionsResult?.errors ?? []),
+      ...normalizeResourceDiagnostics(resourceLoader.getSkills().diagnostics ?? []),
+      ...normalizeResourceDiagnostics(resourceLoader.getPrompts().diagnostics ?? []),
+      ...normalizeResourceDiagnostics(resourceLoader.getThemes().diagnostics ?? []),
+    ];
+    services.diagnostics = diagnostics;
+
+    // Disable upstream auto-compaction — piclaw manages compaction at safe
+    // boundaries via maybeAutoCompactSessionBeforePrompt and recovery paths.
+    // Upstream auto-compaction fires at agent_end which can interfere with
+    // multi-step tool sequences and break generated file context.
+    if (typeof result.session.setAutoCompactionEnabled === "function") {
+      result.session.setAutoCompactionEnabled(false);
+    }
+
+    bindImmediateToolActivation(result.session as any);
+
+    return {
+      ...result,
+      services,
+      diagnostics,
+    };
+  };
+
+  const runtime = await createAgentSessionRuntime(createRuntime as any, {
     cwd: workspaceDir,
     agentDir: AGENT_DIR,
-    authStorage: options.authStorage,
-    modelRegistry: options.modelRegistry,
-    settingsManager: options.settingsManager,
-    tools: options.tools?.length ? options.tools : undefined,
-    customTools: options.customTools as any,
-    resourceLoader,
     sessionManager: SessionManager.continueRecent(workspaceDir, sessionDir),
   });
 
-  const diagnostics = [
-    ...(result.extensionsResult?.errors ?? []),
-    ...(resourceLoader.getSkills().diagnostics ?? []),
-    ...(resourceLoader.getPrompts().diagnostics ?? []),
-    ...(resourceLoader.getThemes().diagnostics ?? []),
-  ];
-
-  const runtime = {
-    session: result.session,
-    cwd: workspaceDir,
-    diagnostics,
-    modelFallbackMessage: result.modelFallbackMessage,
-    extensionsResult: result.extensionsResult,
-    services: { resourceLoader },
-    dispose: async () => {
-      result.session.dispose();
-    },
-  } as unknown as AgentSessionRuntime;
-
-  // Disable upstream auto-compaction — piclaw manages compaction at safe
-  // boundaries via maybeAutoCompactSessionBeforePrompt and recovery paths.
-  // Upstream auto-compaction fires at agent_end which can interfere with
-  // multi-step tool sequences and break generated file context.
-  if (typeof result.session.setAutoCompactionEnabled === "function") {
-    result.session.setAutoCompactionEnabled(false);
-  }
-
   installPersistedToolResultSanitizer(runtime);
-  bindImmediateToolActivation(runtime.session as any);
   return runtime;
 }
 
