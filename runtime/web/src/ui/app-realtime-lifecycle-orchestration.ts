@@ -73,6 +73,7 @@ interface UseRealtimeLifecycleOrchestrationOptions {
   getAgentContext: ((chatJid: string) => Promise<any>) | null;
   setExtensionStatusPanels: (next: any) => void;
   setPendingExtensionPanelActions: (next: any) => void;
+  setExtensionWorkingState: (next: any) => void;
   refreshActiveEditorFromWorkspace: (updates: any) => Promise<void>;
   showIntentToast: (title: string, detail?: string | null, kind?: string, durationMs?: number) => void;
   removeStalledPost: () => void;
@@ -149,6 +150,7 @@ export function useRealtimeLifecycleOrchestration(options: UseRealtimeLifecycleO
     getAgentContext,
     setExtensionStatusPanels,
     setPendingExtensionPanelActions,
+    setExtensionWorkingState,
     refreshActiveEditorFromWorkspace,
     showIntentToast,
     removeStalledPost,
@@ -216,6 +218,7 @@ export function useRealtimeLifecycleOrchestration(options: UseRealtimeLifecycleO
       getAgentContext,
       setExtensionStatusPanels,
       setPendingExtensionPanelActions,
+      setExtensionWorkingState,
       refreshActiveEditorFromWorkspace,
       showIntentToast,
       removeStalledPost,
@@ -264,6 +267,7 @@ export function useRealtimeLifecycleOrchestration(options: UseRealtimeLifecycleO
     setAgentThought,
     setContextUsage,
     setExtensionStatusPanels,
+    setExtensionWorkingState,
     setFloatingWidget,
     setFollowupQueueItems,
     setPendingExtensionPanelActions,
@@ -293,6 +297,7 @@ export function useRealtimeLifecycleOrchestration(options: UseRealtimeLifecycleO
       setAgentDraft({ text: '', totalLines: 0 });
       setAgentPlan('');
       setAgentThought({ text: '', totalLines: 0 });
+      setExtensionWorkingState({ message: null, indicator: null });
       setPendingRequest(null);
     };
     api.finalize = () => finalizeStalledResponse();
@@ -302,7 +307,7 @@ export function useRealtimeLifecycleOrchestration(options: UseRealtimeLifecycleO
         window.__PICLAW_TEST_API = undefined;
       }
     };
-  }, [clearAgentRunState, finalizeStalledResponse, handleSseEvent, removeStalledPost, setAgentDraft, setAgentPlan, setAgentStatus, setAgentThought, setPendingRequest]);
+  }, [clearAgentRunState, finalizeStalledResponse, handleSseEvent, removeStalledPost, setAgentDraft, setAgentPlan, setAgentStatus, setAgentThought, setExtensionWorkingState, setPendingRequest]);
 
   useSseConnection({
     handleSseEvent,

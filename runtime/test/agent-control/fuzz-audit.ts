@@ -39,6 +39,7 @@ const ROUTING_SAMPLES: Record<string, string> = {
   "/switch-session": "/switch-session archive/session.jsonl",
   "/session-rotate": "/session-rotate keep current focus",
   "/fork": "/fork entry-1",
+  "/clone": "/clone",
   "/forks": "/forks",
   "/tree": "/tree",
   "/label": "/label entry-1 checkpoint",

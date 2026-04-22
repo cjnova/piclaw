@@ -57,6 +57,7 @@ Everything else in active use is effectively chat-scoped.
 | `extension_ui_notify` | chat-scoped | `src/channels/web/ui-bridge.ts` | `{ chat_jid, message, type }` | Non-blocking notification from extension UI. |
 | `extension_ui_status` | chat-scoped | `src/channels/web/ui-bridge.ts` | `{ chat_jid, key, text }` | Status-line style extension UI updates. |
 | `extension_ui_working` | chat-scoped | `src/channels/web/ui-bridge.ts` | `{ chat_jid, message }` | Working/progress message from extension UI. |
+| `extension_ui_working_indicator` | chat-scoped | `src/channels/web/theming/ui-bridge.ts` | `{ chat_jid, frames, intervalMs }` | Spinner/working indicator animation frames for extension UI (set by `ctx.ui.setWorkingIndicator`). |
 | `extension_ui_widget` | chat-scoped | `src/channels/web/ui-bridge.ts` | `{ chat_jid, key, content, options }` | Structured widget content for extension UI. |
 | `extension_ui_title` | chat-scoped | `src/channels/web/ui-bridge.ts` | `{ chat_jid, title }` | Extension UI title changes. |
 | `extension_ui_editor_text` | chat-scoped | `src/channels/web/ui-bridge.ts` | `{ chat_jid, text }` | Extension-driven editor text injection/replacement. |
@@ -83,6 +84,7 @@ The web SSE client currently listens for:
 - `extension_ui_notify`
 - `extension_ui_status`
 - `extension_ui_working`
+- `extension_ui_working_indicator`
 - `extension_ui_widget`
 - `extension_ui_title`
 - `extension_ui_editor_text`

@@ -276,6 +276,18 @@
     }
 }
 
+.compose-inline-status-glyph {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 12px;
+    font-family: var(--font-mono, 'SFMono-Regular', Consolas, monospace);
+    font-size: 13px;
+    line-height: 1;
+    color: var(--accent-color);
+    flex: 0 0 auto;
+}
+
 .compose-inline-status-title {
     min-width: 0;
     font-size: 12px;

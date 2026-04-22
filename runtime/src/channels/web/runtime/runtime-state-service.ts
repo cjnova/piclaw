@@ -16,6 +16,7 @@ import { WebChannelState } from "./channel-state.js";
 import {
   getThreadRootId as getThreadRootIdForChat,
   resumeChat as resumeWebChat,
+  retryFailedOnModelSwitch as retryFailedOnModelSwitchForChat,
   skipFailedOnModelSwitch as skipFailedOnModelSwitchForChat,
   type ChatRunControlStore,
   type ResumeChatContext,
@@ -127,8 +128,12 @@ export class WebChannelRuntimeStateService {
     resumeWebChat(chatJid, threadRootId, this.getResumeChatContext());
   }
 
-  skipFailedOnModelSwitch(chatJid: string, store?: ChatRunControlStore): void {
-    skipFailedOnModelSwitchForChat(chatJid, store);
+  skipFailedOnModelSwitch(chatJid: string, store?: ChatRunControlStore): boolean {
+    return skipFailedOnModelSwitchForChat(chatJid, store);
+  }
+
+  retryFailedOnModelSwitch(chatJid: string, store?: ChatRunControlStore): boolean {
+    return retryFailedOnModelSwitchForChat(chatJid, store);
   }
 
   recoverInflightRuns(store?: WebRecoveryStore): void {

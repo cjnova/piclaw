@@ -11,7 +11,7 @@ import { buildAdaptiveCardSubmissionFallbackText, describeAdaptiveCardSubmission
 import { buildGeneratedWidgetPayload, canRenderGeneratedWidget } from '../ui/generated-widget.js';
 import { ImageModal } from './image-modal.js';
 import { FilePill } from './file-pill.js';
-import { readSessionStorageFlagBestEffort, resolveLinkPreviewSiteName, writeClipboardDataViaExecCommand, writeClipboardTextBestEffort, writeSessionStorageFlagBestEffort } from './post-runtime-safety.js';
+import { copyPlainTextSelectionFromElement, readSessionStorageFlagBestEffort, resolveLinkPreviewSiteName, writeClipboardDataViaExecCommand, writeClipboardTextBestEffort, writeSessionStorageFlagBestEffort } from './post-runtime-safety.js';
 
 /**
  * File attachment component - keeps single-click download on the main card while
@@ -72,9 +72,14 @@ function FileAttachment({ mediaId, onPreview }) {
     `;
 }
 
-function extractRecoveryMarkerBlocks(contentBlocks) {
+export function extractRecoveryMarkerBlocks(contentBlocks) {
     if (!Array.isArray(contentBlocks)) return [];
     return contentBlocks.filter((block) => block && typeof block === 'object' && block.type === 'recovery_marker' && block.recovered);
+}
+
+export function extractTimeoutMarkerBlocks(contentBlocks) {
+    if (!Array.isArray(contentBlocks)) return [];
+    return contentBlocks.filter((block) => block && typeof block === 'object' && block.type === 'timeout_marker' && (block.timed_out ?? true));
 }
 
 const RECOVERY_CLASSIFIER_LABELS = {
@@ -86,7 +91,7 @@ const RECOVERY_CLASSIFIER_LABELS = {
     connection: 'connection error',
 };
 
-function formatRecoveryChipTooltip(marker) {
+export function formatRecoveryChipTooltip(marker) {
     const attempts = Number(marker?.attempts_used || 0);
     const classifier = String(marker?.classifier || '').trim();
     const reason = RECOVERY_CLASSIFIER_LABELS[classifier] || (classifier ? classifier.replace(/_/g, ' ') : '');
@@ -94,6 +99,11 @@ function formatRecoveryChipTooltip(marker) {
     if (attempts > 1) parts[0] = `Recovered after ${attempts} attempts`;
     if (reason) parts.push(reason);
     return parts.join(' — ');
+}
+
+export function formatTimeoutChipTooltip(marker) {
+    const action = typeof marker?.tool_action_summary === 'string' ? marker.tool_action_summary.trim() : '';
+    return action ? `Turn timed out — ${action}` : 'Turn timed out before the model finished responding';
 }
 
 function AttachmentPill({ attachment, onPreview }) {
@@ -477,6 +487,19 @@ function enhanceCodeBlocks(container) {
     const resetTimers = new Map();
     const cleanups = [];
 
+    const handleDocumentCopy = (event) => {
+        const selection = window.getSelection?.();
+        if (!selection || selection.isCollapsed) return;
+        for (const pre of blocks) {
+            if (copyPlainTextSelectionFromElement(event, { root: pre, selection })) {
+                return;
+            }
+        }
+    };
+
+    document.addEventListener('copy', handleDocumentCopy, true);
+    cleanups.push(() => document.removeEventListener('copy', handleDocumentCopy, true));
+
     const setButtonState = (button, state) => {
         const nextState = state || 'idle';
         button.dataset.copyState = nextState;
@@ -762,6 +785,8 @@ export function Post({ post, onClick, onHashtagClick, onMessageRef, onScrollToMe
     const submissionBlocks = extractAdaptiveCardSubmissionBlocks(blocks);
     const recoveryMarkerBlocks = extractRecoveryMarkerBlocks(blocks);
     const recoveryMarker = recoveryMarkerBlocks[0] || null;
+    const timeoutMarkerBlocks = extractTimeoutMarkerBlocks(blocks);
+    const timeoutMarker = timeoutMarkerBlocks[0] || null;
     const singleCardFallback = directCardBlocks.length === 1 && typeof directCardBlocks[0]?.fallback_text === 'string'
         ? directCardBlocks[0].fallback_text.trim()
         : '';
@@ -1018,6 +1043,14 @@ export function Post({ post, onClick, onHashtagClick, onMessageRef, onScrollToMe
                             title=${formatRecoveryChipTooltip(recoveryMarker)}
                         >
                             recovered
+                        </span>
+                    `}
+                    ${timeoutMarker && html`
+                        <span
+                            class="post-recovery-chip post-timeout-chip"
+                            title=${formatTimeoutChipTooltip(timeoutMarker)}
+                        >
+                            timeout
                         </span>
                     `}
                     <a class="post-time" href=${`#msg-${post.id}`} onClick=${(e) => {

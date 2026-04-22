@@ -1,10 +1,11 @@
 ---
 id: automatic-recovery-after-mid-turn-failures-and-context-pressure
 title: Automatic recovery after mid-turn failures and context pressure
-status: review
+status: done
 priority: high
 created: 2026-04-18
-updated: 2026-04-19
+updated: 2026-04-21
+completed: 2026-04-21
 target_release: next
 tags:
   - work-item
@@ -90,48 +91,48 @@ visible result should still look like one coherent assistant answer.
 
 ## Acceptance Criteria
 
-- [ ] Recoverable mid-turn failures no longer commonly end as
+- [x] Recoverable mid-turn failures no longer commonly end as
       `⚠️ Response ended with an error before finalization.` when the turn can be
       continued safely.
-- [ ] A shared recovery engine exists for all agent turn paths, not just web
+- [x] A shared recovery engine exists for all agent turn paths, not just web
       chat turns.
-- [ ] Automatic recovery is enabled by default.
-- [ ] Recovery attempts are bounded by:
-  - [ ] configurable max attempts (default `2`)
-  - [ ] configurable total recovery budget (default `30s`)
-- [ ] Recovery classification distinguishes at least:
-  - [ ] recoverable failures
-  - [ ] non-recoverable failures
-  - [ ] compaction-failure cases
-- [ ] The retry ladder is classifier-driven:
-  - [ ] context/overflow-like failures compact first
-  - [ ] transient/finalization-like failures retry first and compact later
-- [ ] Side-effecting tools are not automatically replayed during recovery.
-- [ ] On successful recovery, the user-visible result is a **single final
+- [x] Automatic recovery is enabled by default.
+- [x] Recovery attempts are bounded by:
+  - [x] configurable max attempts (default `2`)
+  - [x] configurable total recovery budget (default `30s`)
+- [x] Recovery classification distinguishes at least:
+  - [x] recoverable failures
+  - [x] non-recoverable failures
+  - [x] compaction-failure cases
+- [x] The retry ladder is classifier-driven:
+  - [x] context/overflow-like failures compact first
+  - [x] transient/finalization-like failures retry first and compact later
+- [x] Side-effecting tools are not automatically replayed during recovery.
+- [x] On successful recovery, the user-visible result is a **single final
       assistant turn**, not multiple visible failed/retry fragments.
-- [ ] On web, partial draft text remains visible during recovery, then collapses
+- [x] On web, partial draft text remains visible during recovery, then collapses
       into the final cleaned answer on success.
-- [ ] On web, successful recovery leaves a subtle persistent marker:
-  - [ ] message-level chip
-  - [ ] turn/status metadata for inspection
-- [ ] On non-web channels, in-progress recovery uses best-effort existing status
+- [x] On web, successful recovery leaves a subtle persistent marker:
+  - [x] message-level chip
+  - [x] turn/status metadata for inspection
+- [x] On non-web channels, in-progress recovery uses best-effort existing status
       affordances only.
-- [ ] When automatic recovery is exhausted:
-  - [ ] web exposes an explicit resume affordance
-  - [ ] web offers both:
-    - [ ] Continue
-    - [ ] Retry cleanly
-  - [ ] `Retry cleanly` starts a new isolated recovery-specific run
-- [ ] If the process restarts during recovery, the system fails cleanly and does
+- [x] When automatic recovery is exhausted:
+  - [x] web exposes an explicit resume affordance
+  - [x] web offers both:
+    - [x] Continue
+    - [x] Retry cleanly
+  - [x] `Retry cleanly` starts a new isolated recovery-specific run
+- [x] If the process restarts during recovery, the system fails cleanly and does
       not attempt cross-restart automatic continuation in v1.
-- [ ] Observability includes:
-  - [ ] structured logs
-  - [ ] counters/status
-  - [ ] per-turn diagnostic recovery metadata
-- [ ] The feature materially improves all three minimum success goals:
-  - [ ] stop the bad UX
-  - [ ] preserve continuity
-  - [ ] make recovery observable
+- [x] Observability includes:
+  - [x] structured logs
+  - [x] counters/status
+  - [x] per-turn diagnostic recovery metadata
+- [x] The feature materially improves all three minimum success goals:
+  - [x] stop the bad UX
+  - [x] preserve continuity
+  - [x] make recovery observable
 
 ## Non-recoverable classifier
 
@@ -254,19 +255,19 @@ turn paths should use the shared engine from the start.
 - any tests covering scheduled/background agent turn execution once the shared
   engine touches them
 
-### New regression coverage to add
+### New regression coverage added
 
-- [ ] failure-classification tests: recoverable vs non-recoverable vs
+- [x] failure-classification tests: recoverable vs non-recoverable vs
       compaction-failure
-- [ ] retry-ladder tests: retry-first vs compact-first behavior
-- [ ] budget tests: max attempts and total recovery timeout enforcement
-- [ ] side-effect guard tests proving unsafe tools are not auto-replayed
-- [ ] success-collapse tests proving multiple recovery attempts still produce
+- [x] retry-ladder tests: retry-first vs compact-first behavior
+- [x] budget tests: max attempts and total recovery timeout enforcement
+- [x] side-effect guard tests proving unsafe tools are not auto-replayed
+- [x] success-collapse tests proving multiple recovery attempts still produce
       one visible final assistant turn
-- [ ] web draft-preservation tests during recovery
-- [ ] web success-marker tests for message chip + status metadata
-- [ ] exhausted web affordance tests for Continue + Retry cleanly
-- [ ] restart-during-recovery tests proving the system fails cleanly and does
+- [x] web draft-preservation tests during recovery
+- [x] web success-marker tests for message chip + status metadata
+- [x] exhausted web affordance tests for Continue + Retry cleanly
+- [x] restart-during-recovery tests proving the system fails cleanly and does
       not attempt automatic cross-restart continuation in v1
 - [x] autonomous-path tests proving the shared engine also covers scheduled /
       background turn paths without web-only assumptions
@@ -286,14 +287,14 @@ turn paths should use the shared engine from the start.
 
 ## Definition of Done
 
-- [ ] All acceptance criteria satisfied and verified
-- [ ] Tests added or updated — passing locally
-- [ ] Type check clean
-- [ ] Docs and notes updated with links to ticket
-- [ ] Operational impact assessed
-- [ ] Follow-up tickets created for deferred scope
-- [ ] Update history complete with evidence
-- [ ] Ticket front matter updated
+- [x] All acceptance criteria satisfied and verified
+- [x] Tests added or updated — passing locally
+- [x] Type check clean
+- [x] Docs and notes updated with links to ticket
+- [x] Operational impact assessed
+- [x] Follow-up tickets created for deferred scope (none required for v1 closure)
+- [x] Update history complete with evidence
+- [x] Ticket front matter updated
 
 ## Refinement notes
 
@@ -347,6 +348,56 @@ turn paths should use the shared engine from the start.
 - Avoid duplicate side effects by refusing unsafe tool replay.
 
 ## Updates
+
+### 2026-04-21
+- Follow-up closure audit confirmed that the web recovery marker chip is already implemented in the shipped UI:
+  - marker extraction + tooltip formatting in `runtime/web/src/components/post.ts`
+  - chip styling in `runtime/web/static/css/content.css`
+- Added focused recovery-chip coverage proving the message-level chip is visible and its helper logic behaves as expected:
+  - component-level render test: `runtime/test/web/post-recovery-chip.test.ts`
+  - helper coverage: `runtime/test/channels/web/post-link-preview-content.test.ts`
+    - extracting recovered `recovery_marker` blocks
+    - formatting the tooltip text shown on the visible chip
+- Attempted the broader cross-path verification sweep using the ticket’s planned runtime test set plus `bunx tsc --noEmit -p runtime/tsconfig.json`.
+- The closure sweep is currently blocked by **repo/environment baseline issues unrelated to the recovery changes**:
+  - Dream / scheduler / some orchestrator-path tests fail immediately because the installed `/workspace/node_modules/@mariozechner/pi-coding-agent` package does not export `createAgentSessionServices` from its public entrypoint, while `runtime/src/agent-pool/session.ts` still imports that symbol
+  - local TypeScript verification is also blocked in this container by missing `bun-types`
+- User field report confirmed two still-live failure modes on `main` during long context-pressure runs:
+  - the terminal persisted warning `⚠️ Your message was received but the agent produced no response. You may need to re-send it.` was still being emitted after stalled compaction / automatic recovery, which is the wrong classification for that failure path
+  - manual `/compact` could itself fail with Anthropic-style transcript validation errors such as orphaned ``tool_result`` / ``tool_use_id`` mismatches, proving the repair path was incomplete for tool-call transcript corruption
+- Root-cause audit on `main` (`daffa0f8`) showed:
+  - `runtime/src/channels/web/handlers/agent.ts` still finalized some no-output recovery/compaction failures through the benign no-op branch
+  - `/compact` in `runtime/src/agent-control/handlers/control.ts` called `session.compact()` directly without first applying the existing orphan-tool-result repair logic already used before normal agent runs
+  - user-visible corruption messaging still only mentioned corrupt image blocks even though orphaned tool-result blocks were a real observed corruption class
+- Landed a stabilization slice in commit `6eddf72c` (`Fix stalled recovery and compact session repair`):
+  - `/compact` now prunes orphaned tool-result blocks before rewriting the session
+  - corrupted-session messaging now explicitly covers orphaned tool-result / `tool_use_id` transcript corruption and states that `/compact` repairs both corrupt image blocks and orphaned tool-result blocks automatically
+  - the web no-output fallback now detects stalled compaction / recovery activity and records a failed run plus a persistent recovery-needed notice/card instead of the bogus “produced no response” notice
+  - recovery-stalled web UX now preserves a durable explanation and same-thread action affordance instead of only transient SSE status text
+- Focused verification for the stabilization slice passed locally:
+  - `runtime/test/agent-pool/orphan-tool-results.test.ts`
+  - `runtime/test/agent-control/agent-control-handlers.test.ts`
+  - `runtime/test/channels/web/agent-error-classification.test.ts`
+  - `runtime/test/channels/web/web-channel.test.ts`
+  - result: `97 pass / 0 fail`
+- Closure blocker resolved by adapting `runtime/src/agent-pool/session.ts` to the current `@mariozechner/pi-coding-agent` session-creation API and adding a local compatibility typing for `AgentSessionRuntime`, which restored Dream/scheduler verification for the broader recovery matrix.
+- Full closure verification now passes:
+  - broader recovery-focused suite:
+    - `runtime/test/agent-pool/automatic-recovery.test.ts`
+    - `runtime/test/agent-pool/run-agent-orchestrator.test.ts`
+    - `runtime/test/channels/web/web-channel.test.ts`
+    - `runtime/test/channels/web/web-agent-streaming.test.ts`
+    - `runtime/test/channels/web/web-channel-recovery-state.test.ts`
+    - `runtime/test/runtime/scheduler.test.ts`
+    - `runtime/test/dream-agent-turn.test.ts`
+    - `runtime/test/runtime/message-loop.test.ts`
+    - `runtime/test/remote/remote-interop.test.ts`
+    - `runtime/test/extensions/autoresearch-supervisor-reasons.test.ts`
+    - `runtime/test/extensions/autoresearch-supervisor-messaging.test.ts`
+    - `runtime/test/web/post-recovery-chip.test.ts`
+  - `bunx tsc --noEmit -p runtime/tsconfig.json`
+  - `CI=1 make ci-fast`
+- With the shipped recovery UX, stalled-compaction repair, visible recovery chip, restored Dream/scheduler verification, clean typecheck, and passing canonical CI gate, the ticket now meets its v1 acceptance surface and is being closed as `done`.
 
 ### 2026-04-19
 - Moved doing → review via board batch action.
@@ -462,6 +513,21 @@ turn paths should use the shared engine from the start.
 
 ## Notes
 
+### Closure status after the 2026-04-21 completion sweep
+
+This ticket is complete.
+
+The final completion sweep confirmed that the shipped implementation now covers:
+
+- shared automatic recovery loop and bounded recovery budget
+- classifier-driven retry vs compact-first behavior
+- exhausted recovery affordance on web (`Continue` / `Retry cleanly`)
+- persistent web recovery marker storage and visible message-level chip rendering
+- persistent recovery-needed UX for stalled compaction / recovery instead of the bogus generic no-response notice
+- manual `/compact` repair for orphaned tool-result corruption before rewriting the session
+- Dream / scheduler / message-loop / remote-path verification for the broader recovery matrix
+- clean local typecheck and passing canonical repo gate during closure
+
 - This ticket builds on existing restart/finalization hardening and compaction
   status work, but is intentionally a new scope: automatic continuation after
   recoverable mid-turn failures.
@@ -472,10 +538,18 @@ turn paths should use the shared engine from the start.
 
 ## Links
 
+- Commit: `6eddf72c` — `Fix stalled recovery and compact session repair`
 - `runtime/src/channels/web/handlers/agent.ts`
+- `runtime/src/agent-control/handlers/control.ts`
+- `runtime/src/agent-pool/orphan-tool-results.ts`
 - `runtime/src/agent-pool/run-agent-orchestrator.ts`
+- `runtime/src/agent-pool/session.ts`
+- `runtime/src/types/pi-coding-agent-compat.d.ts`
 - `runtime/src/channels/web/sse/agent-events.ts`
 - `runtime/src/extensions/smart-compaction.ts`
+- `runtime/web/src/components/post.ts`
+- `runtime/web/static/css/content.css`
+- `runtime/test/web/post-recovery-chip.test.ts`
 - `workitems/50-done/restart-recovery-and-terminal-publication-hardening.md`
 - `workitems/50-done/model-switch-hang-during-compaction.md`
 - `workitems/50-done/incorporate-pi-agentic-compaction.md`

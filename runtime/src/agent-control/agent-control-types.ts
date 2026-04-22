@@ -149,6 +149,10 @@ export type AgentControlCommand =
       raw: string;
     }
   | {
+      type: "clone";
+      raw: string;
+    }
+  | {
       type: "forks";
       raw: string;
     }

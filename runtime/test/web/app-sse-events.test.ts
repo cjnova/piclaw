@@ -17,6 +17,7 @@ function applyUpdate<T>(current: T, next: T | ((prev: T) => T)): T {
 function createDeps() {
   let extensionPanels = new Map<string, any>();
   let pendingPanelActions = new Set<string>(['panel-a:run', 'autoresearch:stop']);
+  let extensionWorkingState: any = { message: null, indicator: null };
   let followupQueueItems: Array<{ row_id: string; content?: string }> = [
     { row_id: 'row-1', content: 'first' },
     { row_id: 'row-2', content: 'second' },
@@ -100,6 +101,9 @@ function createDeps() {
     setPendingExtensionPanelActions: (next) => {
       pendingPanelActions = applyUpdate(pendingPanelActions, next);
     },
+    setExtensionWorkingState: (next) => {
+      extensionWorkingState = applyUpdate(extensionWorkingState, next);
+    },
     refreshActiveEditorFromWorkspace: () => undefined,
     showIntentToast: (title, detail, kind, durationMs) => {
       toastCalls.push([title, detail, kind, durationMs]);
@@ -113,6 +117,7 @@ function createDeps() {
     deps,
     getExtensionPanels: () => extensionPanels,
     getPendingPanelActions: () => pendingPanelActions,
+    getExtensionWorkingState: () => extensionWorkingState,
     getFollowupQueueItems: () => followupQueueItems,
     getToastCalls: () => toastCalls,
     getClearQueueCalls: () => clearQueueCalls,
@@ -145,6 +150,70 @@ test('handleAppSseEvent routes status-panel widget events and clears finished pe
 
   expect(state.getExtensionPanels().get('panel-a')).toEqual({ state: 'done', title: 'Complete' });
   expect(Array.from(state.getPendingPanelActions())).toEqual(['autoresearch:stop']);
+});
+
+test('handleAppSseEvent tracks extension working messages and indicators for the active chat', () => {
+  const state = createDeps();
+
+  handleAppSseEvent('extension_ui_working', {
+    chat_jid: 'chat:alpha',
+    message: 'Compacting context…',
+  }, state.deps);
+
+  expect(state.getExtensionWorkingState()).toEqual({
+    message: 'Compacting context…',
+    indicator: null,
+  });
+
+  handleAppSseEvent('extension_ui_working_indicator', {
+    chat_jid: 'chat:alpha',
+    frames: ['⠋', '⠙'],
+    interval_ms: 90,
+  }, state.deps);
+
+  expect(state.getExtensionWorkingState()).toEqual({
+    message: 'Compacting context…',
+    indicator: {
+      mode: 'custom',
+      frames: ['⠋', '⠙'],
+      intervalMs: 90,
+    },
+  });
+
+  handleAppSseEvent('extension_ui_working', {
+    chat_jid: 'chat:beta',
+    message: 'Ignore other chats',
+  }, state.deps);
+
+  expect(state.getExtensionWorkingState()).toEqual({
+    message: 'Compacting context…',
+    indicator: {
+      mode: 'custom',
+      frames: ['⠋', '⠙'],
+      intervalMs: 90,
+    },
+  });
+});
+
+test('handleAppSseEvent clears extension working state when the turn completes', () => {
+  const state = createDeps();
+
+  handleAppSseEvent('extension_ui_working', {
+    chat_jid: 'chat:alpha',
+    message: 'Compacting context…',
+  }, state.deps);
+  handleAppSseEvent('extension_ui_working_indicator', {
+    chat_jid: 'chat:alpha',
+    frames: ['⠋', '⠙'],
+    interval_ms: 90,
+  }, state.deps);
+
+  handleAppSseEvent('agent_response', {
+    chat_jid: 'chat:alpha',
+    content: 'done',
+  }, state.deps);
+
+  expect(state.getExtensionWorkingState()).toEqual({ message: null, indicator: null });
 });
 
 test('handleAppSseEvent removes followup rows on removal events and schedules queue refresh', () => {

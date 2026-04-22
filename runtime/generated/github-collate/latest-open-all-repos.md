@@ -1,20 +1,30 @@
 # GitHub issues + PR digest
 
-Generated: 2026-04-19T22:02:46.339Z
+Generated: 2026-04-22T06:00:46.071Z
 
 ## Summary
 
 - State filter: `open`
-- Repos scanned: **14**
-- Included private repos: **no**
-- Repos with items: **0**
-- Total items: **0**
+- Repos scanned: **13**
+- Included private repos: **yes**
+- Repos with items: **1**
+- Total items: **1**
 - Issues: **0**
-- Pull requests: **0**
+- Pull requests: **1**
+
+## Repo summary
+
+| Repo | Issues | PRs | Total |
+|---|---:|---:|---:|
+| rcarmo/piclaw | 0 | 1 | 1 |
 
 ## Collated items
 
-| Updated | Repo | Type | # | Title | Author | Labels | URL |
-|---|---|---|---:|---|---|---|---|
-| — | — | — | — | No matching items | — | — | — |
+### [rcarmo/piclaw](https://github.com/rcarmo/piclaw)
+
+#### Pull requests
+
+| Updated | # | Title | Author | Labels | URL |
+|---|---:|---|---|---|---|
+| 2026-04-21T22:18:42Z | 140 | feat: cross-instance IPC — pairing, proposals, and remote execution | CelsoSantos | — | [#140](https://github.com/rcarmo/piclaw/pull/140) |
 

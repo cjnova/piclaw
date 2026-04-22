@@ -246,6 +246,7 @@ export function renderMainShell(options: MainShellRenderOptions): any {
     activeThinkingLevel,
     supportsThinking,
     contextUsage,
+    extensionWorkingState,
     notificationsEnabled,
     notificationPermission,
     handleToggleNotifications,
@@ -625,6 +626,7 @@ export function renderMainShell(options: MainShellRenderOptions): any {
           onModelChange=${setActiveModel}
           onModelStateChange=${applyModelState}
           statusNotice=${isCompactionStatus(agentStatus) ? agentStatus : null}
+          extensionWorkingState=${extensionWorkingState}
           prefillRequest=${composePrefillRequest}
         />
         <${AgentRequestModal}

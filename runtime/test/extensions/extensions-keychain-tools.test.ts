@@ -58,14 +58,20 @@ describe("keychain-tools extension", () => {
     expect(result.details.count).toBe(1);
   });
 
-  test("retrieves secret and username fields", async () => {
+  test("retrieves secret and username fields while marking direct get as last resort", async () => {
     const tool = await getTool();
 
     const secretResult = await tool.execute("k2", { action: "get", name: "ssh/piclaw" });
     expect(secretResult.content[0].text).toBe("PRIVATE_KEY_DATA");
+    expect(secretResult.details.name).toBe("ssh/piclaw");
+    expect(secretResult.details.field).toBe("secret");
+    expect(secretResult.details.access_method).toBe("direct_get_last_resort");
 
     const userResult = await tool.execute("k3", { action: "get", name: "ssh/piclaw", field: "username" });
     expect(userResult.content[0].text).toBe("git");
+    expect(userResult.details.name).toBe("ssh/piclaw");
+    expect(userResult.details.field).toBe("username");
+    expect(userResult.details.access_method).toBe("direct_get_last_resort");
   });
 
   test("sets a keychain entry and can read it back", async () => {
@@ -97,7 +103,7 @@ describe("keychain-tools extension", () => {
     expect(missing.content[0].text).toContain("Keychain entry not found: ssh/piclaw");
   });
 
-  test("before_agent_start includes env and integration profile hints", async () => {
+  test("before_agent_start includes env and integration profile hints and last-resort guidance", async () => {
     const db = await importFresh<typeof import("../src/db.js")>("../src/db.js");
     const keychain = await importFresh<typeof import("../src/secure/keychain.js")>("../src/secure/keychain.js");
     db.initDatabase();
@@ -126,43 +132,35 @@ describe("keychain-tools extension", () => {
     expect(result?.systemPrompt).toContain("ssh/piclaw");
     expect(result?.systemPrompt).toContain("proxmox/lab");
     expect(result?.systemPrompt).toContain("portainer/relay");
+    expect(result?.systemPrompt).toContain("Use keychain get only as an absolute last resort");
+    expect(result?.systemPrompt).toContain("This is the default and preferred access path");
   });
 
-  test("tool_result redacts non-keychain tool content and details", async () => {
-    const db = await importFresh<typeof import("../src/db.js")>("../src/db.js");
-    const keychain = await importFresh<typeof import("../src/secure/keychain.js")>("../src/secure/keychain.js");
-    db.initDatabase();
-    await keychain.setKeychainEntry({
-      name: "STRIPE_KEY",
-      type: "token",
-      secret: "stripe-secret",
-    });
+  test("status hints only expose entry names, not secrets", async () => {
+    await registerKeychainExtension();
+    const { resolveToolStatusHints } = await import("../../src/tool-status-hints.js");
 
-    const fake = await registerKeychainExtension();
-    const toolResult = fake.handlers.find((entry) => entry.event === "tool_result")?.handler;
-    const result = await toolResult?.({
-      toolName: "bash",
-      content: [{ type: "text", text: "value=stripe-secret" }],
-      details: { nested: "stripe-secret" },
-      input: {},
-      isError: false,
-      toolCallId: "tool-1",
-      type: "tool_result",
-    });
-
-    expect(result?.content?.[0]?.text).toBe("value=[REDACTED:STRIPE_KEY]");
-    expect(result?.details).toEqual({ nested: "[REDACTED:STRIPE_KEY]" });
-
-    const keychainPassthrough = await toolResult?.({
+    const hints = resolveToolStatusHints({
+      chatJid: "web:keychain",
       toolName: "keychain",
-      content: [{ type: "text", text: "stripe-secret" }],
-      details: { nested: "stripe-secret" },
-      input: {},
-      isError: false,
-      toolCallId: "tool-2",
-      type: "tool_result",
+      args: {
+        action: "set",
+        name: "ssh/piclaw",
+        secret: "PRIVATE_KEY_DATA",
+        username: "git",
+      },
+      payload: {},
     });
-    expect(keychainPassthrough).toBeUndefined();
+
+    expect(hints).toEqual([
+      expect.objectContaining({
+        key: "keychain",
+        label: "ssh/piclaw",
+        title: "Keychain entry • ssh/piclaw",
+      }),
+    ]);
+    expect(JSON.stringify(hints)).not.toContain("PRIVATE_KEY_DATA");
+    expect(JSON.stringify(hints)).not.toContain("git");
   });
 
   test("set/delete actions validate required fields", async () => {

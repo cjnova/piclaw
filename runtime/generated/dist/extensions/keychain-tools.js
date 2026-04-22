@@ -4,7 +4,6 @@
 import { Type } from "@sinclair/typebox";
 import { registerToolStatusHintProvider } from "../tool-status-hints.js";
 import { deleteKeychainEntry, getKeychainEntry, listInjectableKeychainEntries, listInjectableKeychainEnvNames, listKeychainEntries, setKeychainEntry, } from "../secure/keychain.js";
-import { createKeychainOutputRedactor } from "../secure/shell-secrets.js";
 const KEYCHAIN_STATUS_ICON_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="8" cy="14" r="3"></circle><path d="M11 14h9"></path><path d="M16 14v-2"></path><path d="M19 14v2"></path></svg>`;
 const KeychainToolSchema = Type.Object({
     action: Type.Union([Type.Literal("list"), Type.Literal("get"), Type.Literal("set"), Type.Literal("delete")], {
@@ -56,10 +55,11 @@ function clampLimit(value, fallback = 100) {
 }
 const KEYCHAIN_HINT = [
     "## Keychain",
-    "Use keychain for listing available key names and retrieving entry secrets/usernames.",
-    "You can also store/update entries and delete obsolete ones.",
+    "Use keychain primarily to list available key names and manage entries by name.",
+    "Default access path: rely on automatically injected environment variables in bash/SSH and keychain-backed profile fields in other tools.",
+    "Use keychain get only as an absolute last resort when no tool or env-based path can consume the secret directly.",
+    "Never inline fetched secrets into shell commands when an env var or profile reference is available.",
     "Only reveal secrets to the user when explicitly requested.",
-    "Tool outputs are automatically redacted for known keychain secret values except for direct keychain tool reads.",
 ].join("\n");
 function listPrefixedEntries(prefix, options = {}) {
     return listKeychainEntries()
@@ -92,14 +92,14 @@ function buildInjectedBashEnvHint() {
     if (entries.length === 0) {
         return [
             "## Bash secret env",
-            "Keychain entries are automatically injected as environment variables into bash and SSH commands. Names with `/`, `-`, or `.` are sanitized (replaced with `_` and uppercased), e.g. `github/piclaw-bot-pat` becomes `$GITHUB_PICLAW_BOT_PAT`. Do NOT fetch secrets and inline them into shell commands; just reference $ENTRY_NAME directly.",
+            "Keychain entries are automatically injected as environment variables into bash and SSH commands. Names with `/`, `-`, or `.` are sanitized (replaced with `_` and uppercased), e.g. `github/piclaw-bot-pat` becomes `$GITHUB_PICLAW_BOT_PAT`. This is the default and preferred access path. Do NOT fetch secrets and inline them into shell commands; just reference $ENTRY_NAME directly.",
         ].join("\n");
     }
     const preview = entries.slice(0, 20).map(({ envName, keychainName }) => envName === keychainName ? `- $${envName}` : `- $${envName}  (from keychain: ${keychainName})`).join("\n");
     const more = entries.length > 20 ? `\n- … ${entries.length - 20} more` : "";
     return [
         "## Bash secret env",
-        "Keychain entries are automatically injected as environment variables into bash and SSH commands. Names with `/`, `-`, or `.` are sanitized (replaced with `_` and uppercased), e.g. `github/piclaw-bot-pat` becomes `$GITHUB_PICLAW_BOT_PAT`. Do NOT fetch secrets and inline them into shell commands; just reference $ENTRY_NAME directly.",
+        "Keychain entries are automatically injected as environment variables into bash and SSH commands. Names with `/`, `-`, or `.` are sanitized (replaced with `_` and uppercased), e.g. `github/piclaw-bot-pat` becomes `$GITHUB_PICLAW_BOT_PAT`. This is the default and preferred access path. Do NOT fetch secrets and inline them into shell commands; just reference $ENTRY_NAME directly.",
         "",
         `${preview}${more}`,
         "",
@@ -111,29 +111,11 @@ export const keychainTools = (pi) => {
     pi.on("before_agent_start", async (event) => ({
         systemPrompt: `${event.systemPrompt}\n\n${KEYCHAIN_HINT}\n\n${buildInjectedBashEnvHint()}\n\n${buildIntegrationProfileHints()}`,
     }));
-    pi.on("tool_result", async (event) => {
-        if (event.toolName === "keychain")
-            return;
-        const redactor = await createKeychainOutputRedactor();
-        const redactValue = (value) => {
-            if (typeof value === "string")
-                return redactor.redact(value);
-            if (Array.isArray(value))
-                return value.map((entry) => redactValue(entry));
-            if (!value || typeof value !== "object")
-                return value;
-            return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, redactValue(entry)]));
-        };
-        return {
-            content: event.content.map((block) => block.type === "text" ? { ...block, text: redactor.redact(block.text) } : block),
-            details: redactValue(event.details),
-        };
-    });
     pi.registerTool({
         name: "keychain",
         label: "keychain",
-        description: "List keychain entries, retrieve values, store/update entries, or delete entries. Entries are automatically injected as environment variables (names with `/`, `-`, `.` are sanitized to `_` and uppercased) into bash and SSH commands — do NOT fetch secrets and inline them into shell commands; just reference $ENTRY_NAME directly.",
-        promptSnippet: "keychain: list/get/set/delete secure keychain entries by name. Secrets are auto-injected as env vars into bash — never inline them into commands.",
+        description: "List keychain entries, retrieve values, store/update entries, or delete entries. Prefer env injection and keychain-backed profile references over reading secrets directly. Entries are automatically injected as environment variables (names with `/`, `-`, `.` are sanitized to `_` and uppercased) into bash and SSH commands — treat keychain get as a last resort and do NOT inline fetched secrets into shell commands.",
+        promptSnippet: "keychain: list/get/set/delete secure keychain entries by name. Prefer auto-injected env vars and profile references; use keychain get only as a last resort, and never inline fetched secrets into commands.",
         parameters: KeychainToolSchema,
         async execute(_toolCallId, params) {
             if (params.action === "list") {
@@ -148,7 +130,7 @@ export const keychainTools = (pi) => {
                 const lines = entries.map((entry) => `• ${entry.name} (${entry.type})`);
                 const injectable = listInjectableKeychainEnvNames();
                 const envNote = injectable.length > 0
-                    ? `\n\nEntries with shell-safe names are auto-injected as env vars into bash. Use $NAME in commands instead of inlining secrets.`
+                    ? `\n\nEntries with shell-safe names are auto-injected as env vars into bash by default. Prefer $NAME in commands instead of keychain get or inlining secrets.`
                     : '';
                 return {
                     content: [{ type: "text", text: `Keychain entries (${entries.length}):\n${lines.join("\n")}${envNote}` }],
@@ -222,12 +204,12 @@ export const keychainTools = (pi) => {
                     }
                     return {
                         content: [{ type: "text", text: entry.username }],
-                        details: { count: 1, entries: [], name, field, type: entry.type },
+                        details: { count: 1, entries: [], name, field, type: entry.type, access_method: "direct_get_last_resort" },
                     };
                 }
                 return {
                     content: [{ type: "text", text: entry.secret }],
-                    details: { count: 1, entries: [], name, field, type: entry.type },
+                    details: { count: 1, entries: [], name, field, type: entry.type, access_method: "direct_get_last_resort" },
                 };
             }
             catch (error) {

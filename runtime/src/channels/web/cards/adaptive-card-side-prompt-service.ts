@@ -336,6 +336,7 @@ export class WebAdaptiveCardSidePromptService {
           { action_type: normalized.actionType, title: normalized.actionTitle || "Continue", data: { intent: "recovery-continue" }, submitted_at: submittedAt },
         ),
       );
+      this.options.skipFailedOnModelSwitch(chatJid);
 
       const continueReq = new Request(`http://internal/agent/${this.options.defaultAgentId}/message`, {
         method: "POST",
@@ -365,6 +366,7 @@ export class WebAdaptiveCardSidePromptService {
           { action_type: normalized.actionType, title: normalized.actionTitle || "Retry cleanly", data: { intent: "recovery-retry-clean" }, submitted_at: submittedAt },
         ),
       );
+      this.options.skipFailedOnModelSwitch(chatJid);
 
       const retryReq = new Request(`http://internal/agent/${this.options.defaultAgentId}/message`, {
         method: "POST",

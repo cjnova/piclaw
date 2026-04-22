@@ -2,6 +2,7 @@ import { getIdentityConfig, getWebRuntimeConfig, getWebServerConfig, } from "../
 import { getChatCursor, getDb, replaceMessageContent } from "../../../db.js";
 import { RemoteInteropService } from "../../../remote/service.js";
 import { handlePost as handlePostRequest } from "../handlers/posts.js";
+import { handleAgentMessage as handleAgentMessageRequest } from "../handlers/agent.js";
 import { WebAdaptiveCardSidePromptService, } from "../cards/adaptive-card-side-prompt-service.js";
 import { createWebAgentControlPlaneService, } from "../agent/agent-control-plane-service.js";
 import { createWebAgentPeerMessageRelayService, } from "../agent/agent-peer-message-relay-service.js";
@@ -206,12 +207,8 @@ export function createWebChannelConstructorFactory(channel, options, deps = defa
         sendMessage: (chatJid, text, sendOptions) => runtimeFollowupFacade.sendMessage(chatJid, text, sendOptions),
         broadcastEvent: (eventType, data) => channel.broadcastEvent(eventType, data),
         skipFailedOnModelSwitch: (chatJid) => runtimeState.skipFailedOnModelSwitch(chatJid),
-        forwardAgentMessage: async (req, pathname, _chatJid, _agentId) => {
-            const webChannel = channel;
-            if (typeof webChannel.handleAgentMessage === "function") {
-                return await webChannel.handleAgentMessage(req, pathname);
-            }
-            throw new Error("Missing WebChannel.handleAgentMessage for adaptive-card side prompts.");
+        forwardAgentMessage: async (req, pathname, chatJid, agentId) => {
+            return await handleAgentMessageRequest(channel, req, pathname, chatJid, agentId);
         },
     });
     const peerMessageRelayService = deps.createPeerMessageRelayService(channel, {

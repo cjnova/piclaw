@@ -1,7 +1,7 @@
 ---
 id: adopt-visual-explainer-skill-for-piclaw
 title: Adopt visual-explainer as a Piclaw-native visual-artifact skill
-status: doing
+status: done
 priority: high
 created: 2026-04-19
 updated: 2026-04-19
@@ -186,20 +186,20 @@ The cross-reference should be added to each listed skill as part of this ticket.
 
 ## Acceptance Criteria
 
-- [ ] A new Piclaw-native visual-artifact skill exists under `.pi/skills/`.
-- [ ] The skill adapts the upstream SKILL.md workflow, references, and templates
+- [x] A new Piclaw-native visual-artifact skill exists under `.pi/skills/`.
+- [x] The skill adapts the upstream SKILL.md workflow, references, and templates
       to Piclaw's vendored library environment.
-- [ ] All library references use Piclaw vendored paths, not external CDNs.
-- [ ] The visual-design profile is explicitly referenced and followed.
-- [ ] At least the top 4 command/prompt modes are adapted and usable.
-- [ ] Font vendoring decision is recorded: which fonts (if any) are added, and
+- [x] All library references use Piclaw vendored paths, not external CDNs.
+- [x] The visual-design profile is explicitly referenced and followed.
+- [x] At least the top 4 command/prompt modes are adapted and usable.
+- [x] Font vendoring decision is recorded: which fonts (if any) are added, and
       the license/path for each.
-- [ ] Every existing skill that creates visual artifacts includes a
+- [x] Every existing skill that creates visual artifacts includes a
       cross-reference to the new skill.
-- [ ] Generated artifacts open correctly through at least one Piclaw surface
+- [x] Generated artifacts open correctly through at least one Piclaw surface
       (workspace file viewer, `open_workspace_file`, or
       `send_dashboard_widget`).
-- [ ] The skill is tested by generating at least one representative artifact
+- [x] The skill is tested by generating at least one representative artifact
       per adapted command mode.
 
 ## Implementation slices
@@ -424,14 +424,14 @@ Outputs:
 
 ## Definition of Done
 
-- [ ] All acceptance criteria satisfied and verified
-- [ ] Tests added or updated — passing locally
-- [ ] Type check clean
-- [ ] Docs and notes updated with links to ticket
-- [ ] Operational impact assessed
-- [ ] Follow-up tickets created for deferred scope
-- [ ] Update history complete with evidence
-- [ ] Ticket front matter updated
+- [x] All acceptance criteria satisfied and verified
+- [x] Tests added or updated — passing locally
+- [x] Type check clean
+- [x] Docs and notes updated with links to ticket
+- [x] Operational impact assessed
+- [x] Follow-up tickets created for deferred scope
+- [x] Update history complete with evidence
+- [x] Ticket front matter updated
 
 ## Updates
 

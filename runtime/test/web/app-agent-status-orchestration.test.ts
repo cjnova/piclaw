@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import {
+  describeTimedOutToolAction,
   finalizeStalledResponse,
   reconcileSilentTurn,
   refreshAgentStatusForChat,
@@ -162,8 +163,49 @@ test('runSilenceWatchdogTick emits waiting status and triggers re-sync after fin
   expect(reconciles).toBe(1);
 });
 
-test('finalizeStalledResponse appends local warning post when partial draft exists', () => {
+test('runSilenceWatchdogTick keeps the last tool status visible while re-syncing', () => {
+  const statuses: any[] = [];
+  let reconciles = 0;
+
+  runSilenceWatchdogTick({
+    isAgentRunningRef: { current: true },
+    pendingRequestRef: { current: null },
+    lastAgentEventRef: { current: 1_000 },
+    lastSilenceNoticeRef: { current: 0 },
+    agentStatusRef: { current: { type: 'tool_status', title: 'bash', status: 'Working...', tool_name: 'bash' } },
+    silenceWarningMs: 4_000,
+    silenceFinalizeMs: 8_000,
+    silenceRefreshMs: 2_000,
+    isCompactionStatus: () => false,
+    setAgentStatus: (next) => statuses.push(next),
+    reconcileSilentTurn: () => {
+      reconciles += 1;
+    },
+    now: () => 10_000,
+  });
+
+  expect(statuses).toEqual([]);
+  expect(reconciles).toBe(1);
+});
+
+test('describeTimedOutToolAction summarizes the last visible tool status', () => {
+  expect(describeTimedOutToolAction({ type: 'tool_call', title: 'bash', tool_name: 'bash' })).toEqual({
+    summary: 'Timed out while running bash',
+    title: 'bash',
+    toolName: 'bash',
+    statusText: null,
+  });
+  expect(describeTimedOutToolAction({ type: 'tool_status', title: 'bash', status: 'Working...', tool_name: 'bash' })).toEqual({
+    summary: 'Timed out after bash: Working...',
+    title: 'bash',
+    toolName: 'bash',
+    statusText: 'Working...',
+  });
+});
+
+test('finalizeStalledResponse appends local warning post, includes the last tool action, and preserves the last draft when partial draft exists', () => {
   const setAgentStatusCalls: any[] = [];
+  const setAgentDraftCalls: any[] = [];
   const setPostsCalls: any[] = [];
 
   finalizeStalledResponse({
@@ -177,10 +219,11 @@ test('finalizeStalledResponse appends local warning post when partial draft exis
     thoughtBufferRef: { current: 'thinking' },
     pendingRequestRef: { current: { id: 1 } },
     lastAgentResponseRef: { current: { post: { id: 1 } } },
+    agentStatusRef: { current: { type: 'tool_status', title: 'bash', status: 'Working...', tool_name: 'bash' } },
     stalledPostIdRef: { current: null },
     scrollToBottomRef: { current: () => undefined },
     setCurrentTurnId: () => undefined,
-    setAgentDraft: () => undefined,
+    setAgentDraft: (next) => setAgentDraftCalls.push(next),
     setAgentPlan: () => undefined,
     setAgentThought: () => undefined,
     setPendingRequest: () => undefined,
@@ -191,13 +234,26 @@ test('finalizeStalledResponse appends local warning post when partial draft exis
     nowIso: () => '2026-01-01T00:00:00.000Z',
   });
 
+  expect(setAgentDraftCalls.at(-1)).toEqual({
+    text: 'partial output',
+    totalLines: 1,
+    fullText: 'partial output',
+  });
   expect(typeof setPostsCalls[0]).toBe('function');
   const appended = setPostsCalls[0]([{ id: 1, data: { content: 'a' } }]);
   expect(appended.at(-1)).toMatchObject({
     id: 42,
     data: {
       type: 'agent_response',
+      content: expect.stringContaining('Timed out after bash: Working...'),
       is_local_stall: true,
+      content_blocks: [
+        expect.objectContaining({
+          type: 'timeout_marker',
+          timed_out: true,
+          tool_action_summary: 'Timed out after bash: Working...',
+        }),
+      ],
     },
   });
   expect(setAgentStatusCalls.at(-1)).toBeNull();

@@ -20,7 +20,7 @@ import { createLogger, debugSuppressedError } from "./utils/logger.js";
 export const DREAM_TASK_ID = "builtin-dream-midnight";
 export const DREAM_TASK_KIND = "internal" as const;
 export const DREAM_TASK_PROMPT = "dream";
-export const DREAM_TASK_CRON = "0 0 * * *";
+export const DREAM_TASK_CRON = process.env.PICLAW_DREAM_CRON?.trim() || "0 1 * * *";
 
 export interface DreamRunResult {
   generated_at: string;

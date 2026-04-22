@@ -20,7 +20,7 @@ import { spawn } from "child_process";
 import { existsSync } from "fs";
 import type { BashOperations } from "@mariozechner/pi-coding-agent";
 import { buildInjectedShellEnv, resolveKeychainPlaceholders } from "../secure/keychain.js";
-import { createKeychainOutputRedactor, createStreamingTextRedactor, type StreamingTextRedactor } from "../secure/shell-secrets.js";
+
 import { killProcessTree, registerProcess, unregisterProcess } from "../utils/process-tracker.js";
 import { shouldDetachChildProcess } from "../utils/process-spawn.js";
 
@@ -104,8 +104,6 @@ function createTrackedShellOperations(resolveCandidates: () => ShellConfig[]): B
 
           let resolvedEnv: NodeJS.ProcessEnv;
           let resolvedCommand: string;
-          let stdoutRedactor: StreamingTextRedactor;
-          let stderrRedactor: StreamingTextRedactor;
           try {
             resolvedEnv = await buildInjectedShellEnv({
               explicitEnv: env,
@@ -113,9 +111,6 @@ function createTrackedShellOperations(resolveCandidates: () => ShellConfig[]): B
               referencedTexts: [command],
             });
             resolvedCommand = await resolveKeychainPlaceholders(command);
-            const outputRedactor = await createKeychainOutputRedactor();
-            stdoutRedactor = createStreamingTextRedactor(outputRedactor);
-            stderrRedactor = createStreamingTextRedactor(outputRedactor);
           } catch (error) {
             reject(error as Error);
             return;
@@ -218,12 +213,12 @@ function createTrackedShellOperations(resolveCandidates: () => ShellConfig[]): B
 
             if (spawned.stdout) {
               spawned.stdout.on("data", (chunk) => {
-                emitChunk(stdoutRedactor.push(chunk.toString("utf8")));
+                emitChunk(chunk.toString("utf8"));
               });
             }
             if (spawned.stderr) {
               spawned.stderr.on("data", (chunk) => {
-                emitChunk(stderrRedactor.push(chunk.toString("utf8")));
+                emitChunk(chunk.toString("utf8"));
               });
             }
 
@@ -242,8 +237,6 @@ function createTrackedShellOperations(resolveCandidates: () => ShellConfig[]): B
             spawned.on("close", (code) => {
               if (spawned.pid) unregisterProcess(spawned.pid);
               if (shellUnavailable) return;
-              emitChunk(stdoutRedactor.flush());
-              emitChunk(stderrRedactor.flush());
 
               if (aborted || signal?.aborted) {
                 settleError(new Error("aborted"));

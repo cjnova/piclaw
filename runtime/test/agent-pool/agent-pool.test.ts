@@ -177,6 +177,7 @@ test("agent pool honors timeout overrides", async () => {
   let abortCalled = false;
   class StubSession {
     private listeners: Array<(event: any) => void> = [];
+    promptCalls = 0;
     subscribe(listener: (event: any) => void) {
       this.listeners.push(listener);
       return () => {
@@ -184,7 +185,17 @@ test("agent pool honors timeout overrides", async () => {
       };
     }
     async prompt(_prompt: string) {
-      await Bun.sleep(20);
+      this.promptCalls += 1;
+      if (this.promptCalls === 1) {
+        await Bun.sleep(20);
+        return;
+      }
+      for (const listener of this.listeners) {
+        listener({
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", delta: "ok" },
+        });
+      }
     }
     async abort() {
       abortCalled = true;
@@ -256,10 +267,12 @@ test("agent pool stores SSH config for future sessions when no live SSH session 
   let disposed = 0;
 
   class StubSession {
+    private listeners: Array<(event: any) => void> = [];
     isStreaming = false;
     isBashRunning = false;
     isCompacting = false;
-    subscribe(_listener: (event: any) => void) {
+    subscribe(listener: (event: any) => void) {
+      this.listeners.push(listener);
       return () => {};
     }
     async prompt(_prompt: string) {
@@ -274,6 +287,12 @@ test("agent pool stores SSH config for future sessions when no live SSH session 
         });
         expect(result.apply_timing).toBe("next_session");
         expect(getSshConfig("web:other")?.ssh_target).toBe("agent@example.com:/srv/project");
+        for (const listener of this.listeners) {
+          listener({
+            type: "message_update",
+            assistantMessageEvent: { type: "text_delta", delta: "ok" },
+          });
+        }
       } finally {
         this.isStreaming = false;
       }
@@ -538,7 +557,7 @@ test("agent pool applies the pressure pool cap immediately after acquiring a sec
   await pool.shutdown();
 });
 
-test("agent pool enables the default pressure trim path before RSS reaches the old 512MB threshold", async () => {
+test("agent pool enables the default pressure trim path at the 512MB threshold", async () => {
   const ws = getTestWorkspace();
   restoreEnv = setEnv({
     PICLAW_WORKSPACE: ws.workspace,
@@ -551,7 +570,7 @@ test("agent pool enables the default pressure trim path before RSS reaches the o
   });
 
   const originalMemoryUsageRss = process.memoryUsage.rss;
-  (process.memoryUsage as typeof process.memoryUsage & { rss: () => number }).rss = () => 400 * 1024 * 1024;
+  (process.memoryUsage as typeof process.memoryUsage & { rss: () => number }).rss = () => 520 * 1024 * 1024;
 
   try {
     const { AgentPool } = await importFresh<typeof import("../src/agent-pool.js")>("../src/agent-pool.js");

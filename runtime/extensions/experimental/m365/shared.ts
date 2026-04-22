@@ -27,7 +27,6 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as os from "node:os";
 import { execFileSync, execSync, spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { createLogger, debugSuppressedError } from "../../../src/utils/logger.js";
@@ -57,14 +56,15 @@ function closeWebSocketBestEffort(ws: WebSocket | null | undefined, message: str
 async function closeCdpTargetBestEffort(port: number, targetId: string | null | undefined, message: string, fields: Record<string, unknown> = {}): Promise<void> {
 	if (!targetId) return;
 	try {
-		await httpPut(`http://localhost:${port}/json/close/${targetId}`, 3000);
+		await httpPut(`http://127.0.0.1:${port}/json/close/${targetId}`, 3000);
 	} catch (error) {
 		logSuppressedM365(message, error, { ...fields, port, targetId });
 	}
 }
 
-const PROFILE_DIR = path.join(os.tmpdir(), "m365tools-edge-profile");
-export const USE_TEMP_EDGE_PROFILE = (process.env["M365_USE_TEMP_EDGE_PROFILE"] ?? "").toLowerCase() === "true";
+const PROFILE_DIR = process.env["M365_EDGE_PROFILE_DIR"]
+	?? path.join(process.env["PICLAW_WORKSPACE"] ?? process.env["HOME"] ?? "/tmp", ".piclaw", "data", "m365-edge-profile");
+export const USE_TEMP_EDGE_PROFILE = (process.env["M365_USE_TEMP_EDGE_PROFILE"] ?? (process.platform === "linux" ? "true" : "")).toLowerCase() === "true";
 export function isM365YoloEnabled(value: string | undefined): boolean {
 	return /^(1|true|yes|on)$/i.test((value ?? "").trim());
 }
@@ -78,7 +78,11 @@ const OUTLOOK_REDIRECT_URI = "https://outlook.live.com/mail/";
 const CONSUMER_GRAPH_SCOPES = [
 	"openid",
 	"profile",
+	"offline_access",
 	"https://graph.microsoft.com/User.Read",
+	"https://graph.microsoft.com/Mail.ReadWrite",
+	"https://graph.microsoft.com/Mail.Send",
+	"https://graph.microsoft.com/MailboxSettings.Read",
 ].join(" ");
 
 // Tenant ID: env override, or auto-discovered from Graph token on first use.
@@ -323,7 +327,7 @@ export function decodeJwt(token: string): Record<string, any> {
 }
 
 // Localhost/CDP exception: this helper is only for local Edge DevTools endpoints
-// (http://localhost:PORT/json...). It is NOT used for external M365 HTTP(S) traffic.
+// (http://127.0.0.1:PORT/json...). It is NOT used for external M365 HTTP(S) traffic.
 export async function httpGet(url: string, timeoutMs = 3000): Promise<any> {
 	const resp = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
 	const text = await resp.text();
@@ -449,11 +453,11 @@ function killEdgeCdpProcesses() {
 async function inspectCdpPort(port: number): Promise<"absent" | "healthy" | "unhealthy"> {
 	let probeTargetId: string | null = null;
 	try {
-		const version: any = await httpGet(`http://localhost:${port}/json/version`, 2000);
+		const version: any = await httpGet(`http://127.0.0.1:${port}/json/version`, 2000);
 		if (!version || typeof version !== "object") return "unhealthy";
-		const targets: any[] = await httpGet(`http://localhost:${port}/json`, 3000);
+		const targets: any[] = await httpGet(`http://127.0.0.1:${port}/json`, 3000);
 		if (!Array.isArray(targets)) return "unhealthy";
-		const probe: any = await httpPut(`http://localhost:${port}/json/new?${encodeURIComponent("about:blank")}`, 5000);
+		const probe: any = await httpPut(`http://127.0.0.1:${port}/json/new?${encodeURIComponent("about:blank")}`, 5000);
 		probeTargetId = typeof probe?.id === "string" ? probe.id : null;
 		if (!probeTargetId && !probe?.webSocketDebuggerUrl) return "unhealthy";
 		return "healthy";
@@ -464,7 +468,7 @@ async function inspectCdpPort(port: number): Promise<"absent" | "healthy" | "unh
 	} finally {
 		if (probeTargetId) {
 			try {
-				await httpPut(`http://localhost:${port}/json/close/${probeTargetId}`, 3000);
+				await httpPut(`http://127.0.0.1:${port}/json/close/${probeTargetId}`, 3000);
 			} catch (error) {
 				logSuppressedM365("Failed to close the CDP probe target after a health inspection.", error, {
 					port,
@@ -512,7 +516,7 @@ export async function launchEdge(url: string, options?: { forceNewInstance?: boo
 		const existingCdp = await findExistingCdpPort();
 		if (existingCdp && !USE_TEMP_EDGE_PROFILE) {
 			try {
-				await httpPut(`http://localhost:${existingCdp}/json/new?${encodeURIComponent(url)}`, EXISTING_CDP_REUSE_TAB_TIMEOUT_MS);
+				await httpPut(`http://127.0.0.1:${existingCdp}/json/new?${encodeURIComponent(url)}`, EXISTING_CDP_REUSE_TAB_TIMEOUT_MS);
 				const dummyProc = { pid: 0, kill: () => {}, unref: () => {} } as any;
 				return { proc: dummyProc, port: existingCdp };
 			} catch (error) {
@@ -537,13 +541,16 @@ export async function launchEdge(url: string, options?: { forceNewInstance?: boo
 		"--no-first-run",
 		"--disable-features=AutomationControlled",
 		"--disable-default-apps",
+		"--no-sandbox",
+		"--disable-dev-shm-usage",
+		...(process.env.DISPLAY ? [] : ["--headless=new", "--disable-gpu"]),
 		"--new-window",
 		url,
 	];
 	const proc = spawn(edgePath, args, { detached: true, stdio: "ignore" });
 	proc.unref();
 
-	const deadline = Date.now() + 15000;
+	const deadline = Date.now() + 25000;
 	while (Date.now() < deadline) {
 		for (const p of [port, ...Array.from({ length: 5 }, (_, i) => CDP_PORT_START + i).filter((x) => x !== port)]) {
 			if (await inspectCdpPort(p) === "healthy") {
@@ -644,7 +651,7 @@ function clearTokenCache(source: string) {
 async function extractTeamsRefreshToken(): Promise<string | null> {
 	const existingPort = await findExistingCdpPort();
 	if (!existingPort) return null;
-	const targets: any[] = await httpGet(`http://localhost:${existingPort}/json`, 3000);
+	const targets: any[] = await httpGet(`http://127.0.0.1:${existingPort}/json`, 3000);
 	const teamsV2 = targets.find((t: any) => t.type === "page" && t.url?.includes("teams.cloud.microsoft"));
 	if (!teamsV2?.webSocketDebuggerUrl) return null;
 	const ws = await connectDebuggerUrl(teamsV2.webSocketDebuggerUrl);
@@ -703,7 +710,7 @@ function base64UrlEncode(buffer: Buffer): string {
 async function hasOutlookLiveSession(): Promise<boolean> {
 	const existingPort = await findExistingCdpPort();
 	if (!existingPort) return false;
-	const targets: any[] = await httpGet(`http://localhost:${existingPort}/json`, 3000);
+	const targets: any[] = await httpGet(`http://127.0.0.1:${existingPort}/json`, 3000);
 	const outlookTarget = targets.find((t: any) => t.type === "page" && t.url?.includes("outlook.live.com/mail"));
 	if (!outlookTarget?.webSocketDebuggerUrl) return false;
 
@@ -741,7 +748,7 @@ async function showConsumerConsentAndWait(): Promise<boolean> {
 	const existingPort = await findExistingCdpPort();
 	if (!existingPort) return false;
 
-	const target: any = await httpPut(`http://localhost:${existingPort}/json/new?${encodeURIComponent("about:blank")}`, 5000);
+	const target: any = await httpPut(`http://127.0.0.1:${existingPort}/json/new?${encodeURIComponent("about:blank")}`, 5000);
 	if (!target?.webSocketDebuggerUrl) return false;
 
 	const ws = await connectDebuggerUrl(target.webSocketDebuggerUrl);
@@ -775,7 +782,7 @@ async function showConsumerConsentAndWait(): Promise<boolean> {
 				}
 				// Close the consent tab
 				if (target.id) {
-					try { await httpPut(`http://localhost:${existingPort}/json/close/${target.id}`, 3000); } catch (error) {
+					try { await httpPut(`http://127.0.0.1:${existingPort}/json/close/${target.id}`, 3000); } catch (error) {
 						log.warn("Failed to close consumer consent tab after approval.", {
 							operation: "m365.show_consumer_consent.close_tab_after_approval",
 							err: error,
@@ -806,7 +813,7 @@ async function showConsumerConsentAndWait(): Promise<boolean> {
 			});
 		}
 		if (target.id) {
-			try { await httpPut(`http://localhost:${existingPort}/json/close/${target.id}`, 3000); } catch (error) {
+			try { await httpPut(`http://127.0.0.1:${existingPort}/json/close/${target.id}`, 3000); } catch (error) {
 				log.warn("Failed to close consumer consent tab after timeout.", {
 					operation: "m365.show_consumer_consent.close_tab_after_timeout",
 					err: error,
@@ -906,38 +913,71 @@ async function acquireConsumerGraphToken(): Promise<string | null> {
 	const challenge = base64UrlEncode(createHash("sha256").update(verifier).digest());
 	const state = base64UrlEncode(randomBytes(16));
 
-	const authUrl =
+	const buildAuthUrl = (promptNone: boolean) =>
 		`https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize` +
 		`?client_id=${OUTLOOK_CLIENT_ID}` +
 		`&response_type=code` +
 		`&redirect_uri=${encodeURIComponent(OUTLOOK_REDIRECT_URI)}` +
 		`&response_mode=query` +
 		`&scope=${encodeURIComponent(CONSUMER_GRAPH_SCOPES)}` +
-		`&prompt=none` +
+		(promptNone ? `&prompt=none` : `&prompt=consent`) +
 		`&state=${encodeURIComponent(state)}` +
 		`&code_challenge=${encodeURIComponent(challenge)}` +
 		`&code_challenge_method=S256`;
+	const authUrl = buildAuthUrl(true);
 
 	try {
 		// Find Outlook target for token exchange
-		const targets: any[] = await httpGet(`http://localhost:${cdpPort}/json`, 3000);
+		const targets: any[] = await httpGet(`http://127.0.0.1:${cdpPort}/json`, 3000);
 		const outlookTarget = targets.find((t: any) => t.type === "page" && t.url?.includes("outlook.live.com/mail"));
 		if (!outlookTarget?.webSocketDebuggerUrl) return null;
 
 		// Open auth tab
-		const authTab: any = await httpPut(`http://localhost:${cdpPort}/json/new?${encodeURIComponent(authUrl)}`, 5000);
+		const authTab: any = await httpPut(`http://127.0.0.1:${cdpPort}/json/new?${encodeURIComponent(authUrl)}`, 5000);
 		const authTabId: string | null = authTab?.id ?? null;
 		if (!authTabId) return null;
 
 		// Poll the specific auth tab for redirect with matching state
 		let authCode: string | null = null;
-		const deadline = Date.now() + 20000;
+		const deadline = Date.now() + 120000;
 		while (Date.now() < deadline) {
 			await sleep(600);
 			try {
 				const page = await findPageTargetById(cdpPort, authTabId).catch(() => null);
 				if (!page) break; // tab was closed externally
 				const url = page.url ?? "";
+
+				if (url.includes("error=interaction_required") || url.includes("error=consent_required") || url.includes("error=login_required")) {
+					logSuppressedM365("Consumer auth requires interactive consent; reopening without prompt=none.", null, {
+						cdpPort,
+						authTabId,
+					});
+					try {
+						await httpPut(`http://127.0.0.1:${cdpPort}/json/close/${authTabId}`, 3000);
+					} catch (e) {
+						logSuppressedM365("Failed to close auth tab during cleanup", e, { cdpPort, authTabId });
+					}
+					const interactiveTab: any = await httpPut(`http://127.0.0.1:${cdpPort}/json/new?${encodeURIComponent(buildAuthUrl(false))}`, 5000);
+					if (interactiveTab?.id) {
+						const consentDeadline = Date.now() + 120000;
+						while (Date.now() < consentDeadline) {
+							await sleep(800);
+							const interactivePage = await findPageTargetById(cdpPort, interactiveTab.id).catch(() => null);
+							if (!interactivePage) break;
+							const code = extractConsumerAuthCodeFromRedirect(interactivePage.url ?? "", OUTLOOK_REDIRECT_URI, state);
+							if (code) {
+								authCode = code;
+								break;
+							}
+						}
+						try {
+							await httpPut(`http://127.0.0.1:${cdpPort}/json/close/${interactiveTab.id}`, 3000);
+						} catch (e) {
+							logSuppressedM365("Failed to close interactive auth tab during cleanup", e, { cdpPort, tabId: interactiveTab.id });
+						}
+					}
+					break;
+				}
 
 				const maybeCode = extractConsumerAuthCodeFromRedirect(url, OUTLOOK_REDIRECT_URI, state);
 				if (maybeCode) {
@@ -954,7 +994,7 @@ async function acquireConsumerGraphToken(): Promise<string | null> {
 
 		// Cleanup auth tab
 		if (authTabId) {
-			try { await httpPut(`http://localhost:${cdpPort}/json/close/${authTabId}`, 3000); } catch (error) {
+			try { await httpPut(`http://127.0.0.1:${cdpPort}/json/close/${authTabId}`, 3000); } catch (error) {
 				log.warn("Failed to close consumer auth tab.", {
 					operation: "m365.acquire_consumer_graph_token.close_auth_tab",
 					err: error,
@@ -968,7 +1008,7 @@ async function acquireConsumerGraphToken(): Promise<string | null> {
 		// Token exchange via browser fetch inside the Outlook page context.
 		// The Outlook client is registered as an SPA — Microsoft requires the Origin header,
 		// which the browser automatically provides on cross-origin fetch from the Outlook page.
-		const ws = new WebSocket(outlookTarget.webSocketDebuggerUrl);
+		const ws = new WebSocket(normalizeDebuggerWsUrl(outlookTarget.webSocketDebuggerUrl));
 		await new Promise<void>((resolve, reject) => {
 			ws.addEventListener("open", () => resolve());
 			ws.addEventListener("error", () => reject(new Error("WS connect failed")));
@@ -1024,17 +1064,30 @@ async function acquireConsumerGraphToken(): Promise<string | null> {
 
 // ── CDP WebSocket helpers ───────────────────────────────────────────────
 
+function normalizeDebuggerWsUrl(wsUrl: string): string {
+	return wsUrl.replace("ws://localhost:", "ws://127.0.0.1:");
+}
+
 export async function cdpConnect(port: number, urlFilter?: string): Promise<WebSocket> {
-	const targets: any[] = await httpGet(`http://localhost:${port}/json`);
+	const targets: any[] = await httpGet(`http://127.0.0.1:${port}/json`);
 	let target = urlFilter ? targets.find((t) => t.type === "page" && t.url?.includes(urlFilter)) : null;
 	if (!target) target = targets.find((t) => t.type === "page");
 	if (!target?.webSocketDebuggerUrl) throw new Error("No CDP page target");
-	return new Promise((resolve, reject) => {
-		const ws = new WebSocket(target.webSocketDebuggerUrl);
-		ws.addEventListener("open", () => resolve(ws));
-		ws.addEventListener("error", () => reject(new Error("WS connect error")));
-		setTimeout(() => reject(new Error("WS connect timeout")), 5000);
-	});
+	const wsUrl = normalizeDebuggerWsUrl(target.webSocketDebuggerUrl);
+	for (let attempt = 0; attempt < 3; attempt++) {
+		try {
+			await sleep(attempt * 500);
+			return await new Promise((resolve, reject) => {
+				const ws = new WebSocket(wsUrl);
+				ws.addEventListener("open", () => resolve(ws));
+				ws.addEventListener("error", () => reject(new Error("WS connect error")));
+				setTimeout(() => reject(new Error("WS connect timeout")), 5000);
+			});
+		} catch (error) {
+			if (attempt === 2) throw error;
+		}
+	}
+	throw new Error("WS connect failed after retries");
 }
 
 let cdpIdCounter = 0;
@@ -1186,16 +1239,25 @@ function buildM365ConsentHtml(purpose: string, buttonText = "I understand — co
 }
 
 async function connectDebuggerUrl(wsUrl: string): Promise<WebSocket> {
-	return new Promise((resolve, reject) => {
-		const ws = new WebSocket(wsUrl);
-		ws.addEventListener("open", () => resolve(ws));
-		ws.addEventListener("error", () => reject(new Error("WS connect error")));
-		setTimeout(() => reject(new Error("WS connect timeout")), 5000);
-	});
+	const normalizedUrl = normalizeDebuggerWsUrl(wsUrl);
+	for (let attempt = 0; attempt < 4; attempt++) {
+		if (attempt > 0) await sleep(attempt * 800);
+		try {
+			return await new Promise((resolve, reject) => {
+				const ws = new WebSocket(normalizedUrl);
+				ws.addEventListener("open", () => resolve(ws));
+				ws.addEventListener("error", () => reject(new Error("WS connect error")));
+				setTimeout(() => reject(new Error("WS connect timeout")), 6000);
+			});
+		} catch (error) {
+			if (attempt === 3) throw error;
+		}
+	}
+	throw new Error("WS connect failed after retries");
 }
 
 async function findPageTargetById(port: number, tabId: string): Promise<any | null> {
-	const targets: any[] = await httpGet(`http://localhost:${port}/json`, 3000);
+	const targets: any[] = await httpGet(`http://127.0.0.1:${port}/json`, 3000);
 	return targets.find((t: any) => t.id === tabId && t.type === "page") ?? null;
 }
 
@@ -1253,11 +1315,11 @@ async function prepareFreshAuthBrowserSession(
 
 	let target: any = null;
 	if (reusedExistingPort) {
-		target = await httpPut(`http://localhost:${launched.port}/json/new?${encodeURIComponent("about:blank")}`, 5000);
+		target = await httpPut(`http://127.0.0.1:${launched.port}/json/new?${encodeURIComponent("about:blank")}`, 5000);
 	} else {
-		const targets: any[] = await httpGet(`http://localhost:${launched.port}/json`, 3000);
+		const targets: any[] = await httpGet(`http://127.0.0.1:${launched.port}/json`, 3000);
 		target = targets.find((t: any) => t.type === "page" && t.url === "about:blank")
-			?? await httpPut(`http://localhost:${launched.port}/json/new?${encodeURIComponent("about:blank")}`, 5000);
+			?? await httpPut(`http://127.0.0.1:${launched.port}/json/new?${encodeURIComponent("about:blank")}`, 5000);
 	}
 	if (!target?.webSocketDebuggerUrl) throw new Error("Could not open consent tab");
 
@@ -1560,7 +1622,7 @@ export async function getDocumentLinkMetadata(inputUrl: string): Promise<any> {
  * Lightweight CDP discovery used when reconnecting to an existing browser.
  *
  * This helper intentionally does not create probe tabs or kill any browser
- * processes. If the localhost CDP endpoint responds with version metadata, the
+ * processes. If the 127.0.0.1 CDP endpoint responds with version metadata, the
  * caller can decide whether reuse is appropriate. Destructive health checks and
  * process cleanup stay in recycleUnhealthyEdgeCdp(), which is only used right
  * before launching a fresh browser instance.
@@ -1568,7 +1630,7 @@ export async function getDocumentLinkMetadata(inputUrl: string): Promise<any> {
 export async function findExistingCdpPort(): Promise<number | null> {
 	for (let p = CDP_PORT_START; p < CDP_PORT_START + 10; p++) {
 		try {
-			const version = await httpGet(`http://localhost:${p}/json/version`, EXISTING_CDP_DISCOVERY_TIMEOUT_MS);
+			const version = await httpGet(`http://127.0.0.1:${p}/json/version`, EXISTING_CDP_DISCOVERY_TIMEOUT_MS);
 			if (version && typeof version === "object") return p;
 		} catch {
 			// Port not reachable or not serving CDP; try the next candidate.
@@ -1626,10 +1688,10 @@ export async function acquireGraphToken(): Promise<string> {
 	try {
 		const existingPort = await findExistingCdpPort();
 		if (existingPort) {
-			const targets: any[] = await httpGet(`http://localhost:${existingPort}/json`, 3000);
+			const targets: any[] = await httpGet(`http://127.0.0.1:${existingPort}/json`, 3000);
 			const teamsV2 = targets.find((t: any) => t.type === "page" && t.url?.includes("teams.cloud.microsoft"));
 			if (teamsV2?.webSocketDebuggerUrl) {
-				const ws = new WebSocket(teamsV2.webSocketDebuggerUrl);
+				const ws = new WebSocket(normalizeDebuggerWsUrl(teamsV2.webSocketDebuggerUrl));
 				await new Promise<void>((resolve, reject) => {
 					ws.addEventListener("open", () => resolve());
 					ws.addEventListener("error", () => reject(new Error("WS error")));
@@ -1814,10 +1876,10 @@ export async function acquireChatsvcToken(): Promise<{ token: string; baseUrl: s
 	try {
 		const existingPort = await findExistingCdpPort();
 		if (existingPort) {
-			const targets: any[] = await httpGet(`http://localhost:${existingPort}/json`, 3000);
+			const targets: any[] = await httpGet(`http://127.0.0.1:${existingPort}/json`, 3000);
 			const teamsV2 = targets.find((t: any) => t.type === "page" && t.url?.includes("teams.cloud.microsoft"));
 			if (teamsV2?.webSocketDebuggerUrl) {
-				const ws = new WebSocket(teamsV2.webSocketDebuggerUrl);
+				const ws = new WebSocket(normalizeDebuggerWsUrl(teamsV2.webSocketDebuggerUrl));
 				await new Promise<void>((resolve, reject) => {
 					ws.addEventListener("open", () => resolve());
 					ws.addEventListener("error", () => reject(new Error("WS error")));
@@ -2116,7 +2178,7 @@ export async function acquireSPOCookies(siteUrl: string): Promise<CookieData[]> 
 			});
 		} else if (reusedExistingPort) {
 			try {
-				const tabs: any[] = await httpGet(`http://localhost:${port}/json`, 3000);
+				const tabs: any[] = await httpGet(`http://127.0.0.1:${port}/json`, 3000);
 				const spoTab = tabs.find((t: any) => t.type === "page" && t.url?.includes(host));
 				await closeCdpTargetBestEffort(port, spoTab?.id ?? null, "Failed to close the reused SharePoint tab after cookie harvesting.", {
 					host,

@@ -68,7 +68,7 @@ Built-in scheduled task:
 
 - task id: `builtin-dream-midnight`
 - task kind: `internal`
-- schedule: cron `0 0 * * *`
+- schedule: default cron `0 1 * * *` (01:00 in the runtime timezone)
 
 Behavior:
 

@@ -8,7 +8,7 @@
 
 import { expect, test } from "bun:test";
 import "../../helpers.js";
-import { buildLinkPreviewBackgroundStyle, getDisplayContent } from "../../../web/src/components/post.ts";
+import { buildLinkPreviewBackgroundStyle, extractRecoveryMarkerBlocks, extractTimeoutMarkerBlocks, formatRecoveryChipTooltip, formatTimeoutChipTooltip, getDisplayContent } from "../../../web/src/components/post.ts";
 
 test("getDisplayContent keeps URL text when previews are present", () => {
   const content = "Check this out: https://example.com/article";
@@ -48,4 +48,35 @@ test("buildLinkPreviewBackgroundStyle keeps image URLs confined to backgroundIma
     }
     expect(node.style.color).toBe("");
   }
+});
+
+test("extractRecoveryMarkerBlocks keeps only recovered recovery markers", () => {
+  expect(extractRecoveryMarkerBlocks([
+    { type: "recovery_marker", recovered: true, attempts_used: 2 },
+    { type: "recovery_marker", recovered: false, attempts_used: 1 },
+    { type: "text", text: "hello" },
+  ])).toEqual([
+    { type: "recovery_marker", recovered: true, attempts_used: 2 },
+  ]);
+});
+
+test("formatRecoveryChipTooltip describes attempts and classifier", () => {
+  expect(formatRecoveryChipTooltip({ attempts_used: 1, classifier: "context_recover" })).toBe("Recovered automatically — context limit exceeded");
+  expect(formatRecoveryChipTooltip({ attempts_used: 3, classifier: "api_error" })).toBe("Recovered after 3 attempts — API error");
+  expect(formatRecoveryChipTooltip({ attempts_used: 2, classifier: "custom_classifier" })).toBe("Recovered after 2 attempts — custom classifier");
+});
+
+test("extractTimeoutMarkerBlocks keeps only timeout markers", () => {
+  expect(extractTimeoutMarkerBlocks([
+    { type: "timeout_marker", timed_out: true, tool_action_summary: "Timed out while running bash" },
+    { type: "timeout_marker", timed_out: false },
+    { type: "text", text: "hello" },
+  ])).toEqual([
+    { type: "timeout_marker", timed_out: true, tool_action_summary: "Timed out while running bash" },
+  ]);
+});
+
+test("formatTimeoutChipTooltip describes the last timed-out tool action", () => {
+  expect(formatTimeoutChipTooltip({ tool_action_summary: "Timed out while running bash" })).toBe("Turn timed out — Timed out while running bash");
+  expect(formatTimeoutChipTooltip({})).toBe("Turn timed out before the model finished responding");
 });

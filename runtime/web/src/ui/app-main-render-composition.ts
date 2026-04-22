@@ -171,6 +171,7 @@ export function composeRenderedMainAppOptions(input: {
       setAttachmentPreview: input.surface.setAttachmentPreview,
       handleMessageResponse: input.orchestration.followupActions.handleMessageResponse,
       isComposeBoxAgentActive: input.orchestration.isComposeBoxAgentActive,
+      extensionWorkingState: input.surface.extensionWorkingState,
     },
     modelState: {
       activeChatAgents: input.surface.activeChatAgents,

@@ -131,6 +131,7 @@ export function composeMainAppShellOptions(input: ComposeMainAppShellOptionsInpu
     followupQueueCount: composeState.followupQueueCount,
     attachmentPreview: composeState.attachmentPreview,
     setAttachmentPreview: composeState.setAttachmentPreview,
+    extensionWorkingState: composeState.extensionWorkingState,
     activeChatAgents: modelState.activeChatAgents,
     connectionStatus: modelState.connectionStatus,
     activeModel: modelState.activeModel,

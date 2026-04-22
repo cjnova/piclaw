@@ -1,15 +1,17 @@
 /**
  * agent-pool/run-agent-orchestrator.ts – Main runAgent prompt lifecycle orchestration.
  */
-import { shouldCompact } from "@mariozechner/pi-coding-agent";
 import { decideAutomaticRecovery, getAutomaticRecoveryConfig, } from "./automatic-recovery.js";
 import { getAgentRuntimeConfig, getSessionStorageConfig } from "../core/config.js";
 import { detectChannel } from "../router.js";
 import { pruneOrphanToolResults } from "./orphan-tool-results.js";
 import { writeAgentLog } from "./logging.js";
+import { createLogger, debugSuppressedError } from "../utils/logger.js";
 import { getSessionFileLineCount, getSessionFileSize, rotateSession } from "../session-rotation.js";
 import { withChatContext } from "../core/chat-context.js";
 import { formatTimeoutDuration, resolveSessionIdleMaxWaitMs, waitForSessionIdle, } from "./prompt-utils.js";
+import { inspectBlankTurnSessionDelta, isBlankTurnSessionDelta, snapshotSessionEntryCount, } from "./blank-turn-detection.js";
+const log = createLogger("agent-pool.run-orchestrator");
 async function maybeAutoRotateSession(session, runtime, chatJid, options) {
     const sessionStorageConfig = getSessionStorageConfig();
     const autoRotateEnabled = sessionStorageConfig.autoRotate
@@ -28,6 +30,27 @@ async function maybeAutoRotateSession(session, runtime, chatJid, options) {
         && sessionFileLines >= sessionStorageConfig.maxLines;
     if (!exceedsSize && !exceedsLines)
         return session;
+    if (session.isStreaming || session.isCompacting || session.isRetrying) {
+        const idleMaxWaitMs = resolveSessionIdleMaxWaitMs(session);
+        try {
+            await waitForSessionIdle(session, 10, (result) => {
+                options.onInfo?.("Oversized session settled before auto-rotation", {
+                    operation: "maybe_auto_rotate_session.wait_for_idle",
+                    chatJid,
+                    waitMs: result.totalWaitMs,
+                    settleTicks: result.settleTicks,
+                });
+            }, idleMaxWaitMs);
+        }
+        catch (error) {
+            options.onWarn?.("Auto-rotation skipped", {
+                operation: "maybe_auto_rotate_session",
+                chatJid,
+                reason: error instanceof Error ? error.message : String(error),
+            });
+            return session;
+        }
+    }
     const result = await rotateSession(session, runtime, { reason: "automatic" });
     if (result.status === "success") {
         options.onInfo?.("Auto-rotated oversized session", {
@@ -99,6 +122,9 @@ function estimateContextTokensFromSession(session) {
     const context = session.sessionManager.buildSessionContext();
     return context.messages.reduce((total, message) => total + estimateMessageTokens(message), 0);
 }
+/** Fallback context window when the model does not report one.
+ *  Conservative enough to trigger compaction before most models overflow. */
+const DEFAULT_FALLBACK_CONTEXT_WINDOW = 128_000;
 function getModelContextWindow(session) {
     const model = session.model;
     const contextWindow = typeof model?.contextWindow === "number"
@@ -115,21 +141,99 @@ function getSessionStateErrorMessage(session) {
     const errorMessage = session.agent?.state?.errorMessage;
     return typeof errorMessage === "string" && errorMessage.trim() ? errorMessage.trim() : null;
 }
+const DEFAULT_COMPACTION_TIMEOUT_MS = 90_000;
+function parsePositiveInt(value, fallback) {
+    const parsed = Number.parseInt(String(value || "").trim(), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+function getCompactionTimeoutMs() {
+    return parsePositiveInt(process.env.PICLAW_COMPACTION_TIMEOUT_MS, DEFAULT_COMPACTION_TIMEOUT_MS);
+}
+async function abortCompactionBestEffort(session, chatJid, options) {
+    try {
+        const compactingSession = session;
+        if (typeof compactingSession.abortCompaction === "function" && session.isCompacting) {
+            compactingSession.abortCompaction();
+            return;
+        }
+        if (typeof compactingSession.abort === "function") {
+            await compactingSession.abort();
+        }
+    }
+    catch (error) {
+        options.onWarn?.("Failed to abort stuck compaction", {
+            operation: "run_agent.abort_stuck_compaction",
+            chatJid,
+            err: error,
+        });
+    }
+}
+async function runCompactionWithTimeout(session, chatJid, options, runCompact) {
+    const timeoutMs = getCompactionTimeoutMs();
+    if (timeoutMs <= 0) {
+        try {
+            await runCompact();
+            return { ok: true };
+        }
+        catch (error) {
+            return { ok: false, errorMessage: error instanceof Error ? error.message : String(error) };
+        }
+    }
+    const compactionOutcome = new Promise((resolve) => {
+        void Promise.resolve()
+            .then(() => runCompact())
+            .then(() => resolve({ ok: true }))
+            .catch((error) => resolve({
+            ok: false,
+            errorMessage: error instanceof Error ? error.message : String(error),
+        }));
+    });
+    const timedOut = Symbol("compaction-timeout");
+    let timeoutId = null;
+    const timeoutOutcome = new Promise((resolve) => {
+        timeoutId = setTimeout(() => resolve(timedOut), timeoutMs);
+    });
+    const outcome = await Promise.race([compactionOutcome, timeoutOutcome]);
+    if (timeoutId)
+        clearTimeout(timeoutId);
+    if (outcome !== timedOut) {
+        return outcome;
+    }
+    await abortCompactionBestEffort(session, chatJid, options);
+    return {
+        ok: false,
+        errorMessage: `Compaction timed out after ${formatTimeoutDuration(timeoutMs)}`,
+    };
+}
 async function maybeAutoCompactSessionBeforePrompt(session, chatJid, options, onEvent) {
     if (session.isStreaming || session.isCompacting || session.isRetrying)
         return;
-    const contextWindow = getModelContextWindow(session);
-    if (contextWindow == null)
-        return;
+    const reportedContextWindow = getModelContextWindow(session);
+    const contextWindow = reportedContextWindow ?? DEFAULT_FALLBACK_CONTEXT_WINDOW;
+    if (!reportedContextWindow) {
+        options.onWarn?.("Model does not report contextWindow; using fallback for pre-prompt compaction", {
+            operation: "maybe_auto_compact_session_before_prompt.fallback_context_window",
+            chatJid,
+            fallbackContextWindow: DEFAULT_FALLBACK_CONTEXT_WINDOW,
+            modelId: session.model?.id ?? null,
+            provider: session.model?.provider ?? null,
+        });
+    }
     const settingsManager = session.settingsManager;
     const settings = typeof settingsManager?.getCompactionSettings === "function"
         ? settingsManager.getCompactionSettings()
         : null;
-    if (!settings?.enabled)
+    // Piclaw manages compaction at safe pre-prompt boundaries regardless of
+    // upstream auto-compaction being disabled.  Only bail when there is no
+    // settings object at all (no model / no session).
+    if (!settings)
         return;
     try {
         const contextTokens = estimateContextTokensFromSession(session);
-        if (!shouldCompact(contextTokens, contextWindow, settings))
+        // Inline threshold check — bypasses upstream settings.enabled flag since
+        // piclaw disables upstream auto-compaction and owns the compaction schedule.
+        const reserveTokens = settings.reserveTokens ?? 16384;
+        if (contextTokens <= contextWindow - reserveTokens)
             return;
         options.onInfo?.("Auto-compacting session before prompt", {
             operation: "maybe_auto_compact_session_before_prompt",
@@ -142,29 +246,26 @@ async function maybeAutoCompactSessionBeforePrompt(session, chatJid, options, on
         // compact() path. Emit them locally so the web UI still shows the
         // "Compacting context" status pill during what can be a 30-60s operation.
         onEvent?.({ type: "compaction_start", reason: "threshold" });
-        try {
-            await session.compact();
-            onEvent?.({
-                type: "compaction_end",
-                reason: "threshold",
-                result: undefined,
-                aborted: false,
-                willRetry: false,
-            });
-        }
-        catch (compactError) {
-            const aborted = compactError instanceof Error &&
-                (compactError.message === "Compaction cancelled" || compactError.name === "AbortError");
+        const compactionResult = await runCompactionWithTimeout(session, chatJid, options, async () => await session.compact());
+        if (!compactionResult.ok) {
+            const aborted = /compaction cancelled|aborterror/i.test(compactionResult.errorMessage);
             onEvent?.({
                 type: "compaction_end",
                 reason: "threshold",
                 result: undefined,
                 aborted,
                 willRetry: false,
-                errorMessage: aborted ? undefined : `Pre-prompt compaction failed: ${compactError instanceof Error ? compactError.message : String(compactError)}`,
+                errorMessage: aborted ? undefined : `Pre-prompt compaction failed: ${compactionResult.errorMessage}`,
             });
-            throw compactError;
+            throw new Error(compactionResult.errorMessage);
         }
+        onEvent?.({
+            type: "compaction_end",
+            reason: "threshold",
+            result: undefined,
+            aborted: false,
+            willRetry: false,
+        });
     }
     catch (error) {
         options.onWarn?.("Pre-prompt auto-compaction skipped", {
@@ -210,30 +311,27 @@ async function runRecoveryCompaction(session, chatJid, runOptions, options) {
         chatJid,
     });
     emitAgentSessionEvent(runOptions.onEvent, { type: "compaction_start", reason: "overflow" });
-    try {
-        await session.compact();
-        emitAgentSessionEvent(runOptions.onEvent, {
-            type: "compaction_end",
-            reason: "overflow",
-            result: undefined,
-            aborted: false,
-            willRetry: true,
-        });
-        return { ok: true };
-    }
-    catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const aborted = error instanceof Error && (error.name === "AbortError" || error.message === "Compaction cancelled");
+    const compactionResult = await runCompactionWithTimeout(session, chatJid, options, async () => await session.compact());
+    if (!compactionResult.ok) {
+        const aborted = /compaction cancelled|aborterror/i.test(compactionResult.errorMessage);
         emitAgentSessionEvent(runOptions.onEvent, {
             type: "compaction_end",
             reason: "overflow",
             result: undefined,
             aborted,
             willRetry: false,
-            errorMessage: aborted ? undefined : `Recovery compaction failed: ${errorMessage}`,
+            errorMessage: aborted ? undefined : `Recovery compaction failed: ${compactionResult.errorMessage}`,
         });
-        return { ok: false, errorMessage };
+        return { ok: false, errorMessage: compactionResult.errorMessage };
     }
+    emitAgentSessionEvent(runOptions.onEvent, {
+        type: "compaction_end",
+        reason: "overflow",
+        result: undefined,
+        aborted: false,
+        willRetry: true,
+    });
+    return { ok: true };
 }
 async function runPromptAttempt(prompt, chatJid, session, timeoutMs, runOptions, options, totalRunStartedAt) {
     let hadToolActivity = false;
@@ -241,6 +339,7 @@ async function runPromptAttempt(prompt, chatJid, session, timeoutMs, runOptions,
     let hadCompletedTurnOutput = false;
     let compactionErrorMessage = null;
     let sawCompactionIntent = false;
+    const sessionEntryBaseline = snapshotSessionEntryCount(session);
     const originalOnTurnComplete = runOptions.onTurnComplete;
     const onTurnComplete = originalOnTurnComplete
         ? ((turn) => {
@@ -330,11 +429,64 @@ async function runPromptAttempt(prompt, chatJid, session, timeoutMs, runOptions,
             output = { status: "error", result: null, error: latentStateError };
         }
         else {
-            output = {
-                status: "success",
-                result: finalText || null,
-                attachments: finalAttachments.length ? finalAttachments : undefined,
-            };
+            const blankTurnDelta = inspectBlankTurnSessionDelta(session, sessionEntryBaseline);
+            if (!finalText && finalAttachments.length === 0 && !hadCompletedTurnOutput) {
+                let detail;
+                if (!hadPartialOutput && !hadToolActivity && isBlankTurnSessionDelta(blankTurnDelta)) {
+                    detail = [
+                        `${blankTurnDelta?.appendedUserMessageCount ?? 0} user message(s)`,
+                        `${blankTurnDelta?.appendedAssistantMessageCount ?? 0} assistant message(s)`,
+                        `${blankTurnDelta?.appendedToolResultMessageCount ?? 0} tool-result message(s)`,
+                    ].join(", ");
+                    options.onWarn?.("Prompt resolved with a blank user-only session delta", {
+                        operation: "run_agent.blank_turn_delta",
+                        chatJid,
+                        detail,
+                        blankTurnDelta,
+                    });
+                }
+                else {
+                    detail = [
+                        hadPartialOutput ? "partial output seen" : null,
+                        hadToolActivity ? "tool activity seen" : null,
+                        blankTurnDelta ? `session delta: ${blankTurnDelta.appendedEntryCount} appended entries` : null,
+                    ].filter(Boolean).join(", ") || "no completed assistant turn was emitted";
+                    options.onWarn?.("Prompt resolved without a completed assistant reply", {
+                        operation: "run_agent.no_terminal_reply",
+                        chatJid,
+                        detail,
+                        hadPartialOutput,
+                        hadToolActivity,
+                        hadCompletedTurnOutput,
+                        blankTurnDelta,
+                    });
+                }
+                output = {
+                    status: "error",
+                    result: null,
+                    error: `Prompt completed without emitting an assistant reply before finalization (${detail}).`,
+                };
+                // When context usage is above 60% of the model's window, flag
+                // context pressure on the snapshot so recovery compacts first
+                // instead of retrying into the same wall.
+                try {
+                    const tokens = estimateContextTokensFromSession(session);
+                    const cw = getModelContextWindow(session) ?? DEFAULT_FALLBACK_CONTEXT_WINDOW;
+                    if (cw > 0 && tokens > cw * 0.6) {
+                        sawCompactionIntent = true;
+                    }
+                }
+                catch (err) {
+                    debugSuppressedError(log, "Failed to estimate context tokens for compaction heuristic; skipping pressure check.", err);
+                }
+            }
+            else {
+                output = {
+                    status: "success",
+                    result: finalText || null,
+                    attachments: finalAttachments.length ? finalAttachments : undefined,
+                };
+            }
         }
     }
     return {
@@ -369,13 +521,22 @@ export async function runAgentPrompt(prompt, chatJid, runOptions, options) {
         });
         const timeoutMs = typeof runOptions.timeoutMs === "number" ? runOptions.timeoutMs : getAgentRuntimeConfig().timeoutMs;
         const channel = detectChannel(chatJid);
-        const recoveryConfig = getAutomaticRecoveryConfig();
+        const baseRecoveryConfig = getAutomaticRecoveryConfig();
+        const recoveryConfig = timeoutMs > 0
+            ? { ...baseRecoveryConfig, totalBudgetMs: Math.min(baseRecoveryConfig.totalBudgetMs, timeoutMs) }
+            : baseRecoveryConfig;
         let recoveryAttemptsUsed = 0;
         let lastClassifier = null;
         const strategyHistory = [];
         const recoveryDiagnostics = [];
         let recoveryBudgetStartedAt = null;
-        const getRecoveryBudgetElapsedMs = () => (recoveryBudgetStartedAt == null ? 0 : Math.max(0, Date.now() - recoveryBudgetStartedAt));
+        const useWholeRunAsRecoveryBudget = timeoutMs > 0 && timeoutMs < baseRecoveryConfig.totalBudgetMs;
+        const getRecoveryBudgetElapsedMs = () => {
+            const anchor = recoveryBudgetStartedAt == null
+                ? (useWholeRunAsRecoveryBudget ? startTime : Date.now())
+                : recoveryBudgetStartedAt;
+            return Math.max(0, Date.now() - anchor);
+        };
         return await withChatContext(chatJid, channel, async () => {
             while (true) {
                 const attempt = await runPromptAttempt(prompt, chatJid, session, timeoutMs, runOptions, options, startTime);

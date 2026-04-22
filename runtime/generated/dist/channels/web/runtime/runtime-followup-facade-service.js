@@ -62,7 +62,10 @@ export class WebChannelRuntimeFollowupFacadeService {
         this.deps.getRuntimeState().resumeChat(chatJid, threadRootId);
     }
     skipFailedOnModelSwitch(chatJid) {
-        this.deps.getRuntimeState().skipFailedOnModelSwitch(chatJid);
+        return this.deps.getRuntimeState().skipFailedOnModelSwitch(chatJid);
+    }
+    retryFailedOnModelSwitch(chatJid) {
+        return this.deps.getRuntimeState().retryFailedOnModelSwitch(chatJid);
     }
     recoverInflightRuns() {
         this.deps.getRuntimeState().recoverInflightRuns();

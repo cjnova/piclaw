@@ -5,7 +5,7 @@
  * compose a focused factory instead of owning direct SDK tool wiring.
  */
 
-import { createBashTool, createBashToolDefinition, createEditTool, createReadTool, createWriteTool } from "@mariozechner/pi-coding-agent";
+import { createBashTool, createBashToolDefinition } from "@mariozechner/pi-coding-agent";
 import type { ToolDefinition } from "@mariozechner/pi-coding-agent";
 
 /** The tracked bash operations injected into the built-in bash tool. */
@@ -25,15 +25,13 @@ export interface AgentToolFactoryOptions {
 export class AgentToolFactory {
   constructor(private readonly options: AgentToolFactoryOptions) {}
 
-  createDefaultTools() {
-    const { workspaceDir, bashOperations, platform = process.platform } = this.options;
+  createDefaultTools(): string[] {
+    const { platform = process.platform } = this.options;
     return [
-      createReadTool(workspaceDir),
-      ...(platform === "win32"
-        ? []
-        : [createBashTool(workspaceDir, bashOperations ? { operations: bashOperations } : undefined)]),
-      createEditTool(workspaceDir),
-      createWriteTool(workspaceDir),
+      "read",
+      ...(platform === "win32" ? [] : ["bash"]),
+      "edit",
+      "write",
     ];
   }
 

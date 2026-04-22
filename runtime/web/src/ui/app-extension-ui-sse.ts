@@ -5,6 +5,17 @@ export interface ExtensionUiToastLike {
   durationMs?: number;
 }
 
+export interface ExtensionUiWorkingIndicatorState {
+  mode: 'default' | 'custom' | 'hidden';
+  frames: string[];
+  intervalMs: number | null;
+}
+
+export interface ExtensionUiWorkingState {
+  message: string | null;
+  indicator: ExtensionUiWorkingIndicatorState | null;
+}
+
 export interface StatusPanelWidgetEventContext {
   isStatusPanelWidgetEvent: boolean;
   eventChatJid: string;
@@ -29,6 +40,61 @@ export function resolveStatusPanelWidgetEventContext(
     isStatusPanelWidgetEvent: eventType === 'extension_ui_widget' && payload?.options?.surface === 'status-panel',
     eventChatJid: resolveStatusPanelEventChatJid(payload, currentChatJid),
     panelKey: typeof payload?.key === 'string' ? payload.key : '',
+  };
+}
+
+export function resolveExtensionUiWorkingIndicator(
+  eventType: string | null | undefined,
+  payload: Record<string, unknown> | null | undefined,
+): ExtensionUiWorkingIndicatorState | null | undefined {
+  if (eventType !== 'extension_ui_working_indicator') return undefined;
+
+  if (!Array.isArray(payload?.frames)) {
+    return {
+      mode: 'default',
+      frames: [],
+      intervalMs: null,
+    };
+  }
+
+  const frames = payload.frames.filter((frame): frame is string => typeof frame === 'string');
+  const intervalRaw = payload.interval_ms ?? payload.intervalMs;
+  const intervalMs = typeof intervalRaw === 'number' && Number.isFinite(intervalRaw) && intervalRaw > 0
+    ? intervalRaw
+    : null;
+
+  if (frames.length === 0) {
+    return {
+      mode: 'hidden',
+      frames: [],
+      intervalMs,
+    };
+  }
+
+  return {
+    mode: 'custom',
+    frames,
+    intervalMs,
+  };
+}
+
+export function applyExtensionUiWorkingState(
+  previous: ExtensionUiWorkingState,
+  eventType: string | null | undefined,
+  payload: Record<string, unknown> | null | undefined,
+): ExtensionUiWorkingState | undefined {
+  if (eventType === 'extension_ui_working') {
+    return {
+      message: typeof payload?.message === 'string' && payload.message.trim() ? payload.message.trim() : null,
+      indicator: previous.indicator,
+    };
+  }
+
+  const indicator = resolveExtensionUiWorkingIndicator(eventType, payload);
+  if (indicator === undefined) return undefined;
+  return {
+    message: previous.message,
+    indicator,
   };
 }
 

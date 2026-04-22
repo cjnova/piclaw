@@ -13,6 +13,7 @@ Use this skill to work with Outlook mail messages.
 2. Open specific messages by ID with `action=read`.
 3. Summarize sender, subject, date, and action items.
 4. For drafts and replies, use `action=draft`, `action=reply`, or `action=forward` — these create drafts only, never send directly.
+5. Attach local files with `attachments='path1;path2'` (max 3MB per file, semicolon-separated).
 
 ## Guardrails
 

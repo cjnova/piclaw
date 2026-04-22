@@ -161,13 +161,14 @@ These are compiled into the package and registered via `extensionFactories` on t
 | `workspaceMemoryBootstrap` | startup memory bootstrap hook (`before_agent_start`) |
 | `dreamMaintenance` | `/dream` memory-consolidation slash command |
 | `uiThemeExtension` | `/theme`, `/tint` web UI theme controls |
-| `smartCompaction` | Smart compaction via `session_before_compact` hook (DB-driven file lists, junk-path filtering) |
+| `smartCompaction` | Smart compaction via `session_before_compact` hook (DB-driven file lists, junk-path filtering, working-indicator UI) |
 | `sendAdaptiveCard` | `send_adaptive_card` for agent-owned Adaptive Card posting |
 | `sendDashboardWidget` | `send_dashboard_widget` |
 | `openWorkspaceFile` | `open_workspace_file` |
 | `exitProcess` | `exit_process` |
 | `autoresearchSupervisor` | `start_autoresearch`, `stop_autoresearch`, `autoresearch_status` |
 | `imageProcessing` | `image_process` for sharp-backed image manipulation and animated GIF/frame workflows |
+| `envTools` | `env` — persistent workspace-scoped environment variable management (`/workspace/.env.sh` + immediate `process.env` update) |
 
 Each factory receives an `ExtensionAPI` and registers tools or commands via `pi.registerTool()` and `pi.registerCommand()`. System prompt hints are injected via `pi.on("before_agent_start")`.
 
@@ -298,6 +299,54 @@ Page load
 | `login.bundle.js` | 2.2 KB | Login page |
 | `app.bundle.css` | ~517 KB | All styles |
 
+## Per-chat turn lifecycle and failure model
+
+PiClaw now uses a deliberately simple per-chat turn model:
+
+1. **Start a run**
+   - `beginChatRun()` advances the chat cursor to the current user message timestamp
+   - the same write records an `inflight_*` marker with the previous cursor (`prevTs`)
+2. **Automatic recovery happens first**
+   - blank-turn detection, compaction-driven recovery, and orchestrator retries still run automatically
+   - transient tool-only / compaction issues should resolve without user intervention
+3. **Success means a terminal assistant artifact was persisted**
+   - normal final reply, or
+   - explicit persisted draft fallback
+4. **If no terminal assistant artifact exists**
+   - the turn is **not** treated as success
+   - the cursor is rolled back to `prevTs`
+   - the failed run is recorded
+   - the chat is held for an explicit decision
+5. **Explicit resolution after recovery exhaustion**
+   - **Retry** = rewind to `prevTs`, clear the failed marker, replay the user turn
+   - **Skip** = advance to `failedTs`, clear the failed marker, move on
+
+This keeps the semantics stable:
+- transient failures remain automatic
+- persistent failures do not silently consume user messages
+- the runtime never treats a blank terminal completion as a successful committed turn
+
+### Cursor / inflight / failed-run state roles
+
+- `cursor_ts`
+  - last committed processed user-message frontier
+- `inflight_*`
+  - durable crash-recovery marker for a run that started but did not finish cleanly
+- `failed_*`
+  - durable hold marker for a run that exhausted recovery and still produced no terminal persisted assistant reply
+
+### Operational rule
+
+A failed run must be in exactly one of these states:
+
+- **resolved by success** → `endChatRun()` clears inflight + failed marker
+- **held for retry/skip** → cursor rewound to `prevTs`, inflight cleared, failed marker kept
+- **explicitly skipped** → cursor advanced to `failedTs`, failed marker cleared
+
+There is no longer a supported path where an empty terminal turn both:
+- shows an error to the user, and
+- still consumes the message as a successful cursor advance
+
 ## Notes
 
 - The agent pool keeps one warm session per chat JID and evicts idle sessions after a TTL.
@@ -320,7 +369,16 @@ Page load
 - **Message permalinks**: clicking a timeline timestamp inserts a `message:{id}` pill in the compose box; Ctrl+Click copies a shareable URL; clicking a reference scrolls to and highlights the target.
 - **Multi-turn threading**: when the agent produces multiple turns in a single response, subsequent turns are stored with a `thread_id` pointing to the first turn's message. The UI renders threaded replies indented with a left border.
 - **Context usage / compaction affordance**: the compose footer reads `/agent/context` for current context-window usage, and the web app refreshes that state on initial connect, SSE reconnect, focus, `pageshow`, and visible-again transitions so the compaction affordance restores promptly when returning to the tab.
+- **Recovery chip**: when the agent recovers from a transient mid-turn failure, a subtle recovery chip appears in the compose area so the user can see that retries happened without flooding the timeline.
+- **Blank turn detection**: empty or whitespace-only model completions are treated as failures rather than success. If automatic recovery still cannot produce a terminal persisted reply, the cursor is rewound and the failed run is held for explicit retry/skip resolution.
+- **Compaction stall guard**: compaction waits are now bounded — `PICLAW_SESSION_IDLE_COMPACTION_MAX_WAIT_MS` (default 5 min) prevents indefinite stalls during heavy summarisation. Progress state is preserved across the wait so the UI stays coherent.
+- **Held failed runs**: `processChat()` now stops on unresolved failed runs instead of repeatedly re-consuming the same user message. Model-change retries, explicit recovery-card actions, and manual skip/retry flows are expected to resolve that hold.
+- **Model switch retry behavior**: successful model-switch commands now retry a held failed run by rewinding to `prevTs` and resuming the chat. Recovery-card actions (`Continue`, `Retry cleanly`) first skip the held failed turn so the follow-up prompt is not blocked behind the unresolved failure marker.
+- **Crash recovery split**: startup/runtime inflight recovery is still automatic for interrupted no-output turns, but exhausted no-terminal-output turns now live in the simpler held-failure path (`failed_*`) until explicitly retried or skipped.
+- **OOBE auto-complete**: on established installs with existing conversation history, the provider-ready OOBE panel auto-completes without requiring manual dismissal.
+- **Extension progress UI**: long-running operations in proxmox, portainer, azure-openai, SSH, and the azure harness now emit working-indicator state via `ctx.ui.setWorkingIndicator` / `setWorkingMessage` so the compose area shows spinner feedback during multi-step tool chains.
 - **Debug / introspection endpoint**: `GET /agent/debug[?chat_jid=...]` returns a full provenance snapshot of the active session — loaded extensions (with command/tool/handler counts), tools, commands, prompt templates, and skills. Each resource includes its `SourceInfo` (`path`, `source`, `scope`, `origin`, optional `baseDir`) from pi-coding-agent ≥0.62.0.
+- **Commands endpoint**: `GET /agent/commands[?chat_jid=...]` returns the current session's registered command set as JSON, combining core control commands, extension commands, prompt templates, and skills. The compose-box fetches this on mount to populate the slash-command autocomplete dropdown dynamically rather than using a hardcoded list.
 - **Standalone mobile/PWA recovery**: the web shell keeps a synced `--app-height` from `visualViewport` on standalone mobile runtimes and re-syncs it on focus / pageshow / visibility return to reduce whole-page jumps when resuming the app and focusing the compose textarea.
 - Scheduled tasks are isolated using the **session tree**: before a task runs, the current tree position is saved; after the task, the tree is navigated back. The task's output stays in a side branch without polluting conversation context. If the task uses a different model, it is restored afterwards. See [runtime-flows.md](runtime-flows.md) for details.
 - Scheduled tasks validate the requested model at creation time; invalid or ambiguous model names are rejected before the task is persisted.

@@ -14,7 +14,7 @@ import { createLogger, debugSuppressedError } from "./utils/logger.js";
 export const DREAM_TASK_ID = "builtin-dream-midnight";
 export const DREAM_TASK_KIND = "internal";
 export const DREAM_TASK_PROMPT = "dream";
-export const DREAM_TASK_CRON = "0 0 * * *";
+export const DREAM_TASK_CRON = process.env.PICLAW_DREAM_CRON?.trim() || "0 1 * * *";
 const DREAM_DAILY_DIR = resolve(WORKSPACE_DIR, "notes/daily");
 const DREAM_MEMORY_DIR = resolve(WORKSPACE_DIR, "notes/memory");
 const DREAM_BACKUPS_DIR = resolve(DATA_DIR, "dream-backups");

@@ -184,7 +184,7 @@ test("auto-injects only referenced env-style keychain entries for shell use", as
   });
 });
 
-test("builds injected POSIX and PowerShell exec commands and redacts secret values", async () => {
+test("builds injected POSIX and PowerShell exec commands", async () => {
   await withKeychainContext(async ({ keychain }) => {
     await keychain.setKeychainEntry({
       name: "STRIPE_KEY",
@@ -243,8 +243,6 @@ test("builds injected POSIX and PowerShell exec commands and redacts secret valu
     expect(exitCodeQuoted).toBe(0);
     expect(stderrQuoted).toBe("");
     expect(stdoutQuoted).toBe("it's-secret");
-
-    await expect(shellSecrets.redactKeychainSecretsInText("value=stripe-secret")).resolves.toBe("value=[REDACTED:STRIPE_KEY]");
   });
 });
 

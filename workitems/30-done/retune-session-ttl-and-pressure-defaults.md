@@ -1,7 +1,7 @@
 ---
 id: retune-session-ttl-and-pressure-defaults
 title: Retune session TTL and pressure defaults
-status: doing
+status: done
 priority: medium
 created: 2026-04-18
 updated: 2026-04-19

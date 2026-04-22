@@ -122,13 +122,24 @@ Recovery logic (`recoverInflightRuns`):
 
 That keeps restart recovery on the same code path as an explicit reload instead of depending on a lucky post-reboot user action.
 
-### Automatic recovery markers in the web UI
+### Recovery, timeout, and status breadcrumbs in the web UI
 
 When a turn is recovered and eventually completes, the stored assistant message can carry a `recovery_marker` content block.
 
-The web timeline renders that as a compact `Recovered automatically` chip on the post metadata row, with the classifier exposed in the tooltip when available. If automatic recovery exhausts its retry budget and the server has to fall back to publishing the draft buffer, the final text also includes a short note explaining how many recovery attempts were made before it gave up.
+The web timeline renders that as a compact `recovered` chip on the post metadata row, with the classifier exposed in the tooltip when available.
 
-That means the user-facing surface is no longer a silent binary of “worked” vs “mysteriously resumed somehow” — successful recovery leaves a visible breadcrumb, and exhausted recovery leaves a more explicit failure note.
+When a turn stalls badly enough that the client has to publish a salvaged local fallback, the fallback message can carry a `timeout_marker` content block.
+
+The web timeline renders that as a compact `timeout` chip on the same metadata row, and the fallback body can include the last visible tool action plus the salvaged partial draft.
+
+Separately, the live status surface now keeps more operator-useful context visible:
+
+- active `tool_call` / `tool_status` rows are preserved during silence probing instead of being replaced immediately by generic waiting copy
+- recent-activity restore preserves the last meaningful status payload when possible
+- tool status rows can show an `x ago` hint in the lower metadata row, alongside git/status metadata, once the row has been active for at least 10 seconds
+- intent panels can show an elapsed timer once the intent has been active for at least 10 seconds
+
+That means the user-facing surface is no longer a silent binary of “worked” vs “mysteriously resumed somehow” — successful recovery leaves a visible breadcrumb, timed-out salvage leaves an explicit breadcrumb, and live status keeps the most recent tool context visible for longer.
 
 ## Adaptive Card actions
 
@@ -339,7 +350,23 @@ Only fall back to raw `request` when the curated workflow surface is not the rig
 
 - Messages for a chat JID share a warm `AgentSession`.
 - Auto‑compaction runs when the context window is tight.
-- Idle sessions are evicted after a short TTL.
-- When the agent produces multiple turns in a single response (e.g. tool calls followed by a final answer), each turn's text and attachments are stored as separate messages. The first becomes the thread root; subsequent turns carry a `thread_id` pointing back to the root. The UI renders these as indented threaded replies.
+- Idle sessions are evicted after a short TTL (default: 3 min main, 1 min side).
+- Memory pressure mode activates above 512 MB RSS (default), shrinking the main-session pool to 1 and dropping the main idle TTL to 60 s.
+- When the agent produces multiple turns in a single response (e.g. tool calls followed by a final answer), each turn’s text and attachments are stored as separate messages. The first becomes the thread root; subsequent turns carry a `thread_id` pointing back to the root. The UI renders these as indented threaded replies.
+
+### Stuck-session escalation
+
+When a session produces **two consecutive empty responses** (0 output chars, `stopReason: stop`) for real user messages, the runtime escalates from a silent no-op cursor advance to a **recovery-stalled card**:
+
+- The first empty response: logged as `process_chat.no_output_noop`, a warning message is stored, and the cursor advances (handles benign restart-replay edge cases).
+- The second consecutive empty response for the same chat: escalates to `process_chat.no_output_escalated`. `endChatRunWithError` is called (cursor does **not** advance), and the recovery card is posted offering `/compact` and `/new-session` options.
+
+On the web client, a separate salvage path also exists for stalled in-flight turns with partial draft text:
+
+- keep the last draft visible in the draft panel
+- preserve the last visible tool action when available
+- append a local fallback timeline post with a visible `timeout` marker
+
+This prevents the infinite loop seen with oversized session files (≥10 MB JSONL) on the Azure Responses API, while also giving the user a more useful failure surface when the model stopped mid-answer.
 
 See [architecture.md](architecture.md) for component layout and [tools-and-skills.md](tools-and-skills.md) for tool/skill details.

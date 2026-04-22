@@ -3,7 +3,9 @@ import {
   resolveAgentPreviewRestoreState,
   shouldKeepExistingPreview,
 } from './app-agent-status-refresh.js';
+import { inferAgentPreviewTotalLines } from './app-agent-previews.js';
 import { isMainTimelineView } from './app-realtime-timeline.js';
+import { parseStatusLastEventAt } from './status-duration.js';
 
 interface RefBox<T> {
   current: T;
@@ -89,7 +91,11 @@ export async function refreshAgentStatusForChat(options: RefreshAgentStatusForCh
     const activeTurn = readAgentTurnId(payload);
     if (activeTurn) setActiveTurn(activeTurn);
 
-    noteAgentActivity({ running: true, clearSilence: true });
+    noteAgentActivity({
+      running: true,
+      clearSilence: true,
+      atMs: parseStatusLastEventAt(payload) ?? Date.now(),
+    });
     clearLastActivityFlag();
     setAgentStatus(payload);
 
@@ -188,6 +194,13 @@ export interface RunSilenceWatchdogTickOptions {
   now?: () => number;
 }
 
+function shouldPreserveVisibleStatusDuringSilence(status: any): boolean {
+  if (!status || typeof status !== 'object') return false;
+  const type = typeof status.type === 'string' ? status.type : '';
+  if (type === 'tool_call' || type === 'tool_status' || type === 'intent') return true;
+  return Boolean(status.tool_name || status.tool_args);
+}
+
 /** Run one silence-watchdog evaluation tick and trigger quiet-period re-sync when needed. */
 export function runSilenceWatchdogTick(options: RunSilenceWatchdogTickOptions): void {
   const {
@@ -213,10 +226,12 @@ export function runSilenceWatchdogTick(options: RunSilenceWatchdogTickOptions): 
 
   const currentNow = now();
   const silenceMs = currentNow - lastEvent;
-  const compactionActive = isCompactionStatus(agentStatusRef.current);
+  const currentStatus = agentStatusRef.current;
+  const compactionActive = isCompactionStatus(currentStatus);
+  const preserveVisibleStatus = shouldPreserveVisibleStatusDuringSilence(currentStatus);
 
   if (silenceMs >= silenceFinalizeMs) {
-    if (!compactionActive) {
+    if (!compactionActive && !preserveVisibleStatus) {
       setAgentStatus({
         type: 'waiting',
         title: 'Re-syncing after a quiet period…',
@@ -227,7 +242,7 @@ export function runSilenceWatchdogTick(options: RunSilenceWatchdogTickOptions): 
   }
 
   if (silenceMs >= silenceWarningMs && currentNow - lastSilenceNoticeRef.current >= silenceRefreshMs) {
-    if (!compactionActive) {
+    if (!compactionActive && !preserveVisibleStatus) {
       const seconds = Math.floor(silenceMs / 1000);
       setAgentStatus({
         type: 'waiting',
@@ -250,6 +265,7 @@ export interface FinalizeStalledResponseOptions {
   thoughtBufferRef: RefBox<string>;
   pendingRequestRef: RefBox<any>;
   lastAgentResponseRef: RefBox<any>;
+  agentStatusRef: RefBox<any>;
   stalledPostIdRef: RefBox<string | number | null>;
   scrollToBottomRef: RefBox<(() => void) | null>;
   setCurrentTurnId: (value: string | null) => void;
@@ -262,6 +278,46 @@ export interface FinalizeStalledResponseOptions {
   dedupePosts: (posts: any[]) => any[];
   now?: () => number;
   nowIso?: () => string;
+}
+
+export function describeTimedOutToolAction(status: any): { summary: string; title: string | null; toolName: string | null; statusText: string | null } | null {
+  if (!status || typeof status !== 'object') return null;
+  const type = typeof status.type === 'string' ? status.type : '';
+  const title = typeof status.title === 'string' && status.title.trim() ? status.title.trim() : null;
+  const toolName = typeof status.tool_name === 'string' && status.tool_name.trim() ? status.tool_name.trim() : null;
+  const statusText = typeof status.status === 'string' && status.status.trim() ? status.status.trim() : null;
+
+  if (type === 'tool_call') {
+    const label = title || toolName || 'tool';
+    return {
+      summary: `Timed out while running ${label}`,
+      title,
+      toolName,
+      statusText,
+    };
+  }
+
+  if (type === 'tool_status') {
+    const label = title || toolName || 'tool';
+    return {
+      summary: statusText ? `Timed out after ${label}: ${statusText}` : `Timed out after ${label}`,
+      title,
+      toolName,
+      statusText,
+    };
+  }
+
+  if (toolName || title) {
+    const label = title || toolName || 'tool';
+    return {
+      summary: `Timed out after ${label}`,
+      title,
+      toolName,
+      statusText,
+    };
+  }
+
+  return null;
 }
 
 /** Finalize a stalled run by either surfacing an error status or appending a local warning post. */
@@ -277,6 +333,7 @@ export function finalizeStalledResponse(options: FinalizeStalledResponseOptions)
     thoughtBufferRef,
     pendingRequestRef,
     lastAgentResponseRef,
+    agentStatusRef,
     stalledPostIdRef,
     scrollToBottomRef,
     setCurrentTurnId,
@@ -293,9 +350,12 @@ export function finalizeStalledResponse(options: FinalizeStalledResponseOptions)
 
   if (!isAgentRunningRef.current) return;
 
+  const timedOutToolAction = describeTimedOutToolAction(agentStatusRef.current);
+
   isAgentRunningRef.current = false;
   lastSilenceNoticeRef.current = 0;
   lastAgentEventRef.current = null;
+  agentStatusRef.current = null;
   currentTurnIdRef.current = null;
   setCurrentTurnId(null);
   thoughtExpandedRef.current = false;
@@ -304,7 +364,6 @@ export function finalizeStalledResponse(options: FinalizeStalledResponseOptions)
   const partial = (draftBufferRef.current || '').trim();
   draftBufferRef.current = '';
   thoughtBufferRef.current = '';
-  setAgentDraft({ text: '', totalLines: 0 });
   setAgentPlan('');
   setAgentThought({ text: '', totalLines: 0 });
   setPendingRequest(null);
@@ -312,12 +371,20 @@ export function finalizeStalledResponse(options: FinalizeStalledResponseOptions)
   lastAgentResponseRef.current = null;
 
   if (!partial) {
+    setAgentDraft({ text: '', totalLines: 0 });
     setAgentStatus({ type: 'error', title: 'Response stalled - No content received' });
     return;
   }
 
+  setAgentDraft({
+    text: partial,
+    totalLines: inferAgentPreviewTotalLines(partial, null),
+    fullText: partial,
+  });
+
+  const hintPrefix = timedOutToolAction?.summary ? `> ${timedOutToolAction.summary}\n\n` : '';
   const warning = '\n\n⚠️ Response may be incomplete - the model stopped responding';
-  const content = `${partial}${warning}`;
+  const content = `${hintPrefix}${partial}${warning}`;
   const id = now();
   const timestamp = nowIso();
   const localPost = {
@@ -326,6 +393,17 @@ export function finalizeStalledResponse(options: FinalizeStalledResponseOptions)
     data: {
       type: 'agent_response',
       content,
+      content_blocks: [
+        {
+          type: 'timeout_marker',
+          timed_out: true,
+          title: 'Timed out',
+          tool_action_summary: timedOutToolAction?.summary || '',
+          tool_title: timedOutToolAction?.title || '',
+          tool_name: timedOutToolAction?.toolName || '',
+          tool_status: timedOutToolAction?.statusText || '',
+        },
+      ],
       agent_id: 'default',
       is_local_stall: true,
     },

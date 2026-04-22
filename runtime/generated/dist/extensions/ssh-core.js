@@ -4,10 +4,10 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { createBashTool, createEditTool, createReadTool, createWriteTool, } from "@mariozechner/pi-coding-agent";
 import { buildInjectedShellEnv, getKeychainEntry, resolveKeychainPlaceholders } from "../secure/keychain.js";
-import { createKeychainOutputRedactor, createStreamingTextRedactor } from "../secure/shell-secrets.js";
 const DEFAULT_EXEC_TIMEOUT_SECONDS = 300;
 const PERSISTENT_WRITE_MAX_BYTES = 256 * 1024;
 const DEFAULT_PERSISTENT_INTERRUPT_GRACE_MS = 3000;
+const SSH_WORKING_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 let persistentSshSpawn = (args, options) => spawn("ssh", args, options);
 let persistentInterruptGraceMs = DEFAULT_PERSISTENT_INTERRUPT_GRACE_MS;
 export function setPersistentSshSpawnForTests(factory) {
@@ -325,9 +325,7 @@ export class PersistentRemoteShell {
         if (safeLen > this.streamedBytes) {
             const newData = outputSoFar.slice(this.streamedBytes, safeLen);
             if (newData.length > 0) {
-                const redacted = running.stdoutRedactor.push(newData);
-                if (redacted)
-                    running.onData(Buffer.from(redacted, "utf-8"));
+                running.onData(Buffer.from(newData, "utf-8"));
                 this.streamedBytes = safeLen;
             }
         }
@@ -342,18 +340,11 @@ export class PersistentRemoteShell {
             return;
         if (this.streamedBytes < parsed.output.length) {
             const remaining = parsed.output.slice(this.streamedBytes);
-            const redacted = running.stdoutRedactor.push(remaining);
-            if (redacted)
-                running.onData(Buffer.from(redacted, "utf-8"));
+            running.onData(Buffer.from(remaining, "utf-8"));
         }
-        const stdoutTail = running.stdoutRedactor.flush();
-        if (stdoutTail)
-            running.onData(Buffer.from(stdoutTail, "utf-8"));
         const stderrText = Buffer.concat(running.stderrChunks).toString("utf-8");
         if (stderrText.length > 0) {
-            const redactedStderr = `${running.stderrRedactor.push(stderrText)}${running.stderrRedactor.flush()}`;
-            if (redactedStderr)
-                running.onData(Buffer.from(redactedStderr, "utf-8"));
+            running.onData(Buffer.from(stderrText, "utf-8"));
         }
         const exitCode = parsed.exitCode;
         const timedOut = running.timedOut;
@@ -425,7 +416,6 @@ export class PersistentRemoteShell {
         this.seenStartMarker = false;
         this.startMarkerEnd = 0;
         const effectiveTimeout = options.timeout ?? DEFAULT_EXEC_TIMEOUT_SECONDS;
-        const outputRedactor = await createKeychainOutputRedactor();
         return await new Promise((resolve, reject) => {
             const running = {
                 startMarker,
@@ -437,8 +427,6 @@ export class PersistentRemoteShell {
                 timedOut: false,
                 stdoutChunks: [],
                 stderrChunks: [],
-                stdoutRedactor: createStreamingTextRedactor(outputRedactor),
-                stderrRedactor: createStreamingTextRedactor(outputRedactor),
                 resolve,
                 reject,
             };
@@ -782,6 +770,38 @@ export async function unregisterLiveChatSshSession(chatJid) {
 export function setSshConnectionResolverForTests(resolver) {
     resolveConfiguredConnectionImpl = resolver ?? resolveConfiguredConnection;
 }
+function startSshUiProgress(ctx, message) {
+    if (!ctx?.hasUI || !ctx.ui)
+        return;
+    ctx.ui.setWorkingIndicator({ frames: SSH_WORKING_FRAMES, intervalMs: 90 });
+    ctx.ui.setWorkingMessage(message);
+}
+function finishSshUiProgress(ctx) {
+    if (!ctx?.hasUI || !ctx.ui)
+        return;
+    ctx.ui.setWorkingMessage(undefined);
+    ctx.ui.setWorkingIndicator({ frames: [] });
+}
+function formatSshEnabledMessage(connection) {
+    return `ssh-core enabled: ${connection.sshTarget}:${connection.remoteCwd} (port ${connection.port})`;
+}
+function formatSshShutdownMessage(event) {
+    return `[ssh-core] session shutdown (${event?.reason ?? "unknown"})${event?.targetSessionFile ? ` → ${event.targetSessionFile}` : ""}`;
+}
+function rewriteSystemPromptForSshContext(systemPrompt, localCwd, connection, promptOptions) {
+    const remotePrefix = `Current working directory: ${connection.remoteCwd} (via SSH ${connection.sshTarget}, port ${connection.port})`;
+    const candidateLocalCwds = [...new Set([
+            typeof promptOptions?.cwd === "string" && promptOptions.cwd.trim() ? promptOptions.cwd.trim() : null,
+            localCwd,
+        ].filter((value) => Boolean(value)))];
+    for (const cwd of candidateLocalCwds) {
+        const localPrefix = `Current working directory: ${cwd}`;
+        if (!systemPrompt.includes(localPrefix))
+            continue;
+        return systemPrompt.replace(localPrefix, remotePrefix);
+    }
+    return null;
+}
 function registerSshCoreExtension(pi, resolveConfig) {
     pi.registerFlag("ssh", {
         description: "SSH target as user@host or user@host:/absolute/remote/path",
@@ -857,10 +877,11 @@ function registerSshCoreExtension(pi, resolveConfig) {
         const resolvedConfig = resolveConfig(pi);
         if (!resolvedConfig)
             return;
+        startSshUiProgress(ctx, `SSH: connecting to ${resolvedConfig.target}…`);
         try {
-            connection = await resolveConfiguredConnection(resolvedConfig.target, localCwd, localHome, resolvedConfig.port, resolvedConfig.privateKeyKeychain, resolvedConfig.knownHostsKeychain, resolvedConfig.strictHostKeyChecking);
+            connection = await resolveConfiguredConnectionImpl(resolvedConfig.target, localCwd, localHome, resolvedConfig.port, resolvedConfig.privateKeyKeychain, resolvedConfig.knownHostsKeychain, resolvedConfig.strictHostKeyChecking);
             transport = new SshTransport(connection);
-            const enabledMessage = `ssh-core enabled: ${connection.sshTarget}:${connection.remoteCwd} (port ${connection.port})`;
+            const enabledMessage = formatSshEnabledMessage(connection);
             console.log(enabledMessage);
             if (ctx.hasUI) {
                 ctx.ui.setStatus("ssh-core", ctx.ui.theme.fg("accent", `SSH ${connection.sshTarget}:${connection.remoteCwd} (port ${connection.port})`));
@@ -881,8 +902,12 @@ function registerSshCoreExtension(pi, resolveConfig) {
             }
             throw error;
         }
+        finally {
+            finishSshUiProgress(ctx);
+        }
     });
-    pi.on("session_shutdown", async () => {
+    pi.on("session_shutdown", async (event) => {
+        console.log(formatSshShutdownMessage(event));
         if (transport) {
             await transport.dispose();
             transport = null;
@@ -897,11 +922,10 @@ function registerSshCoreExtension(pi, resolveConfig) {
     pi.on("before_agent_start", async (event) => {
         if (!connection)
             return;
-        const localPrefix = `Current working directory: ${localCwd}`;
-        const remotePrefix = `Current working directory: ${connection.remoteCwd} (via SSH ${connection.sshTarget}, port ${connection.port})`;
-        if (!event.systemPrompt.includes(localPrefix))
+        const rewritten = rewriteSystemPromptForSshContext(event.systemPrompt, localCwd, connection, event.systemPromptOptions);
+        if (!rewritten)
             return;
-        return { systemPrompt: event.systemPrompt.replace(localPrefix, remotePrefix) };
+        return { systemPrompt: rewritten };
     });
 }
 export function createSshCoreExtension(config) {
@@ -982,12 +1006,15 @@ export function createChatSshCoreExtension(chatJid, initialConfig) {
             },
         });
         pi.on("session_start", async (_event, ctx) => {
+            if (initialConfig) {
+                startSshUiProgress(ctx, `SSH: connecting to ${initialConfig.target}…`);
+            }
             try {
                 await registerLiveChatSshSession(chatJid, { localCwd, localHome, config: initialConfig ?? null });
                 const state = getLiveChatSshState(chatJid);
                 if (!state?.connection)
                     return;
-                const enabledMessage = `ssh-core enabled: ${state.connection.sshTarget}:${state.connection.remoteCwd} (port ${state.connection.port})`;
+                const enabledMessage = formatSshEnabledMessage(state.connection);
                 console.log(enabledMessage);
                 if (ctx.hasUI) {
                     ctx.ui.setStatus("ssh-core", ctx.ui.theme.fg("accent", `SSH ${state.connection.sshTarget}:${state.connection.remoteCwd} (port ${state.connection.port})`));
@@ -1004,8 +1031,13 @@ export function createChatSshCoreExtension(chatJid, initialConfig) {
                 }
                 throw error;
             }
+            finally {
+                if (initialConfig)
+                    finishSshUiProgress(ctx);
+            }
         });
-        pi.on("session_shutdown", async () => {
+        pi.on("session_shutdown", async (event) => {
+            console.log(formatSshShutdownMessage(event));
             await unregisterLiveChatSshSession(chatJid);
         });
         pi.on("user_bash", () => {
@@ -1018,11 +1050,10 @@ export function createChatSshCoreExtension(chatJid, initialConfig) {
             const state = getLiveChatSshState(chatJid);
             if (!state?.connection)
                 return;
-            const localPrefix = `Current working directory: ${localCwd}`;
-            const remotePrefix = `Current working directory: ${state.connection.remoteCwd} (via SSH ${state.connection.sshTarget}, port ${state.connection.port})`;
-            if (!event.systemPrompt.includes(localPrefix))
+            const rewritten = rewriteSystemPromptForSshContext(event.systemPrompt, localCwd, state.connection, event.systemPromptOptions);
+            if (!rewritten)
                 return;
-            return { systemPrompt: event.systemPrompt.replace(localPrefix, remotePrefix) };
+            return { systemPrompt: rewritten };
         });
     };
 }

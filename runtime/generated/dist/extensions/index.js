@@ -14,6 +14,7 @@ import { smartCompaction } from "./smart-compaction.js";
 import { sendAdaptiveCard } from "./send-adaptive-card.js";
 import { sendDashboardWidget } from "./send-dashboard-widget.js";
 import { openWorkspaceFile } from "./open-workspace-file.js";
+import { envTools } from "./env-tools.js";
 import { exitProcess } from "./exit-process.js";
 import { autoresearchSupervisor } from "./autoresearch-supervisor.js";
 import { imageProcessing } from "./image-processing.js";
@@ -36,6 +37,7 @@ export function createBuiltinExtensionFactories(options) {
         sendAdaptiveCard,
         sendDashboardWidget,
         openWorkspaceFile,
+        envTools,
         exitProcess,
         autoresearchSupervisor,
         imageProcessing,

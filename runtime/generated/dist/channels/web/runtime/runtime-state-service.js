@@ -10,7 +10,7 @@ const RECOVERY_REPLAY_DELAY_MS = 2000;
 import { AgentBuffers } from "../agent/agent-buffers.js";
 import { AgentStatusStore } from "../agent/agent-status-store.js";
 import { WebChannelState } from "./channel-state.js";
-import { getThreadRootId as getThreadRootIdForChat, resumeChat as resumeWebChat, skipFailedOnModelSwitch as skipFailedOnModelSwitchForChat, } from "./chat-run-control.js";
+import { getThreadRootId as getThreadRootIdForChat, resumeChat as resumeWebChat, retryFailedOnModelSwitch as retryFailedOnModelSwitchForChat, skipFailedOnModelSwitch as skipFailedOnModelSwitchForChat, } from "./chat-run-control.js";
 import { PendingSteeringStore } from "./pending-steering.js";
 import { recoverInflightRuns as recoverWebInflightRuns, recoverStaleInflightRun as recoverWebStaleInflightRun, resumePendingChats as resumeWebPendingChats, } from "./recovery.js";
 /**
@@ -57,7 +57,10 @@ export class WebChannelRuntimeStateService {
         resumeWebChat(chatJid, threadRootId, this.getResumeChatContext());
     }
     skipFailedOnModelSwitch(chatJid, store) {
-        skipFailedOnModelSwitchForChat(chatJid, store);
+        return skipFailedOnModelSwitchForChat(chatJid, store);
+    }
+    retryFailedOnModelSwitch(chatJid, store) {
+        return retryFailedOnModelSwitchForChat(chatJid, store);
     }
     recoverInflightRuns(store) {
         recoverWebInflightRuns(this.getRecoveryContext(), store);

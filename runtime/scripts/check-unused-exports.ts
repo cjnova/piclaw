@@ -164,7 +164,6 @@ const ALLOWED_UNUSED_EXPORTS = new Set([
   "src/extensions/ssh.ts:69 - sshTool",
   "src/portainer/client.ts:159 - setPortainerRequestExecutorForTests",
   "src/proxmox/client.ts:247 - setProxmoxCurlExecutorForTests",
-  "src/secure/shell-secrets.ts:125 - redactKeychainSecretsInValue",
   "src/secure/shell-secrets.ts:170 - buildInjectedPosixCommand",
   "src/secure/shell-secrets.ts:174 - buildInjectedPowerShellCommand",
   "src/tools/tracked-bash.ts:248 - createTrackedPowerShellOperations",

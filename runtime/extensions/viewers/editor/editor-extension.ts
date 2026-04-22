@@ -56,7 +56,8 @@ import {
     githubDark,
     MergeView,
 } from '#editor-vendor/codemirror';
-import { getWorkspaceBranch, getWorkspaceFile, updateWorkspaceFile } from '../../../web/src/api.js';
+import { getWorkspaceBranch, getWorkspaceFile, getWorkspaceFileStat, updateWorkspaceFile } from '../../../web/src/api.js';
+import { createFileConflictMonitor, type FileConflictMonitor } from '../../../web/src/panes/file-conflict-monitor.js';
 import type { WebPaneExtension, PaneContext, PaneInstance, PaneCapability, PaneHostAttachContext, PaneHostDetachContext } from '../../../web/src/panes/pane-types.js';
 import { frontmatterExtension } from './markdown/frontmatter.js';
 import { footnoteExtension } from './markdown/footnote.js';
@@ -248,6 +249,9 @@ export class StandaloneEditorInstance implements PaneInstance {
     private saveRequestCb: ((content: string) => void) | null = null;
     private closeCb: (() => void) | null = null;
     private viewStateChangeCb: ((state: { cursorLine: number; cursorCol: number; scrollTop: number }) => void) | null = null;
+
+    // External change detection
+    private conflictMonitor: FileConflictMonitor | null = null;
 
     constructor(container: HTMLElement, context: PaneContext) {
         this.container = container;
@@ -468,6 +472,7 @@ export class StandaloneEditorInstance implements PaneInstance {
 
             this.initialContent = value;
             this.currentMtime = result?.mtime || this.currentMtime;
+            this.conflictMonitor?.onSaved(this.currentMtime);
             if (this.isDiffMode()) {
                 const viewState = this.captureViewState();
                 this.renderEditorSurface(value, 'saved', viewState);
@@ -496,6 +501,7 @@ export class StandaloneEditorInstance implements PaneInstance {
         this.updateLivePreviewControlState();
         this.updateWhitespaceControlState();
         this.updateGutterWidth();
+        this.initConflictMonitor();
     }
 
     private renderEditorSurface(content: string, diffMode: 'saved' | null, viewState: { cursorLine?: number; cursorCol?: number; scrollTop?: number } | null): void {
@@ -966,6 +972,50 @@ export class StandaloneEditorInstance implements PaneInstance {
         this._branchHint.hidden = false;
     }
 
+    // ── External change detection ───────────────────────────────
+
+    private initConflictMonitor(): void {
+        this.conflictMonitor?.dispose();
+        if (!this.path) return;
+        this.conflictMonitor = createFileConflictMonitor({
+            path: this.path,
+            getCurrentMtime: () => this.currentMtime,
+            anchorParent: this.paneEl,
+            anchorBefore: this.bodyEl,
+            ownerDocument: this.ownerDocument,
+            onReload: async () => {
+                this.updateStatusText('Reloading…');
+                try {
+                    const data = await getWorkspaceFile(this.path, EDITOR_MAX_BYTES, 'edit');
+                    if (this.disposed) return;
+                    if (data?.error) { this.updateStatusText(`Reload failed: ${data.error}`); return; }
+                    const viewState = this.captureViewState();
+                    this.initialContent = data?.text || '';
+                    this.currentMtime = data?.mtime || null;
+                    this.renderEditorSurface(this.initialContent, this.diffMode, viewState);
+                    this.setDirty(false);
+                    this.updateStatusText('Reloaded from disk');
+                    this.conflictMonitor?.onSaved(this.currentMtime);
+                } catch (err: any) {
+                    this.updateStatusText(`Reload failed: ${err?.message || 'Unknown error'}`);
+                }
+            },
+            onSaveCopy: async (copyPath) => {
+                if (!this.view) return;
+                const content = this.view.state.doc.toString();
+                this.updateStatusText(`Saving copy to ${copyPath}…`);
+                try {
+                    await updateWorkspaceFile(copyPath, content);
+                    this.updateStatusText(`Copy saved as ${copyPath}`);
+                } catch (err: any) {
+                    this.updateStatusText(`Save copy failed: ${err?.message || 'Unknown error'}`);
+                }
+            },
+            onOverwrite: () => this.handleSave(),
+        });
+        this.conflictMonitor.start();
+    }
+
     private updateStatusText(text: string): void {
         if (this._statusText) this._statusText.textContent = text;
     }
@@ -1013,6 +1063,7 @@ export class StandaloneEditorInstance implements PaneInstance {
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
+        this.conflictMonitor?.dispose();
         this.unbindHostListeners();
         this.destroyEditorViews();
         this.container.innerHTML = '';

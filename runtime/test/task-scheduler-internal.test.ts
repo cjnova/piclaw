@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, writeFileSync, existsSync, readdirSync, readFileSync, rmSync } from "fs";
 import { join } from "path";
 
-import { importFresh } from "./helpers.js";
+import { importFresh, setEnv } from "./helpers.js";
 
 const sentMessages: Array<{ jid: string; text: string }> = [];
 let db: typeof import("../src/db.js") | null = null;
@@ -67,7 +67,7 @@ test("internal Dream flows keep notes/memory/days model-owned and AutoDream stay
   expect(seeded?.id).toBe(dream.DREAM_TASK_ID);
   expect(seeded?.task_kind).toBe("internal");
   expect(seeded?.schedule_type).toBe("cron");
-  expect(seeded?.schedule_value).toBe("0 0 * * *");
+  expect(seeded?.schedule_value).toBe("0 1 * * *");
   expect(seeded?.status).toBe("active");
 
   const manualTaskId = `task-dream-${Date.now()}`;
@@ -157,4 +157,18 @@ test("internal Dream flows keep notes/memory/days model-owned and AutoDream stay
   expect(readFileSync(dailyPath, "utf8")).toContain("## Summary");
   const dreamRows = db.getDb().query<{ count: number }, []>("SELECT COUNT(*) AS count FROM messages WHERE chat_jid LIKE 'dream:%'").get();
   expect(dreamRows?.count ?? 0).toBe(0);
+});
+
+test("Dream task cron can be overridden via PICLAW_DREAM_CRON", async () => {
+  const restore = setEnv({ PICLAW_DREAM_CRON: "30 2 * * *" });
+  try {
+    db = await importFresh("../src/db.js");
+    dream = await importFresh("../src/dream.js");
+    db.initDatabase();
+
+    const seeded = dream.ensureDreamTask("web:default");
+    expect(seeded?.schedule_value).toBe("30 2 * * *");
+  } finally {
+    restore();
+  }
 });

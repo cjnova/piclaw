@@ -18,6 +18,7 @@ test('resetExtensionPanelStateForChat clears extension panels and pending action
       pending = typeof next === 'function' ? next(pending) : next;
       return pending;
     },
+    setExtensionWorkingState: () => {},
   });
 
   expect(panels.size).toBe(0);

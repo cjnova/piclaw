@@ -11,6 +11,7 @@ import {
 } from "../../../db.js";
 
 interface FailedRunLike {
+  prevTs: string;
   failedTs: string;
 }
 
@@ -81,17 +82,34 @@ export function resumeChat(
   }, key, `chat:${chatJid}`);
 }
 
-/** Skip the failed cursor marker after a model switch to avoid replay loops. */
+/** Skip an unresolved failed run and advance the cursor past it. */
 export function skipFailedOnModelSwitch(
   chatJid: string,
   store: ChatRunControlStore = defaultStore
-): void {
+): boolean {
   const failed = store.getFailedRun(chatJid);
-  if (!failed) return;
+  if (!failed) return false;
 
   const current = store.getChatCursor(chatJid);
   if (!current || current < failed.failedTs) {
     store.setChatCursor(chatJid, failed.failedTs);
   }
   store.clearFailedRun(chatJid);
+  return true;
+}
+
+/** Re-enable replay of an unresolved failed run after a model switch. */
+export function retryFailedOnModelSwitch(
+  chatJid: string,
+  store: ChatRunControlStore = defaultStore
+): boolean {
+  const failed = store.getFailedRun(chatJid);
+  if (!failed) return false;
+
+  const current = store.getChatCursor(chatJid);
+  if (!current || current > failed.prevTs) {
+    store.setChatCursor(chatJid, failed.prevTs);
+  }
+  store.clearFailedRun(chatJid);
+  return true;
 }

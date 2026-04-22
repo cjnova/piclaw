@@ -12,7 +12,7 @@ import { parseControlCommand } from "../../../agent-control/index.js";
 import { normalizeAgentMessagePayload, parseAgentMessageRequest, storeAgentUserMessage, } from "../messaging/agent-message-service.js";
 import { handleUiThemeCommand } from "../theming/ui-theme-commands.js";
 import { handleUiMetersCommand } from "../ui-meters-commands.js";
-import { beginChatRun, endChatRun, endChatRunWithError, getChatCursor, getInflightMessageId, getMessageRowIdById, getMessagesSince, getDb, rollbackInflightRun, setChatCursor, } from "../../../db.js";
+import { beginChatRun, endChatRun, getChatCursor, getFailedRun, getInflightMessageId, getMessageRowIdById, getMessagesSince, getDb, rollbackChatRunWithError, rollbackInflightRun, setChatCursor, } from "../../../db.js";
 import { detectChannel, formatMessages, formatOutbound } from "../../../router.js";
 import { createAgentProfileBuilder } from "../agent/agent-utils.js";
 import { resolveAvatarUrl } from "../media/avatar-service.js";
@@ -46,7 +46,7 @@ function isModelConfigError(errorText) {
 function isSessionCorruptionError(errorText) {
     if (!errorText)
         return false;
-    return /invalid_request_error|\b400\b.*(?:image|media_type|content|base64)|media_type|image.*source/i.test(errorText);
+    return /invalid_request_error|\b400\b.*(?:image|media_type|content|base64|tool_use_id|tool_result|tool_use)|media_type|image.*source|unexpected [`'\"]?tool_use_id[`'\"]?|tool_result.*corresponding.*tool_use/i.test(errorText);
 }
 function isQuotaError(errorText) {
     if (!errorText)
@@ -69,7 +69,7 @@ function formatUserVisibleError(errorText, rateLimited) {
         return `\u26a0\ufe0f Model not configured:\n\n\`${errorText.slice(0, 300)}\`\n\nUse \`/model\` to select a model, or \`/login\` to configure a provider.`;
     }
     if (isSessionCorruptionError(errorText)) {
-        return `\u26a0\ufe0f API error \u2014 the session may be corrupted:\n\n\`${errorText.slice(0, 500)}\`\n\nThis error may repeat on every message. Try \`/compact\` to rewrite the session (this strips corrupt image blocks automatically), or \`/new-session\` to start fresh.`;
+        return `\u26a0\ufe0f API error \u2014 the session may be corrupted:\n\n\`${errorText.slice(0, 500)}\`\n\nThis error may repeat on every message. Try \`/compact\` to rewrite the session (PiClaw now strips corrupt image blocks and orphaned tool-result blocks automatically), or \`/new-session\` to start fresh.`;
     }
     return `\u26a0\ufe0f Agent error: ${errorText.slice(0, 300)}`;
 }
@@ -85,6 +85,61 @@ function buildRetryStatusPayload(base) {
         started_at: startedAt,
         retry_at: getRetryAtIso(1, DEFAULT_BASE_RETRY_MS, Date.parse(startedAt)),
         retry_delay_ms: DEFAULT_BASE_RETRY_MS,
+    };
+}
+function buildAgentStatusPhaseKey(payload) {
+    const type = typeof payload.type === "string" ? payload.type : "unknown";
+    const title = typeof payload.title === "string" ? payload.title.trim() : "";
+    const intentKey = typeof payload.intent_key === "string"
+        ? payload.intent_key.trim()
+        : (typeof payload.intentKey === "string" ? payload.intentKey.trim() : "");
+    const toolName = typeof payload.tool_name === "string"
+        ? payload.tool_name.trim()
+        : (typeof payload.toolName === "string" ? payload.toolName.trim() : "");
+    if ((type === "tool_call" || type === "tool_status") && toolName) {
+        return `tool:${toolName}:${title}`;
+    }
+    if (type === "intent" && intentKey) {
+        return `intent:${intentKey}:${title}`;
+    }
+    return `${type}:${title}`;
+}
+function withAgentStatusProgressMetadata(payload, previousStatus) {
+    const now = new Date().toISOString();
+    const next = { ...payload };
+    const type = typeof next.type === "string" ? next.type : "";
+    if (type === "done" || type === "error") {
+        return {
+            ...next,
+            last_event_at: now,
+            phase_key: buildAgentStatusPhaseKey(next),
+        };
+    }
+    const previous = previousStatus && typeof previousStatus === "object" ? previousStatus : null;
+    const previousPhaseKey = previous && typeof previous.phase_key === "string"
+        ? previous.phase_key
+        : previous
+            ? buildAgentStatusPhaseKey(previous)
+            : null;
+    const nextPhaseKey = buildAgentStatusPhaseKey(next);
+    const previousStartedAt = previous && typeof previous.started_at === "string"
+        ? previous.started_at
+        : (previous && typeof previous.startedAt === "string" ? previous.startedAt : null);
+    const previousRunStartedAt = previous && typeof previous.run_started_at === "string"
+        ? previous.run_started_at
+        : (previous && typeof previous.runStartedAt === "string" ? previous.runStartedAt : null);
+    return {
+        ...next,
+        started_at: typeof next.started_at === "string"
+            ? next.started_at
+            : previousPhaseKey === nextPhaseKey && previousStartedAt
+                ? previousStartedAt
+                : now,
+        run_started_at: typeof next.run_started_at === "string"
+            ? next.run_started_at
+            : previousRunStartedAt || now,
+        last_event_at: now,
+        phase_key: nextPhaseKey,
     };
 }
 export function withResolvedToolStatusHints(chatJid, payload) {
@@ -126,20 +181,19 @@ export function buildRecoveryMarkerBlocks(recovery) {
                 : `Recovered after ${recovery.attemptsUsed} attempts`,
         }];
 }
-function buildRecoveryExhaustedCard(turnId, threadId, attemptsUsed, classifier) {
-    const detail = classifier ? `Automatic recovery stopped after ${attemptsUsed} attempt(s) (${classifier}).` : `Automatic recovery stopped after ${attemptsUsed} attempt(s).`;
+function buildRecoveryActionCard(turnId, threadId, options) {
     return {
         type: "adaptive_card",
-        card_id: `recovery-exhausted-${turnId}`,
+        card_id: `${options.cardIdPrefix}-${turnId}`,
         schema_version: "1.5",
         state: "active",
-        fallback_text: "Automatic recovery exhausted. Choose Continue or Retry cleanly.",
+        fallback_text: options.fallbackText,
         payload: {
             type: "AdaptiveCard",
             version: "1.5",
             body: [
-                { type: "TextBlock", text: "Automatic recovery exhausted", weight: "Bolder", size: "Medium" },
-                { type: "TextBlock", text: detail, wrap: true, spacing: "Small" },
+                { type: "TextBlock", text: options.title, weight: "Bolder", size: "Medium" },
+                { type: "TextBlock", text: options.detail, wrap: true, spacing: "Small" },
                 { type: "TextBlock", text: "Choose how to proceed.", wrap: true, spacing: "Small" },
             ],
             actions: [
@@ -162,6 +216,23 @@ function buildRecoveryExhaustedCard(turnId, threadId, attemptsUsed, classifier) 
             ],
         },
     };
+}
+function buildRecoveryExhaustedCard(turnId, threadId, attemptsUsed, classifier) {
+    const detail = classifier ? `Automatic recovery stopped after ${attemptsUsed} attempt(s) (${classifier}).` : `Automatic recovery stopped after ${attemptsUsed} attempt(s).`;
+    return buildRecoveryActionCard(turnId, threadId, {
+        cardIdPrefix: "recovery-exhausted",
+        title: "Automatic recovery exhausted",
+        detail,
+        fallbackText: "Automatic recovery exhausted. Choose Continue or Retry cleanly.",
+    });
+}
+function buildRecoveryStalledCard(turnId, threadId, detail) {
+    return buildRecoveryActionCard(turnId, threadId, {
+        cardIdPrefix: "recovery-stalled",
+        title: "Context recovery needed",
+        detail,
+        fallbackText: "Context recovery needed. Choose Continue or Retry cleanly.",
+    });
 }
 export function summarizeCommandStatusTitle(message, fallback = "Command failed") {
     const raw = typeof message === "string" ? message.trim() : "";
@@ -426,7 +497,9 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
                 supports_thinking: supportsThinking,
             });
             if (command.type === "model" || command.type === "cycle_model") {
-                channel.skipFailedOnModelSwitch(chatJid);
+                if (channel.retryFailedOnModelSwitch(chatJid)) {
+                    channel.resumeChat(chatJid);
+                }
             }
         }
         return channel.json({
@@ -492,8 +565,12 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
     const identity = getIdentityConfig();
     const withAgentProfile = createAgentProfileBuilder(chatJid, identity.assistantName, resolveAvatarUrl("agent", identity.assistantAvatar), identity.userName || null, resolveAvatarUrl("user", identity.userAvatar), identity.userAvatarBackground || null);
     const emitCommandStatus = (payload) => {
-        channel.updateAgentStatus(chatJid, payload);
-        channel.broadcastEvent("agent_status", withAgentProfile(payload));
+        const activeStatus = typeof channel.getAgentStatus === "function"
+            ? channel.getAgentStatus(chatJid)
+            : null;
+        const nextPayload = withAgentStatusProgressMetadata(payload, activeStatus);
+        channel.updateAgentStatus(chatJid, nextPayload);
+        channel.broadcastEvent("agent_status", withAgentProfile(nextPayload));
     };
     const queueFollowupMessage = async () => {
         // Web queued follow-ups are managed by the web channel itself rather than
@@ -634,7 +711,9 @@ export async function handleAgentMessage(channel, req, pathname, chatJid, defaul
             });
         }
         if (result.status === "success" && (command.type === "model" || command.type === "cycle_model")) {
-            channel.skipFailedOnModelSwitch(chatJid);
+            if (channel.retryFailedOnModelSwitch(chatJid)) {
+                channel.resumeChat(chatJid);
+            }
         }
         emitCommandStatus({
             thread_id: interaction.timestamp,
@@ -813,6 +892,18 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
     const currentMessage = messages[0];
     if (!currentMessage)
         return;
+    const unresolvedFailedRun = getFailedRun(chatJid);
+    if (unresolvedFailedRun && unresolvedFailedRun.messageId === currentMessage.id) {
+        log.info("processChat paused on unresolved failed run", {
+            operation: "process_chat.blocked_failed_run",
+            chatJid,
+            cursor: prevCursor,
+            failedPrevTs: unresolvedFailedRun.prevTs,
+            failedTs: unresolvedFailedRun.failedTs,
+            failedMessageId: unresolvedFailedRun.messageId,
+        });
+        return;
+    }
     // Derive thread root from the actual message being processed, NOT from
     // the threadRootId parameter. The parameter comes from whichever
     // handleAgentMessage enqueued this processChat, but cursor-ordered
@@ -860,6 +951,7 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
             if (isToolStatus && toolName) {
                 nextPayload = withResolvedToolStatusHints(chatJid, payload);
             }
+            nextPayload = withAgentStatusProgressMetadata(nextPayload, channel.getAgentStatus(chatJid));
             channel.updateAgentStatus(chatJid, nextPayload);
             emitter.status(nextPayload);
         },
@@ -885,6 +977,24 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         onThoughtBuffer: (text, totalLines) => channel.updateThoughtBuffer(turnId, text, totalLines),
         onDraftBuffer: (text, totalLines) => channel.updateDraftBuffer(turnId, text, totalLines),
     });
+    const trackedStreamingHandler = (event) => {
+        const type = typeof event?.type === "string" ? event.type : "";
+        if (type === "compaction_start" || type === "compaction_end") {
+            sawCompactionEvent = true;
+        }
+        if (type === "compaction_end") {
+            const errorMessage = typeof event.errorMessage === "string" ? event.errorMessage.trim() : "";
+            if (errorMessage)
+                lastCompactionErrorMessage = errorMessage;
+        }
+        if (type === "recovery_start" || type === "recovery_end") {
+            sawRecoveryEvent = true;
+        }
+        if (type === "recovery_end") {
+            lastRecoveryOutcome = typeof event.outcome === "string" ? event.outcome : null;
+        }
+        streamingHandler(event);
+    };
     const hasActiveClients = channel.sse.clients.size > 0;
     const agentRuntimeConfig = getAgentRuntimeConfig();
     const timeoutMs = hasActiveClients
@@ -895,13 +1005,22 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
     let persistedIntermediateOutput = false;
     let intermediatePersistFailed = false;
     let lastRecoveryMeta = null;
-    const isCompactionIntentActive = () => {
+    let sawCompactionEvent = false;
+    let sawRecoveryEvent = false;
+    let lastCompactionErrorMessage = null;
+    let lastRecoveryOutcome = null;
+    const getActiveRecoveryIntent = () => {
         const status = channel.getAgentStatus(chatJid);
         if (!status || typeof status !== "object")
-            return false;
+            return null;
         const intentKey = status.intent_key ?? status.intentKey;
-        return status.type === "intent" && intentKey === "compaction";
+        if (status.type !== "intent")
+            return null;
+        if (intentKey === "compaction" || intentKey === "recovery")
+            return intentKey;
+        return null;
     };
+    const isCompactionIntentActive = () => getActiveRecoveryIntent() === "compaction";
     const publishDraftFallback = (reason, detail) => {
         // Draft fallback should publish the currently visible draft for whichever
         // turn failed to finalize, even if earlier turns in the same session were
@@ -936,7 +1055,6 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         });
     };
     const finalizeSuccessfulRun = async () => {
-        // Single UPDATE: clears inflight AND clears any stale failed_run atomically.
         endChatRun(chatJid);
         const cursorAfterEnd = getChatCursor(chatJid);
         const pendingSteerTimestamps = channel.consumePendingSteering(chatJid);
@@ -986,7 +1104,7 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
     };
     const output = await channel.agentPool.runAgent(prompt, chatJid, {
         timeoutMs,
-        onEvent: streamingHandler,
+        onEvent: trackedStreamingHandler,
         onTurnComplete: (turn) => {
             // Turn boundary: the first turn (index 0) is the original prompt's
             // response — skip placeholder consumption so it doesn't steal a
@@ -1070,9 +1188,7 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
             }
             return;
         }
-        // Single UPDATE: clears inflight AND writes failed_run atomically.
-        // No window exists where inflight is gone but failed_run is not yet set.
-        endChatRunWithError(chatJid, {
+        rollbackChatRunWithError(chatJid, {
             prevTs: prevCursor,
             failedTs: lastMessage.timestamp,
             messageId: lastMessage.id,
@@ -1127,10 +1243,10 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         })
         : publishDraftFallback("empty-final");
     if (!finalized && hasOutput) {
-        // The agent produced output but persistence failed (DB write error).
-        // Record a failed run so the message is retried on model switch.
+        // The agent produced output but terminal persistence failed.
+        // Hold the user turn for an explicit retry/skip decision.
         const errorText = "Agent completed but terminal response could not be persisted.";
-        endChatRunWithError(chatJid, {
+        rollbackChatRunWithError(chatJid, {
             prevTs: prevCursor,
             failedTs: lastMessage.timestamp,
             messageId: lastMessage.id,
@@ -1156,7 +1272,7 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         }
         if (hadIntermediateOutput && intermediatePersistFailed) {
             const errorText = "Agent produced intermediate output but it could not be persisted.";
-            endChatRunWithError(chatJid, {
+            rollbackChatRunWithError(chatJid, {
                 prevTs: prevCursor,
                 failedTs: lastMessage.timestamp,
                 messageId: lastMessage.id,
@@ -1178,7 +1294,7 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         const hadDraft = !!(typeof draft?.text === "string" && draft.text.trim());
         if (hadDraft) {
             const errorText = "Agent completed but draft response could not be persisted.";
-            endChatRunWithError(chatJid, {
+            rollbackChatRunWithError(chatJid, {
                 prevTs: prevCursor,
                 failedTs: lastMessage.timestamp,
                 messageId: lastMessage.id,
@@ -1194,24 +1310,93 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
             });
             return;
         }
-        // The agent completed normally but produced no output and there was no
-        // draft buffer.  This typically happens when restart recovery replays a
-        // contextless message.  Treat as a successful no-op so the cursor
-        // advances and the same message is not retried endlessly.
-        //
-        // Post a system notice so the user can see their message was consumed
-        // without a response and re-send if needed.
-        log.warn("Agent completed without output; finalizing as no-op", {
-            operation: "process_chat.no_output_noop",
-            chatJid,
-        });
         const originalContent = currentMessage.content || "";
         const preview = originalContent.length > 120
             ? originalContent.slice(0, 120) + "…"
             : originalContent;
-        const noticeText = preview
-            ? `⚠️ Your message was received but the agent produced no response. You may need to re-send it.\n\n> ${preview}`
-            : "⚠️ Your message was received but the agent produced no response. You may need to re-send it.";
+        const recoveryIntent = getActiveRecoveryIntent();
+        const recoveryLooksStalled = Boolean(lastRecoveryMeta?.exhausted)
+            || lastRecoveryOutcome === "exhausted"
+            || sawCompactionEvent
+            || sawRecoveryEvent
+            || recoveryIntent !== null
+            || !!lastCompactionErrorMessage;
+        if (recoveryLooksStalled) {
+            const title = lastRecoveryMeta?.exhausted || lastRecoveryOutcome === "exhausted"
+                ? "Automatic recovery exhausted"
+                : lastCompactionErrorMessage
+                    ? "Context compaction failed"
+                    : recoveryIntent === "compaction"
+                        ? "Context compaction did not complete"
+                        : "Context recovery did not complete";
+            const detail = lastCompactionErrorMessage
+                ? lastCompactionErrorMessage
+                : lastRecoveryMeta?.lastClassifier
+                    ? `Last recovery classifier: ${lastRecoveryMeta.lastClassifier}.`
+                    : "The turn ended without a persisted reply while compaction or automatic recovery was in flight.";
+            const previewBlock = preview ? `\n\n> ${preview}` : "";
+            const noticeText = `⚠️ ${title} — this turn ended without a persisted reply.\n\n${detail}\n\nUse \`/compact\` to repair and rewrite the session, or \`/new-session\` if the session keeps failing.${previewBlock}`;
+            log.warn("Agent completed without output after compaction/recovery activity", {
+                operation: "process_chat.no_output_recovery_stalled",
+                chatJid,
+                title,
+                sawCompactionEvent,
+                sawRecoveryEvent,
+                recoveryIntent,
+                lastCompactionErrorMessage,
+                recovery: lastRecoveryMeta,
+            });
+            rollbackChatRunWithError(chatJid, {
+                prevTs: prevCursor,
+                failedTs: lastMessage.timestamp,
+                messageId: lastMessage.id,
+                threadRootId: resolvedThreadRootId ?? null,
+                createdAt: new Date().toISOString(),
+            });
+            const notice = channel.storeMessage(chatJid, noticeText, true, [], {
+                threadId: resolvedThreadRootId ?? undefined,
+                isTerminalAgentReply: true,
+            });
+            if (notice) {
+                channel.broadcastEvent("agent_response", notice);
+            }
+            trackedEmitter.status({
+                thread_id: threadId,
+                agent_id: agentId,
+                type: "error",
+                title,
+                detail,
+                turn_id: turnId,
+            });
+            await channel.sendMessage(chatJid, `${title}. Choose how to continue.`, {
+                threadId: resolvedThreadRootId,
+                contentBlocks: [lastRecoveryMeta?.exhausted
+                        ? buildRecoveryExhaustedCard(turnId, resolvedThreadRootId, lastRecoveryMeta.attemptsUsed || 0, lastRecoveryMeta.lastClassifier)
+                        : buildRecoveryStalledCard(turnId, resolvedThreadRootId, detail)],
+            });
+            return;
+        }
+        // Missing terminal output is a real failure. Never consume the user turn
+        // as a success when no persisted assistant reply exists.
+        const title = "Agent produced no response";
+        const detail = "The model returned an empty reply before finalization. The turn was not committed as success.";
+        const previewBlock = preview ? `\n\n> ${preview}` : "";
+        const noticeText = `⚠️ ${title}.\n\n${detail}${previewBlock}`;
+        log.warn("Agent completed without output; marking run as failed", {
+            operation: "process_chat.no_output_blank_failed",
+            chatJid,
+            hadIntermediateOutput,
+            persistedIntermediateOutput,
+            hadDraft,
+            recovery: lastRecoveryMeta,
+        });
+        rollbackChatRunWithError(chatJid, {
+            prevTs: prevCursor,
+            failedTs: lastMessage.timestamp,
+            messageId: lastMessage.id,
+            threadRootId: resolvedThreadRootId ?? null,
+            createdAt: new Date().toISOString(),
+        });
         const notice = channel.storeMessage(chatJid, noticeText, true, [], {
             threadId: resolvedThreadRootId ?? undefined,
             isTerminalAgentReply: true,
@@ -1219,7 +1404,20 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         if (notice) {
             channel.broadcastEvent("agent_response", notice);
         }
-        await finalizeSuccessfulRun();
+        trackedEmitter.status({
+            thread_id: threadId,
+            agent_id: agentId,
+            type: "error",
+            title,
+            detail,
+            turn_id: turnId,
+        });
+        if (lastRecoveryMeta?.exhausted) {
+            await channel.sendMessage(chatJid, `${title}. Choose how to continue.`, {
+                threadId: resolvedThreadRootId,
+                contentBlocks: [buildRecoveryExhaustedCard(turnId, resolvedThreadRootId, lastRecoveryMeta.attemptsUsed || 0, lastRecoveryMeta.lastClassifier)],
+            });
+        }
         return;
     }
     await finalizeSuccessfulRun();

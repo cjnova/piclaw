@@ -351,6 +351,63 @@ describe("getFailedRun / clearFailedRun", () => {
   });
 });
 
+describe("rollbackChatRunWithError", () => {
+  test("restores the previous cursor, clears inflight, and records the failed run", () => {
+    const chatJid = jid("rollback-with-error");
+    const prevTs = "2024-10-01T00:00:00.000Z";
+    const failedTs = "2024-10-01T00:00:05.000Z";
+
+    db.storeChatMetadata(chatJid, prevTs);
+    db.storeMessage({
+      id: "msg-user-rollback-with-error",
+      chat_jid: chatJid,
+      sender: "user",
+      sender_name: "User",
+      content: "hello",
+      timestamp: failedTs,
+      is_from_me: false,
+      is_bot_message: false,
+    });
+    db.beginChatRun(chatJid, failedTs, {
+      prevTs,
+      messageId: "msg-user-rollback-with-error",
+      startedAt: "2024-10-01T00:00:05.100Z",
+    });
+    db.storeMessage({
+      id: "msg-bot-partial-rollback-with-error",
+      chat_jid: chatJid,
+      sender: "web-agent",
+      sender_name: "Pi",
+      content: "partial reply",
+      timestamp: "2024-10-01T00:00:06.000Z",
+      is_from_me: false,
+      is_bot_message: true,
+      is_terminal_agent_reply: false,
+    });
+
+    db.rollbackChatRunWithError(chatJid, {
+      prevTs,
+      failedTs,
+      messageId: "msg-user-rollback-with-error",
+      threadRootId: 7,
+      createdAt: "2024-10-01T00:00:07.000Z",
+    });
+
+    expect(db.getChatCursor(chatJid)).toBe(prevTs);
+    expect(db.getInflightRuns().filter((r) => r.chatJid === chatJid)).toHaveLength(0);
+    expect(db.getFailedRun(chatJid)).toEqual({
+      prevTs,
+      failedTs,
+      messageId: "msg-user-rollback-with-error",
+      threadRootId: 7,
+      createdAt: "2024-10-01T00:00:07.000Z",
+    });
+    const timeline = db.getTimeline(chatJid, 20).map((item) => item.data.content);
+    expect(timeline).toContain("hello");
+    expect(timeline).not.toContain("partial reply");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // rollbackInflightRun
 // ---------------------------------------------------------------------------

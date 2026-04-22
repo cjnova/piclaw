@@ -19,7 +19,7 @@ export { getProxmoxConfig, upsertProxmoxConfig, deleteProxmoxConfig, listProxmox
 export { getPortainerConfig, upsertPortainerConfig, deletePortainerConfig, listPortainerConfigs, } from "./db/portainer-configs.js";
 export { storeToolOutput, insertToolOutputChunk, getToolOutputById, deleteToolOutputsBefore, searchToolOutputSnippets, } from "./db/tool-outputs.js";
 export { getRouterState, setRouterState } from "./db/router-state.js";
-export { getChatCursor, getAllChatCursors, getInflightMessageId, setChatCursor, beginChatRun, endChatRun, endChatRunWithError, getFailedRun, clearFailedRun, getInflightRuns, rollbackInflightRun, clearInflightMarker, getAgentReplyStateAfter, hasAgentRepliesAfter, getDeferredQueuedFollowups, setDeferredQueuedFollowups, } from "./db/chat-cursors.js";
+export { getChatCursor, getAllChatCursors, getInflightMessageId, setChatCursor, beginChatRun, endChatRun, endChatRunWithError, rollbackChatRunWithError, getFailedRun, clearFailedRun, getInflightRuns, rollbackInflightRun, clearInflightMarker, getAgentReplyStateAfter, hasAgentRepliesAfter, getDeferredQueuedFollowups, setDeferredQueuedFollowups, } from "./db/chat-cursors.js";
 export { storeTokenUsage, getTokenUsageTotals, getTokenUsageByProvider, getTokenUsageByModel, } from "./db/token-usage.js";
 export { createWebauthnEnrollment, getWebauthnEnrollment, consumeWebauthnEnrollment, listWebauthnCredentials, getWebauthnCredentialsForRpId, getWebauthnCredentialById, findWebauthnCredentialsByPrefix, storeWebauthnCredential, updateWebauthnCredentialCounter, deleteWebauthnCredential, } from "./db/webauthn.js";
 export { DEFAULT_WEB_USER_ID, createWebSession, getWebSession, deleteExpiredWebSessions, deleteAllWebSessions, } from "./db/web-sessions.js";

@@ -61,7 +61,10 @@ export class WebChannelRuntimePublicSurfaceService {
         this.channel.runtimeFollowupFacade.resumeChat(chatJid, threadRootId);
     }
     skipFailedOnModelSwitch(chatJid) {
-        this.channel.runtimeFollowupFacade.skipFailedOnModelSwitch(chatJid);
+        return this.channel.runtimeFollowupFacade.skipFailedOnModelSwitch(chatJid);
+    }
+    retryFailedOnModelSwitch(chatJid) {
+        return this.channel.runtimeFollowupFacade.retryFailedOnModelSwitch(chatJid);
     }
     recoverInflightRuns() {
         this.channel.runtimeFollowupFacade.recoverInflightRuns();

@@ -282,6 +282,11 @@ EOF`;
     expect(cmd).toEqual({ type: "fork", entryId: "abc123", raw: "/fork abc123" });
   });
 
+  test("/clone", () => {
+    const cmd = parseControlCommand("/clone");
+    expect(cmd).toEqual({ type: "clone", raw: "/clone" });
+  });
+
   test("/export-html with path", () => {
     const cmd = parseControlCommand("/export-html /tmp/export.html");
     expect(cmd).toEqual({ type: "export_html", path: "/tmp/export.html", raw: "/export-html /tmp/export.html" });

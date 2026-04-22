@@ -19,14 +19,17 @@ interface RefBox<T> {
 export function resetExtensionPanelStateForChat(options: {
   setExtensionStatusPanels: StateSetter<Map<string, unknown>>;
   setPendingExtensionPanelActions: StateSetter<Set<string>>;
+  setExtensionWorkingState: StateSetter<{ message: string | null; indicator: unknown | null }>;
 }): void {
   const {
     setExtensionStatusPanels,
     setPendingExtensionPanelActions,
+    setExtensionWorkingState,
   } = options;
 
   setExtensionStatusPanels(new Map());
   setPendingExtensionPanelActions(new Set());
+  setExtensionWorkingState({ message: null, indicator: null });
 }
 
 export function hydrateThreadStateAfterTimelineLoad(options: {
@@ -62,6 +65,7 @@ interface UseViewRefreshLifecycleOptions {
   scrollToBottom: () => void;
   setExtensionStatusPanels: StateSetter<Map<string, unknown>>;
   setPendingExtensionPanelActions: StateSetter<Set<string>>;
+  setExtensionWorkingState: StateSetter<{ message: string | null; indicator: unknown | null }>;
   paneStateOwnerChatJidRef: RefBox<string | null>;
   chatPaneStateByChatRef: RefBox<Map<string, unknown>>;
   snapshotCurrentChatPaneState: () => unknown;
@@ -92,6 +96,7 @@ export function useViewRefreshLifecycle(options: UseViewRefreshLifecycleOptions)
     scrollToBottom,
     setExtensionStatusPanels,
     setPendingExtensionPanelActions,
+    setExtensionWorkingState,
     paneStateOwnerChatJidRef,
     chatPaneStateByChatRef,
     snapshotCurrentChatPaneState,
@@ -110,8 +115,9 @@ export function useViewRefreshLifecycle(options: UseViewRefreshLifecycleOptions)
     resetExtensionPanelStateForChat({
       setExtensionStatusPanels,
       setPendingExtensionPanelActions,
+      setExtensionWorkingState,
     });
-  }, [currentChatJid, setExtensionStatusPanels, setPendingExtensionPanelActions]);
+  }, [currentChatJid, setExtensionStatusPanels, setPendingExtensionPanelActions, setExtensionWorkingState]);
 
   useEffect(() => {
     let cancelled = false;

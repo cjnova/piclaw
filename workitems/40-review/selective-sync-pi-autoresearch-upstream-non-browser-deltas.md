@@ -1,7 +1,7 @@
 ---
 id: selective-sync-pi-autoresearch-upstream-non-browser-deltas
 title: "Selective sync of pi-autoresearch upstream changes (non-browser deltas only)"
-status: doing
+status: review
 created: 2026-04-17
 updated: 2026-04-17
 tags:

@@ -42,6 +42,7 @@ import {
 import { handleBash, handleShell } from "./handlers/operations.js";
 import { handleFollowupMode, handleQueue, handleSteeringMode, handleSteer } from "./handlers/queue.js";
 import {
+  handleClone,
   handleExportHtml,
   handleFork,
   handleForks,
@@ -116,6 +117,8 @@ export async function applyControlCommand(
       return handleSessionRotate(session, runtime, command);
     case "fork":
       return handleFork(session, runtime, command);
+    case "clone":
+      return handleClone(session, runtime, command);
     case "forks":
       return handleForks(session, command);
     case "export_html":

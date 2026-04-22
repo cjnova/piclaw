@@ -1,19 +1,57 @@
 #!/usr/bin/env bun
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
-import { join, extname } from "path";
-import { createRequire } from "node:module";
-import { Database } from "bun:sqlite";
+/**
+ * SCRIPT_JDOC:
+ * {
+ *   "summary": "Export a chat timeline to PDF using the internal localhost export endpoint and wkhtmltopdf.",
+ *   "aliases": ["export timeline pdf"],
+ *   "domains": ["timeline", "pdf"],
+ *   "verbs": ["export"],
+ *   "nouns": ["timeline", "pdf"],
+ *   "keywords": ["export", "timeline", "pdf", "wkhtmltopdf"],
+ *   "guidance": ["Runnable script entrypoint.", "Workspace-owned script surface."],
+ *   "examples": ["export timeline pdf"],
+ *   "kind": "mixed",
+ *   "weight": "heavy",
+ *   "role": "entrypoint"
+ * }
+ */
+/**
+ * export-timeline-pdf.ts — Internal timeline PDF export.
+ *
+ * Read-only by design:
+ * - never opens SQLite
+ * - never writes auth/session state
+ * - fetches printable HTML from the localhost internal export endpoint
+ * - renders via wkhtmltopdf
+ */
 
+import { accessSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
+import { join } from "path";
+import { spawnSync } from "node:child_process";
 
-// --help support
 if (process.argv.includes("--help") || process.argv.includes("-h")) {
-  console.log("Usage: bun export-timeline-pdf.ts [options]");
-  console.log("");
-  console.log("  Export a chat timeline to a PDF using the web UI renderer and Playwright.");
+  console.log(`Usage: bun export-timeline-pdf.ts [options]
+
+Export a chat timeline to a PDF using the internal localhost export endpoint.
+
+Range options (all optional, combinable):
+  --from <iso>           Start timestamp (ISO 8601)
+  --to <iso>             End timestamp (ISO 8601)
+  --from-row <id>        Start message row ID
+  --to-row <id>          End message row ID
+  --last <n>             Export only the last N messages
+
+Other options:
+  --chat <jid>           Chat JID (default: web:default)
+  --theme <light|dark>   Color theme (default: light)
+  --out <path>           Output PDF path
+  --port <n>             Piclaw web server port (default: auto-detect or 8080)
+  --auth-key <key>       Internal export auth key (defaults to env/config lookup)
+  --html-only            Write HTML sidecar and exit without PDF generation`);
   process.exit(0);
 }
-const args = process.argv.slice(2);
 
+const args = process.argv.slice(2);
 const getArg = (name: string): string | undefined => {
   const idx = args.indexOf(name);
   if (idx >= 0 && idx + 1 < args.length) {
@@ -22,489 +60,153 @@ const getArg = (name: string): string | undefined => {
   }
   return undefined;
 };
+const hasFlag = (name: string): boolean => args.includes(name);
 
 const chatJid = getArg("--chat") || "web:default";
-const fromArg = getArg("--from");
-const toArg = getArg("--to");
+const fromTs = getArg("--from") || "";
+const toTs = getArg("--to") || "";
+const fromRow = getArg("--from-row") || "";
+const toRow = getArg("--to-row") || "";
+const lastN = getArg("--last") || "";
 const theme = (getArg("--theme") || "light").toLowerCase();
 const outPath = getArg("--out") || `/workspace/exports/timeline-${chatJid.replace(/[^a-z0-9]+/gi, "_")}.pdf`;
-const embedImages = (getArg("--embed-images") || "true").toLowerCase() !== "false";
-const maxImageBytes = Number(getArg("--max-image-bytes") || "4000000");
+const portArg = getArg("--port");
+const htmlOnly = hasFlag("--html-only");
+const authKeyArg = getArg("--auth-key") || "";
 
-const ensureDir = (path: string) => mkdirSync(path, { recursive: true });
-ensureDir(join(outPath, ".."));
+mkdirSync(join(outPath, ".."), { recursive: true });
 
-function resolveExistingPath(label: string, candidates: string[]): string {
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate;
-  }
-  throw new Error(`Could not resolve ${label}. Tried: ${candidates.join(", ")}`);
-}
-
-const PICLAW_ROOT = resolveExistingPath("piclaw source root", [
-  "/workspace/piclaw/runtime",
-  "/home/agent/piclaw/piclaw",
-  "/usr/local/lib/bun/install/global/node_modules/piclaw",
-]);
-
-const cssPath = resolveExistingPath("web stylesheet", [join(PICLAW_ROOT, "web/static/css/styles.css")]);
-const css = readFileSync(cssPath, "utf8");
-
-const markedPath = resolveExistingPath("marked bundle", [join(PICLAW_ROOT, "web/static/js/marked.min.js")]);
-const markedSource = readFileSync(markedPath, "utf8");
-
-const mermaidSourcePath = resolveExistingPath("mermaid bundle", [join(PICLAW_ROOT, "web/static/js/vendor/beautiful-mermaid.js")]);
-const mermaidSource = readFileSync(mermaidSourcePath, "utf8");
-
-const moduleStub: { exports: any } = { exports: {} };
-const exportsStub = moduleStub.exports;
-// Evaluate marked UMD bundle to get a parser without installing deps.
-new Function("exports", "module", "define", "globalThis", "self", markedSource)(
-  exportsStub,
-  moduleStub,
-  undefined,
-  globalThis,
-  globalThis,
-);
-const markedLib = moduleStub.exports.marked || moduleStub.exports || globalThis.marked;
-
-const decodeEntities = (text: string) =>
-  text
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, "&");
-
-const decodeEntitiesDeep = (text: string, maxDepth = 2) => {
-  let current = text;
-  for (let i = 0; i < maxDepth; i += 1) {
-    const next = decodeEntities(current);
-    if (next === current) break;
-    current = next;
-  }
-  return current;
-};
-
-const extractMermaidBlocks = (text: string) => {
-  if (!text) return { text: "", blocks: [] as string[] };
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  const lines = normalized.split("\n");
-  const blocks: string[] = [];
-  const output: string[] = [];
-  let inMermaid = false;
-  let current: string[] = [];
-
-  for (const line of lines) {
-    if (!inMermaid && line.trim().match(/^```mermaid\s*$/i)) {
-      inMermaid = true;
-      current = [];
-      continue;
-    }
-    if (inMermaid && line.trim().match(/^```\s*$/)) {
-      const idx = blocks.length;
-      blocks.push(current.join("\n"));
-      output.push(`@@MERMAID_BLOCK_${idx}@@`);
-      inMermaid = false;
-      current = [];
-      continue;
-    }
-    if (inMermaid) {
-      current.push(line);
-    } else {
-      output.push(line);
-    }
-  }
-
-  if (inMermaid) {
-    output.push("```mermaid");
-    output.push(...current);
-  }
-
-  return { text: output.join("\n"), blocks };
-};
-
-const injectMermaidBlocks = (html: string, blocks: string[]) => {
-  if (!html || !blocks || blocks.length === 0) return html;
-  const replaced = html.replace(/@@MERMAID_BLOCK_(\d+)@@/g, (match, idxStr) => {
-    const idx = Number(idxStr);
-    const raw = blocks[idx] ?? "";
-    const decoded = decodeEntitiesDeep(raw, 5);
-    const encoded = Buffer.from(encodeURIComponent(decoded)).toString("base64");
-    return `<div class=\"mermaid-container\" data-mermaid=\"${encoded}\"><div class=\"mermaid-loading\">Loading diagram...</div></div>`;
-  });
-  return replaced.replace(/<p>\s*(<div class=\"mermaid-container\"[\s\S]*?<\/div>)\s*<\/p>/g, "$1");
-};
-
-const renderMarkdown = (value: string) => {
-  if (!value) return "";
-  const { text: stripped, blocks } = extractMermaidBlocks(value);
-  let html = stripped;
-  if (typeof markedLib?.parse === "function") {
-    html = markedLib.parse(stripped, { headerIds: false, mangle: false, breaks: true });
-  } else if (typeof markedLib === "function") {
-    html = markedLib(stripped, { headerIds: false, mangle: false, breaks: true });
-  } else {
-    html = stripped.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>");
-  }
-  return injectMermaidBlocks(html, blocks);
-};
-
-const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-
-const formatTime = (timestamp: string) => {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return timestamp;
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffSec = diffMs / 1000;
-  const dayMs = 24 * 60 * 60 * 1000;
-
-  if (diffMs < dayMs) {
-    if (diffSec < 60) return "just now";
-    if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m`;
-    return `${Math.floor(diffSec / 3600)}h`;
-  }
-
-  if (diffMs < 5 * dayMs) {
-    const weekday = date.toLocaleDateString(undefined, { weekday: "short" });
-    const time = date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-    return `${weekday} ${time}`;
-  }
-
-  const datePart = date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const timePart = date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
-  return `${datePart} ${timePart}`;
-};
-
-const parseJson = <T>(value: string | null): T | null => {
-  if (!value) return null;
-  try {
-    return JSON.parse(value) as T;
-  } catch {
-    return null;
-  }
-};
-
-const guessContentType = (source: string) => {
-  const lower = source.toLowerCase();
-  const ext = extname(lower);
-  if (ext === ".svg") return "image/svg+xml";
-  if (ext === ".png") return "image/png";
-  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
-  if (ext === ".gif") return "image/gif";
-  if (ext === ".webp") return "image/webp";
-  if (lower.includes("avatars.githubusercontent.com")) return "image/png";
-  return "application/octet-stream";
-};
-
-const toDataUri = async (source?: string | null): Promise<string | null> => {
-  if (!source) return null;
-  if (source.startsWith("http://") || source.startsWith("https://")) {
+async function detectPort(): Promise<number> {
+  if (portArg) return Number(portArg);
+  for (const port of [8080, 3000, 8443]) {
     try {
-      const res = await fetch(source);
-      if (!res.ok) return null;
-      const buffer = Buffer.from(await res.arrayBuffer());
-      const contentType = res.headers.get("content-type") || guessContentType(source);
-      return `data:${contentType};base64,${buffer.toString("base64")}`;
+      const res = await fetch(`http://127.0.0.1:${port}/manifest.json`, { signal: AbortSignal.timeout(2000) });
+      if (res.ok || res.status === 302) return port;
     } catch {
-      return null;
+      // try next
     }
   }
+  return 8080;
+}
+
+function loadConfigAuthKey(): string {
   try {
-    const buffer = readFileSync(source);
-    const contentType = guessContentType(source);
-    return `data:${contentType};base64,${Buffer.from(buffer).toString("base64")}`;
+    const config = JSON.parse(readFileSync("/workspace/.piclaw/config.json", "utf8"));
+    return String(config?.web?.internalSecret || "").trim();
   } catch {
-    return null;
+    return "";
   }
-};
-
-const dbPath = `${process.env.PICLAW_STORE || "/workspace/.piclaw/store"}/messages.db`;
-const db = new Database(dbPath, { readonly: true });
-const where: string[] = ["chat_jid = ?"];
-const params: string[] = [chatJid];
-if (fromArg) {
-  where.push("timestamp >= ?");
-  params.push(fromArg);
-}
-if (toArg) {
-  where.push("timestamp <= ?");
-  params.push(toArg);
 }
 
-const messages = db
-  .query(
-    `SELECT rowid, sender, sender_name, content, timestamp, is_bot_message, content_blocks, link_previews, thread_id
-     FROM messages
-     WHERE ${where.join(" AND ")}
-     ORDER BY rowid ASC`,
-  )
-  .all(...params) as Array<{
-  rowid: number;
-  sender: string | null;
-  sender_name: string | null;
-  content: string | null;
-  timestamp: string;
-  is_bot_message: number;
-  content_blocks: string | null;
-  link_previews: string | null;
-  thread_id: number | null;
-}>;
-
-const mediaRows = db
-  .query(
-    `SELECT mm.message_rowid as message_rowid, m.id as id, m.filename as filename, m.content_type as content_type, m.data as data, m.metadata as metadata
-     FROM message_media mm
-     JOIN media m ON m.id = mm.media_id
-     JOIN messages msg ON msg.rowid = mm.message_rowid
-     WHERE ${where
-       .map((clause) => clause.replace("timestamp", "msg.timestamp").replace("chat_jid", "msg.chat_jid"))
-       .join(" AND ")}
-     ORDER BY mm.message_rowid ASC, mm.media_id ASC`,
-  )
-  .all(...params) as Array<{
-  message_rowid: number;
-  id: number;
-  filename: string | null;
-  content_type: string | null;
-  data: Uint8Array | null;
-  metadata: string | null;
-}>;
-
-const attachmentsByMessage = new Map<number, typeof mediaRows>();
-for (const row of mediaRows) {
-  const list = attachmentsByMessage.get(row.message_rowid) || [];
-  list.push(row);
-  attachmentsByMessage.set(row.message_rowid, list);
+function resolveAuthKey(): string {
+  return (
+    authKeyArg ||
+    process.env.PICLAW_EXPORT_AUTH_KEY ||
+    process.env.PICLAW_INTERNAL_SECRET ||
+    process.env.PICLAW_WEB_INTERNAL_SECRET ||
+    loadConfigAuthKey()
+  ).trim();
 }
 
-const config = parseJson<any>(readFileSync("/workspace/.piclaw/config.json", "utf8")) || {};
-const agentName = config?.assistant?.assistantName || "Assistant";
-const userName = config?.user?.userName || "You";
-const userAvatarBackground = (config?.user?.userAvatarBackground || "").toString().trim().toLowerCase();
+function buildExportUrl(port: number): string {
+  const params = new URLSearchParams();
+  params.set("chat_jid", chatJid);
+  params.set("theme", theme);
+  if (fromTs) params.set("from", fromTs);
+  if (toTs) params.set("to", toTs);
+  if (fromRow) params.set("from_row", fromRow);
+  if (toRow) params.set("to_row", toRow);
+  if (lastN) params.set("last", lastN);
+  return `http://127.0.0.1:${port}/internal/export/timeline?${params.toString()}`;
+}
 
-const avatarLetter = (name: string) => {
-  const trimmed = name.trim();
-  return trimmed ? trimmed[0].toUpperCase() : "?";
-};
-
-const formatFileSize = (bytes: number) => {
-  if (!Number.isFinite(bytes)) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
-const agentAvatarData = await toDataUri(config?.assistant?.assistantAvatar);
-const userAvatarData = await toDataUri(config?.user?.userAvatar);
-
-const buildAvatarHtml = (name: string, avatarData: string | null, isAgent: boolean) => {
-  const baseClass = `post-avatar ${isAgent ? "agent-avatar" : ""}`;
-  const clearBg = !isAgent && avatarData && (userAvatarBackground === "clear" || userAvatarBackground === "transparent");
-  const style = clearBg ? " style=\"background-color: transparent;\"" : "";
-  if (avatarData) {
-    return `<div class=\"${baseClass} has-image\"${style}><img src=\"${avatarData}\" alt=\"${escapeHtml(name)}\" /></div>`;
+async function fetchExportHtml(url: string, authKey: string): Promise<string> {
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${authKey}`,
+    },
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) {
+    throw new Error(`Export endpoint returned ${res.status}`);
   }
-  return `<div class=\"${baseClass}\"${style}>${escapeHtml(avatarLetter(name))}</div>`;
-};
+  const html = await res.text();
+  if (!html.includes('id="export-root"')) {
+    throw new Error("Export endpoint returned unexpected HTML");
+  }
+  if (!html.includes('data-render-done="true"')) {
+    throw new Error("Export HTML missing render completion marker");
+  }
+  return html;
+}
 
-const buildAttachmentHtml = (items: typeof mediaRows) => {
-  if (!items.length) return "";
-  const images: string[] = [];
-  const files: string[] = [];
+function ensureWkhtmltopdf(): string {
+  const candidate = spawnSync("bash", ["-lc", "command -v wkhtmltopdf"], { encoding: "utf8" });
+  const path = (candidate.stdout || "").trim();
+  if (!path) {
+    throw new Error("wkhtmltopdf not found in PATH");
+  }
+  accessSync(path);
+  return path;
+}
 
-  for (const item of items) {
-    const type = item.content_type || "";
-    const data = item.data as Uint8Array | null;
-    const metadata = parseJson<{ size?: number }>(item.metadata) || {};
-    const size = metadata.size || (data ? data.length : 0);
-    const filename = item.filename || `media-${item.id}`;
+function runWkhtmltopdf(binary: string, url: string, authKey: string, pdfPath: string): void {
+  const result = spawnSync(binary, [
+    "--print-media-type",
+    "--encoding", "utf-8",
+    "--load-error-handling", "abort",
+    "--load-media-error-handling", "ignore",
+    "--custom-header", "Authorization", `Bearer ${authKey}`,
+    "--custom-header-propagation",
+    url,
+    pdfPath,
+  ], {
+    stdio: "inherit",
+  });
 
-    if (embedImages && type.startsWith("image/") && data && size <= maxImageBytes) {
-      const base64 = Buffer.from(data).toString("base64");
-      images.push(`<img src=\"data:${type};base64,${base64}\" alt=\"${escapeHtml(filename)}\" />`);
-    } else {
-      const sizeLabel = size ? ` • ${formatFileSize(size)}` : "";
-      files.push(`
-        <div class=\"file-attachment\">
-          <div class=\"file-info\">
-            <span class=\"file-name\">${escapeHtml(filename)}</span>
-            <span class=\"file-size\">${escapeHtml(sizeLabel)}</span>
-          </div>
-        </div>
-      `);
-    }
+  if (result.status !== 0) {
+    throw new Error(`wkhtmltopdf failed with exit code ${result.status ?? "unknown"}`);
+  }
+}
+
+async function run() {
+  const authKey = resolveAuthKey();
+  if (!authKey) {
+    throw new Error("No internal export auth key configured. Pass --auth-key or set web.internalSecret / PICLAW_INTERNAL_SECRET.");
   }
 
-  const imageHtml = images.length ? `<div class=\"media-preview\">${images.join("\n")}</div>` : "";
-  const fileHtml = files.length ? `<div class=\"file-attachments\">${files.join("\n")}</div>` : "";
-  return `${imageHtml}${fileHtml}`;
-};
+  const port = await detectPort();
+  const exportUrl = buildExportUrl(port);
+  const htmlPath = outPath.replace(/\.pdf$/i, ".html");
 
-const buildLinkPreviewHtml = (raw: string | null) => {
-  const previews = parseJson<Array<any>>(raw) || [];
-  if (!previews.length) return "";
-  return `
-    <div class=\"link-previews\">
-      ${previews
-        .map((preview) => {
-          const url = preview.url || "";
-          const title = preview.title || url;
-          const description = preview.description || "";
-          const site = preview.site_name || (url ? new URL(url).hostname : "");
-          const image = preview.image || "";
-          const classes = image ? "link-preview has-image" : "link-preview";
-          const style = image ? ` style=\"background-image: url('${image}')\"` : "";
-          return `
-            <a href=\"${escapeHtml(url)}\" class=\"${classes}\"${style} target=\"_blank\" rel=\"noopener noreferrer\">
-              <div class=\"link-preview-overlay\">
-                <div class=\"link-preview-site\">${escapeHtml(site)}</div>
-                <div class=\"link-preview-title\">${escapeHtml(title)}</div>
-                ${description ? `<div class=\"link-preview-description\">${escapeHtml(description)}</div>` : ""}
-              </div>
-            </a>
-          `;
-        })
-        .join("\n")}
-    </div>
-  `;
-};
+  console.error(`Using server at 127.0.0.1:${port}`);
+  console.error(`Export URL: ${exportUrl}`);
 
-const agentAvatarHtml = buildAvatarHtml(agentName, agentAvatarData, true);
-const userAvatarHtml = buildAvatarHtml(userName, userAvatarData, false);
+  const html = await fetchExportHtml(exportUrl, authKey);
+  writeFileSync(htmlPath, html, "utf8");
+  console.error(`HTML written: ${htmlPath}`);
 
-const postHtml = messages
-  .map((msg) => {
-    const isAgent = msg.is_bot_message === 1;
-    const author = isAgent ? agentName : userName;
-    const avatarHtml = isAgent ? agentAvatarHtml : userAvatarHtml;
-    const time = formatTime(msg.timestamp);
-    const contentHtml = msg.content ? renderMarkdown(msg.content) : "";
-    const attachments = attachmentsByMessage.get(msg.rowid) || [];
-    const attachmentsHtml = buildAttachmentHtml(attachments);
-    const linkPreviewHtml = buildLinkPreviewHtml(msg.link_previews);
-    const threadClass = msg.thread_id && msg.thread_id !== msg.rowid ? "thread-reply" : "";
+  if (htmlOnly) {
+    process.stdout.write(htmlPath);
+    return;
+  }
 
-    return `
-      <div class=\"post ${isAgent ? "agent-post" : ""} ${threadClass}\">
-        ${avatarHtml}
-        <div class=\"post-body\">
-          <div class=\"post-meta\">
-            <span class=\"post-author\">${escapeHtml(author)}</span>
-            <span class=\"post-time\">${escapeHtml(time)}</span>
-          </div>
-          ${contentHtml ? `<div class=\"post-content\">${contentHtml}</div>` : ""}
-          ${attachmentsHtml}
-          ${linkPreviewHtml}
-        </div>
-      </div>
-    `;
-  })
-  .join("\n");
+  const wkhtmltopdf = ensureWkhtmltopdf();
+  runWkhtmltopdf(wkhtmltopdf, exportUrl, authKey, outPath);
 
-const extraCss = `
-  @page { margin: 18mm; }
-  html, body, #app { height: auto !important; min-height: auto !important; }
-  body { margin: 0; }
-  #app { display: block !important; }
-  .timeline { height: auto !important; overflow: visible !important; flex: initial !important; }
-  .timeline-content { padding: var(--spacing-lg) var(--spacing-xl); }
-  .post { animation: none !important; break-inside: avoid; page-break-inside: avoid; }
-  .post:hover { background: transparent; }
-  .post-delete-btn { display: none !important; }
-  .file-attachment { display: block; }
-  .mermaid-container { min-height: 160px; overflow: visible; }
-  .mermaid-container svg { width: 100% !important; height: auto !important; max-height: none !important; }
-`;
+  if (!existsSync(outPath)) {
+    throw new Error("wkhtmltopdf did not create the PDF output");
+  }
+  const size = statSync(outPath).size;
+  if (size < 1500) {
+    throw new Error(`Generated PDF is unexpectedly small (${size} bytes)`);
+  }
 
-const html = `<!doctype html>
-<html lang=\"en\">
-<head>
-  <meta charset=\"utf-8\" />
-  <title>Piclaw timeline export</title>
-  <style>${css}\n${extraCss}</style>
-</head>
-<body class=\"${theme === "dark" ? "dark" : "light"}\">
-  <div id=\"app\">
-    <div class=\"timeline normal\">
-      <div class=\"timeline-content\">
-        ${postHtml}
-      </div>
-    </div>
-  </div>
-  <script>${mermaidSource}</script>
-  <script>
-    (async () => {
-      if (!window.beautifulMermaid) {
-        document.documentElement.dataset.mermaidDone = 'true';
-        return;
-      }
-      const { renderMermaid, THEMES } = window.beautifulMermaid;
-      const isDark = document.body.classList.contains('dark');
-      const theme = isDark ? THEMES['tokyo-night'] : THEMES['github-light'];
-      const pending = document.querySelectorAll('.mermaid-container[data-mermaid]');
-      for (const el of pending) {
-        try {
-          const encoded = el.dataset.mermaid;
-          const raw = decodeURIComponent(atob(encoded));
-          const svg = await renderMermaid(raw, { ...theme, transparent: true });
-          el.innerHTML = svg;
-          const svgEl = el.querySelector('svg');
-          if (svgEl) {
-            svgEl.removeAttribute('height');
-            svgEl.removeAttribute('width');
-            svgEl.style.width = '100%';
-            const box = svgEl.viewBox?.baseVal;
-            if (box && box.width > 0 && box.height > 0) {
-              const containerWidth = el.clientWidth || 680;
-              const height = containerWidth * (box.height / box.width);
-              svgEl.style.height = String(height) + 'px';
-            } else {
-              svgEl.style.height = 'auto';
-            }
-          }
-          el.removeAttribute('data-mermaid');
-        } catch (e) {
-          el.innerHTML = '<pre class="mermaid-error">Diagram error: ' + (e?.message || e) + '</pre>';
-          el.removeAttribute('data-mermaid');
-        }
-      }
-      document.documentElement.dataset.mermaidDone = 'true';
-    })();
-  </script>
-</body>
-</html>`;
-
-const htmlPath = outPath.replace(/\.pdf$/i, ".html");
-writeFileSync(htmlPath, html, "utf8");
-
-const playwrightPackageJson = resolveExistingPath("playwright package.json", [
-  "/workspace/scripts/playwright/package.json",
-  "/home/agent/runtime/scripts/playwright/package.json",
-]);
-const require = createRequire(playwrightPackageJson);
-const { chromium } = require("playwright");
-
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-await page.goto(`file://${htmlPath}`, { waitUntil: "load" });
-try {
-  await page.waitForFunction(() => document.documentElement.dataset.mermaidDone === "true", null, { timeout: 15000 });
-} catch {
-  // Continue even if mermaid rendering times out.
+  console.error(`PDF written: ${outPath}`);
+  process.stdout.write(outPath);
 }
-await page.pdf({
-  path: outPath,
-  format: "A4",
-  printBackground: true,
+
+run().catch((err) => {
+  console.error(err.message || String(err));
+  process.exit(1);
 });
-await browser.close();
-
-process.stdout.write(outPath);

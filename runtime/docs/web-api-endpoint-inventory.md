@@ -1,6 +1,6 @@
 # Web API endpoint inventory
 
-_Last updated: 2026-03-16_
+_Last updated: 2026-04-21_
 
 This document inventories the current PiClaw web-channel HTTP surface, including
 route families, auth/CSRF/rate-limit posture, and the main naming/response-shape
@@ -84,7 +84,7 @@ or `/workspace/*` route family.
 |---|---|---|---|---|---|---|
 | GET | `/agent/thought` | `dispatch-agent.ts` | authenticated | n/a | none | JSON thought/draft payload |
 | POST | `/agent/thought/visibility` | `dispatch-agent.ts` | authenticated | yes | `data/agent_ui` | `{ status: "ok", ... }` |
-| POST | `/agent/:id/message` | `dispatch-agent.ts` | authenticated | yes | `data/agent_message` | status / queued / created payload |
+| POST | `/agent/:id/message` | `dispatch-agent.ts` | authenticated | yes | `data/agent_message` | status / queued / created payload; slash-model commands can also resolve held failed runs |
 | GET | `/agent/status` | `dispatch-agent.ts` | authenticated | n/a | none | JSON status payload |
 | GET | `/agent/context` | `dispatch-agent.ts` | authenticated | n/a | none | JSON context usage |
 | GET | `/agent/queue-state` | `dispatch-agent.ts` | authenticated | n/a | none | JSON queue state |
@@ -98,10 +98,12 @@ or `/workspace/*` route family.
 | POST | `/agent/branch-prune` | `dispatch-agent.ts` | authenticated | yes | `data/agent_branch` | status JSON |
 | POST | `/agent/peer-message` | `dispatch-agent.ts` | authenticated | yes | `data/agent_peer` | status/queued JSON |
 | POST | `/agent/respond` | `dispatch-agent.ts` | authenticated | yes | `data/agent_ui` | `{ status: "ok" }` |
-| POST | `/agent/card-action` | `dispatch-agent.ts` | authenticated | yes | `data/agent_ui` | card action result JSON |
+| POST | `/agent/card-action` | `dispatch-agent.ts` | authenticated | yes | `data/agent_ui` | card action result JSON; recovery cards can resolve held failed runs before forwarding the follow-up prompt |
 | POST | `/agent/side-prompt` | `dispatch-agent.ts` | authenticated | yes | `data/agent_side_prompt` | JSON side-prompt result |
 | POST | `/agent/side-prompt/stream` | `dispatch-agent.ts` | authenticated | yes | `data/agent_side_prompt` | SSE-like streamed response |
 | POST | `/agent/whitelist` | `dispatch-agent.ts` | authenticated | yes | none | deprecated stub returning 404 |
+| GET | `/agent/debug` | `dispatch-agent.ts` | authenticated | n/a | none | JSON extension/tool/command/skill provenance snapshot |
+| GET | `/agent/commands` | `agent-commands.ts` | authenticated | n/a | none | JSON command registry (powers compose slash-command autocomplete) |
 
 ## Workspace routes
 
@@ -120,6 +122,7 @@ or `/workspace/*` route family.
 | POST | `/workspace/rename` | `dispatch-workspace.ts` | authenticated | yes | `data/write` | status JSON |
 | POST | `/workspace/move` | `dispatch-workspace.ts` | authenticated | yes | `data/write` | status JSON |
 | POST | `/workspace/visibility` | `dispatch-workspace.ts` | authenticated | yes | `data/workspace_ui` | `{ status: "ok", visible, show_hidden }` |
+| GET | `/workspace/stat` | `dispatch-workspace.ts` | authenticated | n/a | none | Lightweight mtime-only check `{ mtime, size }` — used by file conflict monitor |
 
 ## Extension routes
 
@@ -158,6 +161,30 @@ handled directly by `src/remote/service.ts`.
 | GET | `/api/remote/ping` | remote interop protocol | dedicated limiter + signed request validation | JSON |
 | POST | `/api/remote/proposal` | remote interop protocol | dedicated limiter + signed request validation | JSON |
 | POST | `/api/remote/execute` | remote interop protocol | dedicated limiter + execute concurrency + signed request validation | JSON/operation result |
+
+## Failure and replay semantics
+
+The web agent surface now follows a stricter rule:
+
+- a turn is only treated as **successful** once a terminal assistant artifact is persisted
+- blank / no-terminal-output turns are **not** consumed as success
+- automatic recovery still runs first (compaction / retry / blank-turn recovery)
+- if recovery is exhausted and no terminal reply exists:
+  - the cursor is rewound to the failed turn's `prevTs`
+  - the run is recorded in `failed_*`
+  - later processing pauses on that unresolved failed run until it is explicitly retried or skipped
+
+### Route-level implications
+
+- `POST /agent/:id/message`
+  - normal messages may leave a held failed run when recovery is exhausted and no terminal reply is persisted
+  - successful `/model ...` commands sent through this same route now **retry** a held failed run by rewinding to `prevTs` and resuming the chat
+- `POST /agent/card-action`
+  - recovery-card actions such as **Continue** and **Retry cleanly** first **skip** the held failed run so the recovery follow-up prompt is not blocked behind the unresolved failure marker
+- `GET /agent/status`
+  - remains the live in-memory status surface; the held failed-run state itself is durable DB state rather than a separate new endpoint family
+
+This keeps the HTTP surface small while making the message-consumption semantics truthful.
 
 ## Response format observations
 

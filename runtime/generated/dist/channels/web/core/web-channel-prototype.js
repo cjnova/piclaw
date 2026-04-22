@@ -155,9 +155,12 @@ export function installWebChannelPrototype(target, defaults) {
         skipFailedOnModelSwitch: {
             configurable: true,
             writable: true,
-            value: withRuntimePublicSurface((service, chatJid) => {
-                service.skipFailedOnModelSwitch(chatJid);
-            }),
+            value: withRuntimePublicSurface((service, chatJid) => (service.skipFailedOnModelSwitch(chatJid))),
+        },
+        retryFailedOnModelSwitch: {
+            configurable: true,
+            writable: true,
+            value: withRuntimePublicSurface((service, chatJid) => (service.retryFailedOnModelSwitch(chatJid))),
         },
         recoverInflightRuns: {
             configurable: true,

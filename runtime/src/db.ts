@@ -98,6 +98,7 @@ export {
   beginChatRun,
   endChatRun,
   endChatRunWithError,
+  rollbackChatRunWithError,
   getFailedRun,
   clearFailedRun,
   getInflightRuns,

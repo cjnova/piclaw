@@ -47,6 +47,7 @@ export const SLASH_COMMANDS = [
   { name: "/new-session", description: "Start a new session" },
   { name: "/switch-session", description: "Switch to a session file" },
   { name: "/session-rotate", description: "Rotate the current persisted session into an archived file" },
+  { name: "/clone", description: "Duplicate the current active branch into a new session" },
   { name: "/fork", description: "Fork from a previous message" },
   { name: "/forks", description: "List forkable messages" },
   { name: "/tree", description: "List the session tree" },
@@ -146,6 +147,51 @@ export function resolveComposeSubmitButtonState(isAgentActive, canSend, isCompac
 
 export function isComposeSubmitAbortMode(mode) {
     return mode === 'abort' || mode === 'compacting';
+}
+
+export function resolveComposeExtensionWorkingDisplay(workingState, frameIndex = 0) {
+    const message = typeof workingState?.message === 'string' && workingState.message.trim()
+        ? workingState.message.trim()
+        : null;
+    const indicator = workingState?.indicator && typeof workingState.indicator === 'object'
+        ? workingState.indicator
+        : null;
+
+    if (!message && !indicator) {
+        return {
+            visible: false,
+            title: '',
+            indicatorText: null,
+            animateDot: false,
+        };
+    }
+
+    if (indicator?.mode === 'hidden') {
+        return {
+            visible: Boolean(message),
+            title: message || 'Working…',
+            indicatorText: null,
+            animateDot: false,
+        };
+    }
+
+    if (indicator?.mode === 'custom' && Array.isArray(indicator.frames) && indicator.frames.length > 0) {
+        const frames = indicator.frames;
+        const safeIndex = Number.isFinite(frameIndex) && frameIndex >= 0 ? Math.floor(frameIndex) % frames.length : 0;
+        return {
+            visible: true,
+            title: message || 'Working…',
+            indicatorText: frames[safeIndex],
+            animateDot: false,
+        };
+    }
+
+    return {
+        visible: true,
+        title: message || 'Working…',
+        indicatorText: null,
+        animateDot: true,
+    };
 }
 
 /**
@@ -634,6 +680,7 @@ export function ComposeBox({
     onRestoreSession,
     showQueueStack = true,
     statusNotice = null,
+    extensionWorkingState = null,
     prefillRequest = null,
 }) {
     const [content, setContent] = useState('');
@@ -658,6 +705,7 @@ export function ComposeBox({
     const [submitError, setSubmitError] = useState(null);
     const [submitNotice, setSubmitNotice] = useState(null);
     const [statusNoticeNowMs, setStatusNoticeNowMs] = useState(() => Date.now());
+    const [extensionWorkingFrameIndex, setExtensionWorkingFrameIndex] = useState(0);
     const textareaRef = useRef(null);
     const slashRef = useRef(null);
     const mentionRef = useRef(null);
@@ -766,6 +814,10 @@ export function ComposeBox({
         : '';
     const statusNoticeElapsedLabel = statusNoticeIsCompaction
         ? getStatusElapsedLabel(statusNotice, statusNoticeNowMs)
+        : null;
+    const extensionWorkingDisplay = resolveComposeExtensionWorkingDisplay(extensionWorkingState, extensionWorkingFrameIndex);
+    const extensionWorkingIndicator = extensionWorkingState?.indicator && typeof extensionWorkingState.indicator === 'object'
+        ? extensionWorkingState.indicator
         : null;
     const notificationTitle = notificationActive ? 'Disable notifications' : 'Enable notifications';
     const hasAttachments = mediaFiles.length > 0 || fileRefs.length > 0 || messageRefs.length > 0;
@@ -1848,6 +1900,20 @@ export function ComposeBox({
     }, [statusNoticeIsCompaction, statusNotice?.started_at, statusNotice?.startedAt]);
 
     useEffect(() => {
+        setExtensionWorkingFrameIndex(0);
+        if (extensionWorkingIndicator?.mode !== 'custom' || !Array.isArray(extensionWorkingIndicator.frames) || extensionWorkingIndicator.frames.length <= 1) {
+            return undefined;
+        }
+        const intervalMs = typeof extensionWorkingIndicator.intervalMs === 'number' && Number.isFinite(extensionWorkingIndicator.intervalMs) && extensionWorkingIndicator.intervalMs > 0
+            ? extensionWorkingIndicator.intervalMs
+            : 120;
+        const timer = setInterval(() => {
+            setExtensionWorkingFrameIndex((prev) => (prev + 1) % extensionWorkingIndicator.frames.length);
+        }, intervalMs);
+        return () => clearInterval(timer);
+    }, [extensionWorkingIndicator]);
+
+    useEffect(() => {
         if (searchMode) return;
         updateMentionAutocomplete(content);
     }, [mentionAgents, currentChatJid, content, searchMode]);
@@ -1863,6 +1929,18 @@ export function ComposeBox({
                     onOpenFilePill=${onOpenFilePill}
                 />
             `}
+            ${extensionWorkingDisplay.visible && html`
+                <div class="compose-inline-status extension-working" role="status" aria-live="polite">
+                    <div class="compose-inline-status-row">
+                        ${extensionWorkingDisplay.indicatorText
+                            ? html`<span class="compose-inline-status-glyph" aria-hidden="true">${extensionWorkingDisplay.indicatorText}</span>`
+                            : extensionWorkingDisplay.animateDot
+                                ? html`<span class=${buildComposeStatusDotClass({ pulsing: true })} aria-hidden="true"></span>`
+                                : null}
+                        <span class="compose-inline-status-title">${extensionWorkingDisplay.title}</span>
+                    </div>
+                </div>
+            `}
             ${statusNotice && html`
                 <div
                     class=${`compose-inline-status${statusNoticeIsCompaction ? ' compaction' : ''}`}
@@ -1877,9 +1955,6 @@ export function ComposeBox({
                     </div>
                     ${statusNoticeDetail && html`<div class="compose-inline-status-detail">${statusNoticeDetail}</div>`}
                 </div>
-            `}
-            ${submitError && html`
-                <div class="compose-submit-error compose-submit-error-top" role="status" aria-live="polite">${submitError}</div>
             `}
             ${submitNotice && html`
                 <div class="compose-inline-status compose-command-notice" role="status" aria-live="polite">

@@ -17,7 +17,7 @@ import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createInterface } from "readline";
 import { finished } from "stream/promises";
-import { createAgentSessionFromServices, createAgentSessionRuntime, createAgentSessionServices, getAgentDir, SessionManager, } from "@mariozechner/pi-coding-agent";
+import { createAgentSessionFromServices, createAgentSessionRuntime, DefaultResourceLoader, getAgentDir, SessionManager, } from "@mariozechner/pi-coding-agent";
 import { SESSIONS_DIR, WORKSPACE_DIR } from "../core/config.js";
 import { buildChannelSystemPromptAppendix } from "../channels/formatting.js";
 import { detectChannel } from "../router.js";
@@ -389,42 +389,67 @@ export async function createSessionInDir(sessionDir, options) {
     const channelSystemPromptAppendix = getChannelSystemPromptAppendix(options.chatJid);
     const appendSystemPromptOverride = getAppendSystemPromptOverride(channelSystemPromptAppendix);
     const additionalExtensionPaths = getBundledExtensionPaths(options.chatJid);
-    const createRuntime = async ({ cwd, sessionManager, sessionStartEvent }) => {
-        const services = await createAgentSessionServices({
-            cwd,
-            agentDir: AGENT_DIR,
-            authStorage: options.authStorage,
-            modelRegistry: options.modelRegistry,
-            settingsManager: options.settingsManager,
-            resourceLoaderOptions: {
-                extensionFactories: options.extensionFactories?.length
-                    ? [...builtinExtensionFactories, ...options.extensionFactories]
-                    : builtinExtensionFactories,
-                additionalExtensionPaths,
-                ...(appendSystemPromptOverride ? { appendSystemPromptOverride } : {}),
-            },
-        });
-        return {
-            ...(await createAgentSessionFromServices({
-                services,
-                sessionManager,
-                sessionStartEvent,
-                tools: options.tools,
-                customTools: options.customTools,
-            })),
-            services,
-            diagnostics: services.diagnostics,
-        };
-    };
     const workspaceDir = getWorkspaceDir();
     await sanitizePersistedSessionFileBeforeLoad(sessionDir);
+    const createRuntime = async ({ cwd, agentDir, sessionManager, sessionStartEvent, }) => {
+        const resourceLoader = new DefaultResourceLoader({
+            cwd,
+            agentDir,
+            settingsManager: options.settingsManager,
+            extensionFactories: options.extensionFactories?.length
+                ? [...builtinExtensionFactories, ...options.extensionFactories]
+                : builtinExtensionFactories,
+            additionalExtensionPaths,
+            ...(appendSystemPromptOverride ? { appendSystemPromptOverride } : {}),
+        });
+        await resourceLoader.reload();
+        const services = {
+            cwd,
+            agentDir,
+            authStorage: options.authStorage,
+            settingsManager: options.settingsManager,
+            modelRegistry: options.modelRegistry,
+            resourceLoader,
+            diagnostics: [],
+        };
+        const result = await createAgentSessionFromServices({
+            services,
+            sessionManager,
+            sessionStartEvent,
+            tools: options.tools?.length ? options.tools : undefined,
+            customTools: options.customTools,
+        });
+        const normalizeResourceDiagnostics = (items = []) => items.map((item) => ({
+            type: "warning",
+            message: item.path ? `${item.path}: ${item.error || "resource diagnostic"}` : (item.error || "resource diagnostic"),
+        }));
+        const diagnostics = [
+            ...normalizeResourceDiagnostics(result.extensionsResult?.errors ?? []),
+            ...normalizeResourceDiagnostics(resourceLoader.getSkills().diagnostics ?? []),
+            ...normalizeResourceDiagnostics(resourceLoader.getPrompts().diagnostics ?? []),
+            ...normalizeResourceDiagnostics(resourceLoader.getThemes().diagnostics ?? []),
+        ];
+        services.diagnostics = diagnostics;
+        // Disable upstream auto-compaction — piclaw manages compaction at safe
+        // boundaries via maybeAutoCompactSessionBeforePrompt and recovery paths.
+        // Upstream auto-compaction fires at agent_end which can interfere with
+        // multi-step tool sequences and break generated file context.
+        if (typeof result.session.setAutoCompactionEnabled === "function") {
+            result.session.setAutoCompactionEnabled(false);
+        }
+        bindImmediateToolActivation(result.session);
+        return {
+            ...result,
+            services,
+            diagnostics,
+        };
+    };
     const runtime = await createAgentSessionRuntime(createRuntime, {
         cwd: workspaceDir,
         agentDir: AGENT_DIR,
         sessionManager: SessionManager.continueRecent(workspaceDir, sessionDir),
     });
     installPersistedToolResultSanitizer(runtime);
-    bindImmediateToolActivation(runtime.session);
     return runtime;
 }
 export async function createDefaultSession(chatJid, options) {

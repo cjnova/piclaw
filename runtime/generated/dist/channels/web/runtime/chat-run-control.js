@@ -42,14 +42,27 @@ export function resumeChat(chatJid, threadRootId, ctx) {
         await ctx.processChat(chatJid, ctx.defaultAgentId, threadRootId ?? undefined);
     }, key, `chat:${chatJid}`);
 }
-/** Skip the failed cursor marker after a model switch to avoid replay loops. */
+/** Skip an unresolved failed run and advance the cursor past it. */
 export function skipFailedOnModelSwitch(chatJid, store = defaultStore) {
     const failed = store.getFailedRun(chatJid);
     if (!failed)
-        return;
+        return false;
     const current = store.getChatCursor(chatJid);
     if (!current || current < failed.failedTs) {
         store.setChatCursor(chatJid, failed.failedTs);
     }
     store.clearFailedRun(chatJid);
+    return true;
+}
+/** Re-enable replay of an unresolved failed run after a model switch. */
+export function retryFailedOnModelSwitch(chatJid, store = defaultStore) {
+    const failed = store.getFailedRun(chatJid);
+    if (!failed)
+        return false;
+    const current = store.getChatCursor(chatJid);
+    if (!current || current > failed.prevTs) {
+        store.setChatCursor(chatJid, failed.prevTs);
+    }
+    store.clearFailedRun(chatJid);
+    return true;
 }

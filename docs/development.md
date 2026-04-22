@@ -188,6 +188,80 @@ Notes:
 - The generated `artifacts/oobe-local-container/` files are local smoke-test artefacts, not release payloads.
 - Clean them up before tagging if you do not intend to keep the latest repro bundle around.
 
+### Editor file conflict detection
+
+The editor pane now monitors for external file changes via `GET /workspace/stat?path=<file>` (polled every 5s while the tab is focused) and shows a conflict resolution bar when the on-disk mtime advances past the last known mtime. The same `FileConflictMonitor` is shared by the editor, mindmap pane, and kanban pane.
+
+Relevant files:
+- `runtime/extensions/viewers/editor/editor-extension.ts`
+- `runtime/web/src/panes/file-conflict-monitor.ts`
+- `runtime/test/web/file-conflict-monitor.test.ts`
+
+### Recovery and resilience
+
+Blank-turn detection, compaction stall bounding, the recovery chip, and the held-failed-run retry/skip model are documented in [architecture.md](architecture.md) under "Per-chat turn lifecycle and failure model", "Recovery chip", "Blank turn detection", and "Compaction stall guard".
+
+Relevant files:
+- `runtime/src/agent-pool/blank-turn-detection.ts`
+- `runtime/src/agent-pool/prompt-utils.ts` — `waitForSessionIdle`, session idle defaults
+- `runtime/src/agent-pool/automatic-recovery.ts` — auto-recovery classification / retry policy
+- `runtime/src/channels/web/handlers/agent.ts` — web turn finalization, held-failure behavior, retry/skip resolution points
+- `runtime/src/channels/web/runtime/chat-run-control.ts` — explicit retry/skip cursor helpers
+- `runtime/src/db/chat-cursors.ts` — `beginChatRun`, inflight rollback, failed-run storage, rollback-with-error
+- `runtime/src/extensions/smart-compaction.ts` — working-indicator UI hooks
+
+Focused regression tests:
+
+```bash
+bun test \
+  runtime/test/db/chat-cursors.test.ts \
+  runtime/test/channels/web/runtime/chat-run-control.test.ts \
+  runtime/test/channels/web/recovery.test.ts \
+  runtime/test/channels/web/web-channel-recovery-state.test.ts \
+  runtime/test/channels/web/web-channel.test.ts
+```
+
 ## Layout
 
 See [architecture.md](architecture.md) for the full source layout and module boundaries.
+
+## Skill and extension development
+
+New skills go in `.pi/skills/<name>/SKILL.md` (workspace-local) or
+`skel/.pi/skills/<name>/` (shipped with the skel for new installs).
+
+New internal tools register through the extension API:
+
+```ts
+pi.registerTool({ name, description, parameters, execute });
+```
+
+For visual artifacts, always load and follow:
+
+- `/workspace/.pi/skills/visual-artifact-generator/SKILL.md`
+- `/workspace/.pi/skills/visual-design/SKILL.md`
+
+Use the `mermaid-fixup.js` helper for any artifact that renders Mermaid diagrams.
+
+## Adding new HTTP endpoints
+
+New `GET /agent/*` or `POST /agent/*` endpoints follow this chain:
+
+1. `runtime/src/channels/web/http/dispatch-agent.ts` — register the route
+2. `runtime/src/channels/web/endpoints/channel-endpoint-facade-service.ts` — add handler method
+3. `runtime/src/channels/web/core/web-channel-http-surface-service.ts` — delegate from surface
+4. `runtime/src/channels/web/core/web-channel-contracts.ts` — declare the interface
+5. `runtime/src/channels/web/core/web-channel-prototype.ts` — bind the prototype method
+
+See `runtime/src/channels/web/agent/agent-commands.ts` (`GET /agent/commands`)
+as the canonical simple example.
+
+## Documentation updates
+
+When shipping new features, update:
+
+- `docs/tools-and-skills.md` — if new tools, skills, or slash commands are added
+- `docs/architecture.md` — if new endpoints or subsystems are added
+- `docs/configuration.md` — if new environment variables or config keys are added
+- `README.md` — if the feature merits a bullet in the Why/Feature overview
+- `docs/vendored-widget-libraries.md` — if new vendored libraries or fonts are added

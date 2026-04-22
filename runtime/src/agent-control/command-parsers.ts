@@ -225,6 +225,14 @@ export function parseFork(args: string, raw: string): AgentControlCommand {
   };
 }
 
+/** Parse /clone arguments: no args; clone from the current tree leaf. */
+export function parseClone(_args: string, raw: string): AgentControlCommand {
+  return {
+    type: "clone",
+    raw,
+  };
+}
+
 /** Parse /export-html arguments: optional output file path. */
 export function parseExportHtml(args: string, raw: string): AgentControlCommand {
   return {
@@ -522,6 +530,7 @@ export const COMMAND_PARSERS: Record<string, CommandParser> = {
   "/switch-session": parseSwitchSession,
   "/session-rotate": parseSessionRotate,
   "/fork": parseFork,
+  "/clone": parseClone,
   "/forks": simple("forks"),
   "/export-html": parseExportHtml,
   "/passkey": parsePasskey,

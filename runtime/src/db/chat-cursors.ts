@@ -235,11 +235,11 @@ export function endChatRun(chatJid: string): void {
 }
 
 /**
- * Mark a run as permanently failed.
+ * Mark a run as permanently failed without rewinding the cursor.
  *
- * Single UPDATE that clears the inflight marker AND writes the failed_run
- * record atomically. There is no intermediate state where inflight is gone
- * but failed_run is not yet present (or the reverse).
+ * This is used only when the failed turn has already produced a terminal
+ * persisted outcome that should remain consumed. The inflight marker is
+ * cleared and the failed_run record is written atomically.
  */
 export function endChatRunWithError(chatJid: string, failed: FailedRunRecord): void {
   const db = getDb();
@@ -262,6 +262,59 @@ export function endChatRunWithError(chatJid: string, failed: FailedRunRecord): v
     failed.createdAt,
     chatJid
   );
+}
+
+/**
+ * Roll back the cursor to the pre-run value while recording a failed run.
+ *
+ * Used when no terminal assistant reply was persisted. Partial non-terminal
+ * assistant output must be discarded before the user turn is held for an
+ * explicit retry/skip decision.
+ */
+export function rollbackChatRunWithError(chatJid: string, failed: FailedRunRecord): void {
+  const db = getDb();
+  db.transaction(() => {
+    db.prepare(`
+      DELETE FROM message_media
+      WHERE message_rowid IN (
+        SELECT rowid FROM messages
+        WHERE chat_jid = ?
+          AND timestamp > ?
+          AND is_bot_message = 1
+          AND COALESCE(is_terminal_agent_reply, 0) = 0
+      )
+    `).run(chatJid, failed.prevTs);
+
+    db.prepare(`
+      DELETE FROM messages
+      WHERE chat_jid = ?
+        AND timestamp > ?
+        AND is_bot_message = 1
+        AND COALESCE(is_terminal_agent_reply, 0) = 0
+    `).run(chatJid, failed.prevTs);
+
+    db.prepare(`
+      UPDATE chat_cursors
+      SET cursor_ts           = ?,
+          inflight_prev_ts    = NULL,
+          inflight_message_id = NULL,
+          inflight_started_at = NULL,
+          failed_prev_ts      = ?,
+          failed_ts           = ?,
+          failed_message_id   = ?,
+          failed_thread_root  = ?,
+          failed_created_at   = ?
+      WHERE chat_jid = ?
+    `).run(
+      failed.prevTs,
+      failed.prevTs,
+      failed.failedTs,
+      failed.messageId,
+      failed.threadRootId ?? null,
+      failed.createdAt,
+      chatJid,
+    );
+  })();
 }
 
 // ---------------------------------------------------------------------------

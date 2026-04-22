@@ -6,6 +6,8 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 import sshCoreExtension, {
   applyLiveSshConfig,
+  createChatSshCoreExtension,
+  createSshCoreExtension,
   hasLiveChatSshSession,
   parseSshFlag,
   parseSshPort,
@@ -25,16 +27,20 @@ import {
 type FakeState = {
   tools: Map<string, any>;
   flags: Map<string, any>;
+  handlers: Map<string, (...args: any[]) => any>;
+  flagValues: Map<string, string | undefined>;
 };
 
-function createFakeApi(): { api: ExtensionAPI; state: FakeState } {
+function createFakeApi(flagEntries?: Record<string, string | undefined>): { api: ExtensionAPI; state: FakeState } {
   const state: FakeState = {
     tools: new Map<string, any>(),
     flags: new Map<string, any>(),
+    handlers: new Map<string, (...args: any[]) => any>(),
+    flagValues: new Map(Object.entries(flagEntries ?? {})),
   };
 
   const api: ExtensionAPI = {
-    on() {},
+    on(event: string, handler: (...args: any[]) => any) { state.handlers.set(event, handler); },
     registerTool(tool: any) {
       state.tools.set(tool.name, tool);
     },
@@ -43,7 +49,7 @@ function createFakeApi(): { api: ExtensionAPI; state: FakeState } {
     registerFlag(name: string, options: any) {
       state.flags.set(name, options);
     },
-    getFlag() { return undefined; },
+    getFlag(name: string) { return state.flagValues.get(name); },
     registerMessageRenderer() {},
     sendMessage() {},
     sendUserMessage() {},
@@ -103,6 +109,7 @@ const fakeConnection = {
 afterEach(() => {
   setPersistentSshSpawnForTests(null);
   setPersistentSshInterruptGraceMsForTests(null);
+  setSshConnectionResolverForTests(null);
 });
 
 describe("ssh-core helpers", () => {
@@ -218,5 +225,141 @@ describe("ssh-core extension registration", () => {
     expect(fake.state.flags.has("ssh-keychain")).toBe(true);
     expect(fake.state.flags.has("ssh-known-hosts-keychain")).toBe(true);
     expect(fake.state.flags.has("ssh-strict-host-key-checking")).toBe(true);
+  });
+
+  test("session_start shows progress UI for configured SSH bootstrap", async () => {
+    const fake = createFakeApi();
+    const uiCalls = {
+      messages: [] as Array<string | undefined>,
+      indicators: [] as Array<{ frames?: string[]; intervalMs?: number } | undefined>,
+      statuses: [] as Array<[string, string | undefined]>,
+      notifications: [] as Array<[string, string | undefined]>,
+    };
+    const ui = {
+      setWorkingMessage(message?: string) { uiCalls.messages.push(message); },
+      setWorkingIndicator(options?: { frames?: string[]; intervalMs?: number }) { uiCalls.indicators.push(options); },
+      setStatus(key: string, value: string | undefined) { uiCalls.statuses.push([key, value]); },
+      notify(message: string, level?: string) { uiCalls.notifications.push([message, level]); },
+      theme: { fg: (_color: string, text: string) => `accent:${text}` },
+    };
+
+    setSshConnectionResolverForTests(async (_rawTarget, localCwd, localHome, port) => ({
+      sshTarget: "agent@example.com",
+      port,
+      remoteCwd: "/srv/project",
+      remoteHome: "/home/agent",
+      localCwd,
+      localHome,
+      privateKeyPath: "/tmp/test-key",
+      controlPath: "/tmp/test-control",
+      strictHostKeyChecking: "yes",
+      tempDir: "/tmp/piclaw-ssh-test",
+    }) as any);
+
+    createSshCoreExtension({
+      target: "agent@example.com:/srv/project",
+      port: 22,
+      privateKeyKeychain: "ssh/piclaw",
+      strictHostKeyChecking: "yes",
+    })(fake.api);
+
+    await fake.state.handlers.get("session_start")?.({}, { hasUI: true, ui });
+
+    expect(uiCalls.messages[0]).toBe("SSH: connecting to agent@example.com:/srv/project…");
+    expect(uiCalls.indicators[0]).toEqual({
+      frames: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+      intervalMs: 90,
+    });
+    expect(uiCalls.statuses).toContainEqual(["ssh-core", "accent:SSH agent@example.com:/srv/project (port 22)"]);
+    expect(uiCalls.notifications).toContainEqual(["ssh-core enabled: agent@example.com:/srv/project (port 22)", "info"]);
+    expect(uiCalls.messages[uiCalls.messages.length - 1]).toBeUndefined();
+    expect(uiCalls.indicators[uiCalls.indicators.length - 1]).toEqual({ frames: [] });
+  });
+
+  test("before_agent_start uses systemPromptOptions.cwd for configured SSH sessions", async () => {
+    const fake = createFakeApi();
+
+    setSshConnectionResolverForTests(async (_rawTarget, localCwd, localHome, port) => ({
+      sshTarget: "agent@example.com",
+      port,
+      remoteCwd: "/srv/project",
+      remoteHome: "/home/agent",
+      localCwd,
+      localHome,
+      privateKeyPath: "/tmp/test-key",
+      controlPath: "/tmp/test-control",
+      strictHostKeyChecking: "yes",
+      tempDir: "/tmp/piclaw-ssh-test",
+    }) as any);
+
+    createSshCoreExtension({
+      target: "agent@example.com:/srv/project",
+      port: 22,
+      privateKeyKeychain: "ssh/piclaw",
+      strictHostKeyChecking: "yes",
+    })(fake.api);
+
+    await fake.state.handlers.get("session_start")?.({}, { hasUI: false });
+
+    const result = await fake.state.handlers.get("before_agent_start")?.({
+      systemPrompt: "Current working directory: /workspace/branches/demo",
+      systemPromptOptions: { cwd: "/workspace/branches/demo" },
+    });
+
+    expect(result).toEqual({
+      systemPrompt: "Current working directory: /srv/project (via SSH agent@example.com, port 22)",
+    });
+  });
+
+  test("chat session lifecycle logs shutdown metadata and unregisters live state", async () => {
+    const fake = createFakeApi();
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: any[]) => { logs.push(args.map((value) => String(value)).join(" ")); };
+
+    try {
+      setSshConnectionResolverForTests(async (_rawTarget, localCwd, localHome, port) => ({
+        sshTarget: "agent@example.com",
+        port,
+        remoteCwd: "/srv/project",
+        remoteHome: "/home/agent",
+        localCwd,
+        localHome,
+        privateKeyPath: "/tmp/test-key",
+        controlPath: "/tmp/test-control",
+        strictHostKeyChecking: "yes",
+        tempDir: "/tmp/piclaw-ssh-test",
+      }) as any);
+
+      createChatSshCoreExtension("web:test", {
+        target: "agent@example.com:/srv/project",
+        port: 22,
+        privateKeyKeychain: "ssh/piclaw",
+        strictHostKeyChecking: "yes",
+      })(fake.api);
+
+      await fake.state.handlers.get("session_start")?.({}, { hasUI: false });
+      expect(hasLiveChatSshSession("web:test")).toBe(true);
+
+      const beforeAgentStart = await fake.state.handlers.get("before_agent_start")?.({
+        systemPrompt: "Current working directory: /workspace/branches/chat-demo",
+        systemPromptOptions: { cwd: "/workspace/branches/chat-demo" },
+      });
+      expect(beforeAgentStart).toEqual({
+        systemPrompt: "Current working directory: /srv/project (via SSH agent@example.com, port 22)",
+      });
+
+      await fake.state.handlers.get("session_shutdown")?.({
+        type: "session_shutdown",
+        reason: "fork",
+        targetSessionFile: "/tmp/forked-session.jsonl",
+      });
+
+      expect(hasLiveChatSshSession("web:test")).toBe(false);
+      expect(logs.some((entry) => entry.includes("[ssh-core] session shutdown (fork) → /tmp/forked-session.jsonl"))).toBe(true);
+    } finally {
+      console.log = originalLog;
+      await unregisterLiveChatSshSession("web:test");
+    }
   });
 });

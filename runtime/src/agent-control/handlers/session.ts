@@ -2,7 +2,7 @@
  * agent-control/handlers/session.ts – Handlers for session management commands.
  *
  * Handles /session-name, /new-session, /switch-session, /session-rotate,
- * /fork, /forks, and /export-html commands for managing the pi-agent session tree.
+ * /fork, /clone, /forks, and /export-html commands for managing the pi-agent session tree.
  *
  * Consumers: agent-control-handlers.ts dispatches to these handlers.
  */
@@ -17,6 +17,7 @@ type NewSessionCommand = Extract<AgentControlCommand, { type: "new_session" }>;
 type SwitchSessionCommand = Extract<AgentControlCommand, { type: "switch_session" }>;
 type SessionRotateCommand = Extract<AgentControlCommand, { type: "session_rotate" }>;
 type ForkCommand = Extract<AgentControlCommand, { type: "fork" }>;
+type CloneCommand = Extract<AgentControlCommand, { type: "clone" }>;
 type ForksCommand = Extract<AgentControlCommand, { type: "forks" }>;
 type ExportHtmlCommand = Extract<AgentControlCommand, { type: "export_html" }>;
 
@@ -89,7 +90,26 @@ export async function handleFork(session: AgentSession, runtime: AgentSessionRun
   }
 }
 
-/** Handle /fork: fork the conversation from a specific entry. */
+/** Handle /clone: fork from the current tree leaf into a new session. */
+export async function handleClone(session: AgentSession, runtime: AgentSessionRuntime, _command: CloneCommand): Promise<AgentControlResult> {
+  const leafId = session.sessionManager.getLeafId();
+  if (!leafId) {
+    return { status: "error", message: "Nothing to clone yet." };
+  }
+  try {
+    const result = await runtime.fork(leafId);
+    if (result.cancelled) {
+      return { status: "error", message: "Clone cancelled." };
+    }
+    const selected = result.selectedText ? `Selected text:\n${result.selectedText}` : "Clone created.";
+    return { status: "success", message: selected };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { status: "error", message };
+  }
+}
+
+/** Handle /forks: list forkable messages. */
 export async function handleForks(session: AgentSession, _command: ForksCommand): Promise<AgentControlResult> {
   const messages = session.getUserMessagesForForking();
   if (messages.length === 0) {

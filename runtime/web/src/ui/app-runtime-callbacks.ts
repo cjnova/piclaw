@@ -51,6 +51,7 @@ export function useAgentRecoveryCallbacks(options: {
   thoughtBufferRef: RefBox<string>;
   pendingRequestRef: RefBox<any>;
   lastAgentResponseRef: RefBox<any>;
+  agentStatusRef: RefBox<any>;
   stalledPostIdRef: RefBox<string | number | null>;
   scrollToBottomRef: RefBox<(() => void) | null>;
   setCurrentTurnId: (value: string | null) => void;
@@ -75,6 +76,7 @@ export function useAgentRecoveryCallbacks(options: {
     thoughtBufferRef,
     pendingRequestRef,
     lastAgentResponseRef,
+    agentStatusRef,
     scrollToBottomRef,
     setCurrentTurnId,
     setAgentDraft,
@@ -104,6 +106,7 @@ export function useAgentRecoveryCallbacks(options: {
       thoughtBufferRef,
       pendingRequestRef,
       lastAgentResponseRef,
+      agentStatusRef,
       stalledPostIdRef,
       scrollToBottomRef,
       setCurrentTurnId,
@@ -123,6 +126,7 @@ export function useAgentRecoveryCallbacks(options: {
     isAgentRunningRef,
     lastAgentEventRef,
     lastAgentResponseRef,
+    agentStatusRef,
     lastSilenceNoticeRef,
     pendingRequestRef,
     scrollToBottomRef,

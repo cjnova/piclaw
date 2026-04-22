@@ -18,7 +18,6 @@
 import { spawn } from "child_process";
 import { existsSync } from "fs";
 import { buildInjectedShellEnv, resolveKeychainPlaceholders } from "../secure/keychain.js";
-import { createKeychainOutputRedactor, createStreamingTextRedactor } from "../secure/shell-secrets.js";
 import { killProcessTree, registerProcess, unregisterProcess } from "../utils/process-tracker.js";
 import { shouldDetachChildProcess } from "../utils/process-spawn.js";
 const POWERSHELL_ARGS = ["-NoProfile", "-Command"];
@@ -81,8 +80,6 @@ function createTrackedShellOperations(resolveCandidates) {
                     }
                     let resolvedEnv;
                     let resolvedCommand;
-                    let stdoutRedactor;
-                    let stderrRedactor;
                     try {
                         resolvedEnv = await buildInjectedShellEnv({
                             explicitEnv: env,
@@ -90,9 +87,6 @@ function createTrackedShellOperations(resolveCandidates) {
                             referencedTexts: [command],
                         });
                         resolvedCommand = await resolveKeychainPlaceholders(command);
-                        const outputRedactor = await createKeychainOutputRedactor();
-                        stdoutRedactor = createStreamingTextRedactor(outputRedactor);
-                        stderrRedactor = createStreamingTextRedactor(outputRedactor);
                     }
                     catch (error) {
                         reject(error);
@@ -192,12 +186,12 @@ function createTrackedShellOperations(resolveCandidates) {
                         }
                         if (spawned.stdout) {
                             spawned.stdout.on("data", (chunk) => {
-                                emitChunk(stdoutRedactor.push(chunk.toString("utf8")));
+                                emitChunk(chunk.toString("utf8"));
                             });
                         }
                         if (spawned.stderr) {
                             spawned.stderr.on("data", (chunk) => {
-                                emitChunk(stderrRedactor.push(chunk.toString("utf8")));
+                                emitChunk(chunk.toString("utf8"));
                             });
                         }
                         let shellUnavailable = false;
@@ -217,8 +211,6 @@ function createTrackedShellOperations(resolveCandidates) {
                                 unregisterProcess(spawned.pid);
                             if (shellUnavailable)
                                 return;
-                            emitChunk(stdoutRedactor.flush());
-                            emitChunk(stderrRedactor.flush());
                             if (aborted || signal?.aborted) {
                                 settleError(new Error("aborted"));
                                 return;

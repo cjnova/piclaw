@@ -2110,7 +2110,73 @@ test("processChat keeps the rate-limit notice when a draft fallback is published
   expect(botMessages[0].data.content).not.toContain("Response ended with an error before finalization");
 });
 
-test("processChat finalizes as no-op when no terminal output can be persisted", async () => {
+test("processChat persists a recovery-needed notice instead of the generic no-response warning when compaction/recovery stalls", async () => {
+  const ws = createTempWorkspace("piclaw-web-channel-");
+  cleanupWorkspace = ws.cleanup;
+  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+
+  const db = await import("../../../src/db.js");
+  db.initDatabase();
+  db.getDb().exec("DELETE FROM message_media; DELETE FROM messages; DELETE FROM chats; DELETE FROM chat_cursors; DELETE FROM chat_cursors;");
+  db.storeChatMetadata("web:default", new Date().toISOString(), "Web");
+
+  db.storeMessage({
+    id: `msg-${Math.random()}`,
+    chat_jid: "web:default",
+    sender: "user",
+    sender_name: "User",
+    content: "hello",
+    timestamp: new Date().toISOString(),
+    is_from_me: false,
+    is_bot_message: false,
+  });
+
+  const webMod = await import("../../../src/channels/web.js");
+  const web = new (webMod.WebChannel as any)({
+    queue: { enqueue: () => {} },
+    agentPool: {
+      setSessionBinder: () => {},
+      runAgent: async (_prompt: string, _chatJid: string, options: any) => {
+        options.onEvent?.({ type: "compaction_start", reason: "overflow" });
+        options.onEvent?.({ type: "compaction_end", reason: "overflow", willRetry: false, errorMessage: "Recovery compaction failed: session contains orphaned tool-result blocks." });
+        options.onEvent?.({ type: "recovery_start", strategy: "compact_then_retry", attempt: 1, maxAttempts: 2, reason: "context pressure" });
+        options.onEvent?.({ type: "recovery_end", outcome: "exhausted", attemptsUsed: 1, classifier: "compaction_failure", errorMessage: "session contains orphaned tool-result blocks" });
+        return {
+          status: "success",
+          result: null,
+          attachments: [],
+          recovery: {
+            attemptsUsed: 1,
+            totalElapsedMs: 1200,
+            recovered: false,
+            exhausted: true,
+            lastClassifier: "compaction_failure",
+            strategyHistory: ["compact_then_retry"],
+            diagnostics: [],
+          },
+        };
+      },
+      getContextUsageForChat: async () => null,
+    },
+  });
+
+  await web.processChat("web:default", "default");
+
+  const failedRun = db.getFailedRun("web:default");
+  expect(failedRun).toBeTruthy();
+
+  const timeline = db.getTimeline("web:default", 20);
+  const botMessages = timeline.filter((item: any) => item.data.type === "agent_response");
+  expect(botMessages.some((item: any) => String(item.data.content || "").includes("Automatic recovery exhausted — this turn ended without a persisted reply."))).toBe(true);
+  expect(botMessages.some((item: any) => String(item.data.content || "").includes("orphaned tool-result blocks"))).toBe(true);
+  expect(botMessages.some((item: any) => String(item.data.content || "").includes("produced no response"))).toBe(false);
+
+  const cardMessage = timeline.find((entry: any) => Array.isArray(entry.data?.content_blocks)
+    && entry.data.content_blocks.some((block: any) => block?.type === "adaptive_card" && String(block.card_id || "").startsWith("recovery-exhausted-")));
+  expect(cardMessage).toBeDefined();
+});
+
+test("processChat records a failed run when the agent returns empty successful output", async () => {
   const ws = createTempWorkspace("piclaw-web-channel-");
   cleanupWorkspace = ws.cleanup;
   restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
@@ -2143,18 +2209,71 @@ test("processChat finalizes as no-op when no terminal output can be persisted", 
 
   await web.processChat("web:default", "default");
 
-  // Empty output with no draft is treated as a no-op success (cursor
-  // advances) to prevent infinite retry loops on restart recovery.
-  // A system notice is posted to the timeline so the user knows the message
-  // was consumed without a response.
   const failedRun = db.getFailedRun("web:default");
-  expect(failedRun).toBeUndefined();
+  expect(failedRun).toBeTruthy();
+  expect(db.getChatCursor("web:default")).toBe("");
 
   const timeline = db.getTimeline("web:default", 10);
   const botMessages = timeline.filter((item: any) => item.data.type === "agent_response");
-  expect(botMessages.length).toBe(1);
-  expect(botMessages[0].data.content).toContain("⚠️ Your message was received but the agent produced no response");
-  expect(botMessages[0].data.content).toContain("hello");
+  expect(botMessages.some((item: any) => String(item.data.content || "").includes("⚠️ Agent produced no response."))).toBe(true);
+  expect(botMessages.some((item: any) => String(item.data.content || "").includes("The turn was not committed as success."))).toBe(true);
+  expect(botMessages.some((item: any) => String(item.data.content || "").includes("Choose how to continue."))).toBe(false);
+});
+
+test("processChat holds an unresolved failed run until it is explicitly retried or skipped", async () => {
+  const ws = createTempWorkspace("piclaw-web-channel-");
+  cleanupWorkspace = ws.cleanup;
+  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+
+  const db = await import("../../../src/db.js");
+  db.initDatabase();
+  db.getDb().exec("DELETE FROM message_media; DELETE FROM messages; DELETE FROM chats; DELETE FROM chat_cursors; DELETE FROM chat_cursors;");
+  db.storeChatMetadata("web:default", new Date().toISOString(), "Web");
+
+  const userTs = new Date().toISOString();
+  db.storeMessage({
+    id: "msg-held-failure",
+    chat_jid: "web:default",
+    sender: "user",
+    sender_name: "User",
+    content: "hello",
+    timestamp: userTs,
+    is_from_me: false,
+    is_bot_message: false,
+  });
+
+  let runCount = 0;
+  const webMod = await import("../../../src/channels/web.js");
+  const web = new (webMod.WebChannel as any)({
+    queue: { enqueue: () => {} },
+    agentPool: {
+      setSessionBinder: () => {},
+      runAgent: async () => {
+        runCount += 1;
+        if (runCount === 1) return { status: "success", result: null, attachments: [] };
+        return { status: "success", result: "fixed", attachments: [] };
+      },
+      getContextUsageForChat: async () => null,
+    },
+  });
+
+  await web.processChat("web:default", "default");
+  expect(runCount).toBe(1);
+  expect(db.getFailedRun("web:default")?.messageId).toBe("msg-held-failure");
+  expect(db.getChatCursor("web:default")).toBe("");
+
+  await web.processChat("web:default", "default");
+  expect(runCount).toBe(1);
+  expect(db.getFailedRun("web:default")?.messageId).toBe("msg-held-failure");
+
+  expect(web.retryFailedOnModelSwitch("web:default")).toBe(true);
+  await web.processChat("web:default", "default");
+
+  expect(runCount).toBe(2);
+  expect(db.getFailedRun("web:default")).toBeUndefined();
+  expect(db.getChatCursor("web:default")).toBe(userTs);
+  const timeline = db.getTimeline("web:default", 20).map((item: any) => item.data.content);
+  expect(timeline).toContain("fixed");
 });
 
 test("processChat does not emit no-response notice when an earlier turn was already persisted", async () => {
@@ -3234,11 +3353,13 @@ test("web channel handles recovery-continue adaptive card actions on the same th
   const db = await import("../../../src/db.js");
   db.initDatabase();
   db.getDb().exec("DELETE FROM message_media; DELETE FROM messages; DELETE FROM chats; DELETE FROM chat_cursors;");
+  const recoveryChatJid = "web:chat:recovery-continue";
   db.storeChatMetadata("web:default", new Date().toISOString(), "Web");
+  db.storeChatMetadata(recoveryChatJid, new Date().toISOString(), "Recovery");
 
   const sourceRowId = db.storeMessage({
     id: `msg-${Math.random()}`,
-    chat_jid: "web:default",
+    chat_jid: recoveryChatJid,
     sender: "web-agent",
     sender_name: "Pi",
     content: "Recovery exhausted. Choose how to continue.",
@@ -3285,21 +3406,26 @@ test("web channel handles recovery-continue adaptive card actions on the same th
   const res = await (web as any).handleRequest(req);
   expect(res.status).toBe(201);
 
-  const timeline = db.getTimeline("web:default", 10);
-  const submission = timeline.find((entry: any) => entry.id !== sourceRowId && entry.data?.content?.includes("Continue the previous answer from the last partial output"));
+  const recoveryTimeline = db.getTimeline(recoveryChatJid, 10);
+  const submission = recoveryTimeline.find((entry: any) => entry.id !== sourceRowId && entry.data?.content?.includes("Continue the previous answer from the last partial output"));
   expect(submission).toBeDefined();
   expect(submission?.data?.thread_id).toBe(sourceRowId);
+
+  const defaultTimeline = db.getTimeline("web:default", 10);
+  expect(defaultTimeline.some((entry: any) => String(entry.data?.content || "").includes("Continue the previous answer from the last partial output"))).toBe(false);
 });
 
 test("web channel handles recovery-retry-clean adaptive card actions as isolated runs", async () => {
   const db = await import("../../../src/db.js");
   db.initDatabase();
   db.getDb().exec("DELETE FROM message_media; DELETE FROM messages; DELETE FROM chats; DELETE FROM chat_cursors;");
+  const recoveryChatJid = "web:chat:recovery-retry";
   db.storeChatMetadata("web:default", new Date().toISOString(), "Web");
+  db.storeChatMetadata(recoveryChatJid, new Date().toISOString(), "Recovery");
 
   const sourceRowId = db.storeMessage({
     id: `msg-${Math.random()}`,
-    chat_jid: "web:default",
+    chat_jid: recoveryChatJid,
     sender: "web-agent",
     sender_name: "Pi",
     content: "Recovery exhausted. Choose how to continue.",
@@ -3345,10 +3471,13 @@ test("web channel handles recovery-retry-clean adaptive card actions as isolated
   const res = await (web as any).handleRequest(req);
   expect(res.status).toBe(201);
 
-  const timeline = db.getTimeline("web:default", 10);
-  const submission = timeline.find((entry: any) => entry.id !== sourceRowId && entry.data?.content?.includes("Retry the previous request cleanly as a new isolated run"));
+  const recoveryTimeline = db.getTimeline(recoveryChatJid, 10);
+  const submission = recoveryTimeline.find((entry: any) => entry.id !== sourceRowId && entry.data?.content?.includes("Retry the previous request cleanly as a new isolated run"));
   expect(submission).toBeDefined();
   expect(submission?.data?.thread_id == null || submission?.data?.thread_id === submission?.id).toBe(true);
+
+  const defaultTimeline = db.getTimeline("web:default", 10);
+  expect(defaultTimeline.some((entry: any) => String(entry.data?.content || "").includes("Retry the previous request cleanly as a new isolated run"))).toBe(false);
 });
 
 test("web channel strips internal submit metadata before persisting completion state", async () => {

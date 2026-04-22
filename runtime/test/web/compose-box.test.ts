@@ -7,6 +7,7 @@ import {
   getComposeHistoryStorageKey,
   getModelPickerOptionSearchLabel,
   normalizeModelPickerOptions,
+  resolveComposeExtensionWorkingDisplay,
   resolveComposeModelPickerState,
   parseQueuedContent,
   resolveComposePrefillRequest,
@@ -176,6 +177,45 @@ test('resolveComposeModelPickerState keeps the model picker visible for cold cha
     showPicker: false,
     label: '',
     hasAvailableModels: false,
+  });
+});
+
+test('resolveComposeExtensionWorkingDisplay renders default, custom, and hidden indicator states', () => {
+  expect(resolveComposeExtensionWorkingDisplay(null)).toEqual({
+    visible: false,
+    title: '',
+    indicatorText: null,
+    animateDot: false,
+  });
+
+  expect(resolveComposeExtensionWorkingDisplay({
+    message: 'Compacting context…',
+    indicator: { mode: 'default', frames: [], intervalMs: null },
+  })).toEqual({
+    visible: true,
+    title: 'Compacting context…',
+    indicatorText: null,
+    animateDot: true,
+  });
+
+  expect(resolveComposeExtensionWorkingDisplay({
+    message: null,
+    indicator: { mode: 'custom', frames: ['⠋', '⠙'], intervalMs: 90 },
+  }, 1)).toEqual({
+    visible: true,
+    title: 'Working…',
+    indicatorText: '⠙',
+    animateDot: false,
+  });
+
+  expect(resolveComposeExtensionWorkingDisplay({
+    message: 'Background sync',
+    indicator: { mode: 'hidden', frames: [], intervalMs: null },
+  })).toEqual({
+    visible: true,
+    title: 'Background sync',
+    indicatorText: null,
+    animateDot: false,
   });
 });
 

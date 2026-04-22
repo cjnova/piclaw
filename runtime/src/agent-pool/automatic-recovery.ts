@@ -69,7 +69,7 @@ export function getAutomaticRecoveryConfig(): Readonly<AutomaticRecoveryConfig> 
 
 export function isContextPressureFailure(errorText: string | null | undefined): boolean {
   if (!errorText) return false;
-  return /context(?: window| length)?|maximum context length|context_length|token limit|too many tokens|prompt too long|reduce (?:the )?length|overflow|out of extra usage|out of usage|request too large/i.test(errorText);
+  return /context(?: window| length)?|maximum context length|context_length|token limit|too many tokens|prompt too long|reduce (?:the )?length|overflow|request too large/i.test(errorText);
 }
 
 export function isTransientFailure(errorText: string | null | undefined): boolean {
@@ -133,12 +133,10 @@ export function decideAutomaticRecovery(input: RecoveryDecisionInput): RecoveryD
   }
 
   if (input.snapshot.hadToolActivity) {
-    // Tool activity normally prevents automatic retry because replaying
-    // side-effecting tools is unsafe. However, when the failure is clearly
-    // context-pressure related (compaction was in progress or the error text
-    // indicates context limits), compaction-then-retry is still safe because
-    // the retry will compact first and the tools already executed are part of
-    // the persisted session history.
+    // Conservative rule: once tool activity happened, automatic recovery is
+    // only allowed for clearly context-related failures. Generic retries could
+    // re-run side-effecting tools, so exhausted/no-terminal runs are held for
+    // explicit retry/skip resolution instead.
     if (isContextPressureFailure(errorText) || input.snapshot.sawCompactionIntent) {
       return {
         recover: true,
@@ -151,7 +149,9 @@ export function decideAutomaticRecovery(input: RecoveryDecisionInput): RecoveryD
       recover: false,
       classifier: "tool_activity",
       strategy: null,
-      reason: "Automatic recovery skipped because tool activity occurred during the failed run.",
+      reason: input.snapshot.hadCompletedTurnOutput
+        ? "Automatic recovery skipped because tool activity with a completed turn already occurred during the failed run."
+        : "Automatic recovery skipped because tool activity already occurred and the failure was not clearly context-related.",
     };
   }
 
@@ -161,6 +161,18 @@ export function decideAutomaticRecovery(input: RecoveryDecisionInput): RecoveryD
       classifier: "completed_turn_output",
       strategy: null,
       reason: "Automatic recovery skipped because a completed assistant turn was already emitted during the failed run.",
+    };
+  }
+
+  // Context pressure must be checked before non-recoverable because error
+  // payloads like `invalid_request_error` with `context_length_exceeded` match
+  // both patterns.  Context overflow is always recoverable via compaction.
+  if (isContextPressureFailure(errorText) || input.snapshot.sawCompactionIntent) {
+    return {
+      recover: true,
+      classifier: "context_pressure",
+      strategy: "compact_then_retry",
+      reason: "Failure looks context-related; compacting before retrying.",
     };
   }
 
@@ -187,15 +199,6 @@ export function decideAutomaticRecovery(input: RecoveryDecisionInput): RecoveryD
       classifier: "compaction_failure",
       strategy: null,
       reason: "Compaction failure classified as hard failure for this recovery cycle.",
-    };
-  }
-
-  if (isContextPressureFailure(errorText) || input.snapshot.sawCompactionIntent) {
-    return {
-      recover: true,
-      classifier: "context_pressure",
-      strategy: "compact_then_retry",
-      reason: "Failure looks context-related; compacting before retrying.",
     };
   }
 

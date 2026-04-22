@@ -55,7 +55,8 @@ interface UseChatRefreshLifecycleOptions {
   refreshQueueState: () => void;
   refreshContextUsage: () => Promise<void>;
   refreshAutoresearchStatus: () => Promise<void>;
-  setContextUsage: (next: any) => void;
+  setContextUsage: StateSetter<any>;
+  setExtensionWorkingState: StateSetter<{ message: string | null; indicator: unknown | null }>;
 }
 
 export function startModelAndQueueRefreshEffect(options: {
@@ -168,6 +169,7 @@ export function useChatRefreshLifecycle(options: UseChatRefreshLifecycleOptions)
     refreshContextUsage,
     refreshAutoresearchStatus,
     setContextUsage,
+    setExtensionWorkingState,
   } = options;
 
   const loadAgents = useCallback(async () => {
@@ -199,6 +201,7 @@ export function useChatRefreshLifecycle(options: UseChatRefreshLifecycleOptions)
     setActiveModelUsage(null);
     setHasLoadedAgentModels(false);
     setAgentModelsPayload(null);
+    setExtensionWorkingState({ message: null, indicator: null });
 
     // Restore the last known context usage for this chat from localStorage
     // so the context indicator shows immediately without waiting for the API.
@@ -209,7 +212,7 @@ export function useChatRefreshLifecycle(options: UseChatRefreshLifecycleOptions)
       setContextUsage(null);
     }
     void refreshContextUsage();
-  }, [currentChatJid, refreshContextUsage, setActiveModel, setActiveModelUsage, setActiveThinkingLevel, setAgentModelsPayload, setContextUsage, setHasLoadedAgentModels, setSupportsThinking]);
+  }, [currentChatJid, refreshContextUsage, setActiveModel, setActiveModelUsage, setActiveThinkingLevel, setAgentModelsPayload, setContextUsage, setExtensionWorkingState, setHasLoadedAgentModels, setSupportsThinking]);
 
   const updateAgentProfile = useCallback((payload: any) => {
     updateAgentProfileFromEvent({

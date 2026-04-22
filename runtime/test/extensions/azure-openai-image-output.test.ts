@@ -1,11 +1,19 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 
 import {
   buildAzureImageGeneratePayload,
+  executeAzureFluxCommand,
+  executeAzureImageCommand,
   formatGeneratedImageMessage,
   formatImageGenerationError,
+  setAzureImageHandlersForTests,
   type SavedImageFile,
 } from "../../extensions/integrations/azure-openai-images.ts";
+import { waitFor } from "../helpers.js";
+
+afterEach(() => {
+  setAzureImageHandlersForTests(null);
+});
 
 test("formatGeneratedImageMessage renders workspace file pills instead of download links", () => {
   const files: SavedImageFile[] = [
@@ -63,4 +71,65 @@ test("buildAzureImageGeneratePayload enables transparent PNG output when request
     background: "transparent",
     output_format: "png",
   });
+});
+
+test("executeAzureImageCommand posts a status update before the final image result", async () => {
+  const sent: Array<{ customType: string; content: string; display?: boolean }> = [];
+  setAzureImageHandlersForTests({
+    generateImage: async () => [{ b64_json: "ZmFrZQ==" }],
+    saveImages: () => [{
+      absPath: "/workspace/exports/images/azure-image-test.png",
+      relPath: "exports/images/azure-image-test.png",
+      rawUrl: "/workspace/raw?path=exports%2Fimages%2Fazure-image-test.png",
+      alt: "icon of a glass flask",
+    }],
+  });
+
+  await executeAzureImageCommand({
+    sendMessage(message: any) { sent.push(message); },
+  } as any, "icon of a glass flask 1400x900 --transparent");
+
+  expect(sent[0]).toMatchObject({
+    customType: "image",
+    display: true,
+  });
+  expect(sent[0]?.content).toContain("⏳ Generating image…");
+  expect(sent[0]?.content).toContain("1536x1024");
+  expect(sent[0]?.content).toContain("transparent background");
+
+  await waitFor(() => sent.length >= 2, 1000, 10);
+  expect(sent[1]).toMatchObject({
+    customType: "image",
+    display: true,
+  });
+  expect(sent[1]?.content).toContain("Azure image (");
+  expect(sent[1]?.content).toContain("icon of a glass flask");
+  expect(sent[1]?.content).toContain("Files:");
+});
+
+test("executeAzureFluxCommand posts a status update before surfacing generation failures", async () => {
+  const sent: Array<{ customType: string; content: string; display?: boolean }> = [];
+  setAzureImageHandlersForTests({
+    generateFoundryImage: async () => {
+      throw new Error("Connection error.");
+    },
+  });
+
+  await executeAzureFluxCommand({
+    sendMessage(message: any) { sent.push(message); },
+  } as any, "city skyline --size 1600x900");
+
+  expect(sent[0]).toMatchObject({
+    customType: "flux",
+    display: true,
+  });
+  expect(sent[0]?.content).toContain("⏳ Generating Foundry image…");
+  expect(sent[0]?.content).toContain("1600×900");
+
+  await waitFor(() => sent.length >= 2, 1000, 10);
+  expect(sent[1]).toMatchObject({
+    customType: "flux",
+    display: true,
+  });
+  expect(sent[1]?.content).toBe("❌ Image generation failed (Azure Foundry): Unable to connect to the configured proxy or upstream endpoint.");
 });

@@ -14,6 +14,16 @@ export function clearLastActivityFlagState(previous: any): any {
   return rest;
 }
 
+export function buildLastActivityStatus(payload: any): any {
+  if (!payload || typeof payload !== 'object') {
+    return { type: 'active', last_activity: true };
+  }
+  return {
+    ...payload,
+    last_activity: true,
+  };
+}
+
 interface UseAgentActivityOrchestrationOptions {
   lastActivityTtlMs: number;
   lastActivityTimerRef: RefBox<ReturnType<typeof setTimeout> | null>;
@@ -74,7 +84,8 @@ export function useAgentActivityOrchestration(options: UseAgentActivityOrchestra
   } = options;
 
   const noteAgentActivity = useCallback((activityOptions: Record<string, unknown> = {}) => {
-    const now = Date.now();
+    const activityAtRaw = Number(activityOptions.atMs);
+    const now = Number.isFinite(activityAtRaw) && activityAtRaw > 0 ? activityAtRaw : Date.now();
     lastAgentEventRef.current = now;
     if (activityOptions.running) {
       isAgentRunningRef.current = true;
@@ -107,7 +118,7 @@ export function useAgentActivityOrchestration(options: UseAgentActivityOrchestra
     clearLastActivityTimer();
     const token = Date.now();
     lastActivityTokenRef.current = token;
-    setAgentStatus({ type: payload.type || 'active', last_activity: true });
+    setAgentStatus(buildLastActivityStatus(payload));
     lastActivityTimerRef.current = setTimeout(() => {
       if (lastActivityTokenRef.current !== token) return;
       setAgentStatus((prev: any) => {
