@@ -328,6 +328,9 @@ export class AgentPool {
     async pruneChatBranch(chatJid) {
         return this.branchManager.pruneChatBranch(chatJid);
     }
+    async renameChatJid(oldJid, newJid) {
+        return this.branchManager.renameChatJid(oldJid, newJid);
+    }
     async restoreChatBranch(chatJid, options = {}) {
         return this.branchManager.restoreChatBranch(chatJid, options);
     }

@@ -298,6 +298,29 @@ export class WebAgentControlPlaneService {
             return this.options.json({ error: message || "Failed to rename branch." }, 400);
         }
     }
+    async handleAgentRenameJid(req) {
+        const parsed = await parseJsonObjectRequest(req);
+        if (!parsed.ok)
+            return this.options.json({ error: parsed.error }, 400);
+        const payload = parsed.payload;
+        const oldJid = String(payload.old_jid || payload.chat_jid || "").trim();
+        const newJid = String(payload.new_jid || "").trim();
+        if (!oldJid)
+            return this.options.json({ error: "Missing old_jid (or chat_jid)" }, 400);
+        if (!newJid)
+            return this.options.json({ error: "Missing new_jid" }, 400);
+        try {
+            const result = await this.options.agentPool.renameChatJid?.(oldJid, newJid);
+            if (!result) {
+                return this.options.json({ error: "JID renaming is not available." }, 501);
+            }
+            return this.options.json({ status: "ok", ...result }, 200);
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error || "Failed to rename JID.");
+            return this.options.json({ error: message || "Failed to rename JID." }, 400);
+        }
+    }
     async handleAgentBranchPrune(req) {
         const parsed = await parseJsonObjectRequest(req);
         if (!parsed.ok)

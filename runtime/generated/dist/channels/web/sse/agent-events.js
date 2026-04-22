@@ -476,7 +476,10 @@ export function createStreamingEventHandler(options) {
             const strategy = e.strategy === "compact_then_retry"
                 ? "Compacting context and continuing"
                 : "Recovering interrupted response";
-            const detail = `Attempt ${e.attempt ?? "?"}/${e.maxAttempts ?? "?"}${e.reason ? ` — ${e.reason}` : ""}`;
+            const delaySuffix = e.strategy === "retry" && typeof e.delayMs === "number"
+                ? ` · ${Math.max(0, Math.round(e.delayMs / 1000))}s delay`
+                : "";
+            const detail = `Attempt ${e.attempt ?? "?"}/${e.maxAttempts ?? "?"}${delaySuffix}${e.reason ? ` — ${e.reason}` : ""}`;
             options.emitter.status({
                 ...base,
                 type: "intent",

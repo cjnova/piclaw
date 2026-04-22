@@ -1,8 +1,10 @@
 /**
  * automatic-recovery.ts – Shared mid-turn recovery policy for agent runs.
  */
-const DEFAULT_MAX_ATTEMPTS = 2;
+const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_TOTAL_BUDGET_MS = 30_000;
+const DEFAULT_RETRY_BASE_DELAY_MS = 2_000;
+const DEFAULT_RETRY_MAX_DELAY_MS = 60_000;
 function parsePositiveInt(value, fallback) {
     const parsed = Number.parseInt(String(value || "").trim(), 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -17,17 +19,47 @@ function parseBoolean(value, fallback) {
         return false;
     return fallback;
 }
+export const DEFAULT_RETRY_BACKOFF_SETTINGS = Object.freeze({
+    enabled: true,
+    maxRetries: DEFAULT_MAX_ATTEMPTS,
+    baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
+    maxDelayMs: DEFAULT_RETRY_MAX_DELAY_MS,
+});
 export const DEFAULT_AUTOMATIC_RECOVERY_CONFIG = Object.freeze({
     enabled: true,
     maxAttempts: DEFAULT_MAX_ATTEMPTS,
     totalBudgetMs: DEFAULT_TOTAL_BUDGET_MS,
+    baseDelayMs: DEFAULT_RETRY_BASE_DELAY_MS,
+    maxDelayMs: DEFAULT_RETRY_MAX_DELAY_MS,
 });
-export function getAutomaticRecoveryConfig() {
+export function normalizeRetryBackoffSettings(settings) {
+    return {
+        enabled: typeof settings?.enabled === "boolean" ? settings.enabled : DEFAULT_RETRY_BACKOFF_SETTINGS.enabled,
+        maxRetries: Number.isFinite(settings?.maxRetries) && (settings?.maxRetries ?? 0) > 0
+            ? Number(settings?.maxRetries)
+            : DEFAULT_RETRY_BACKOFF_SETTINGS.maxRetries,
+        baseDelayMs: Number.isFinite(settings?.baseDelayMs) && (settings?.baseDelayMs ?? 0) > 0
+            ? Number(settings?.baseDelayMs)
+            : DEFAULT_RETRY_BACKOFF_SETTINGS.baseDelayMs,
+        maxDelayMs: Number.isFinite(settings?.maxDelayMs) && (settings?.maxDelayMs ?? 0) > 0
+            ? Number(settings?.maxDelayMs)
+            : DEFAULT_RETRY_BACKOFF_SETTINGS.maxDelayMs,
+    };
+}
+export function getAutomaticRecoveryConfig(retrySettings) {
+    const normalizedRetry = normalizeRetryBackoffSettings(retrySettings);
     return Object.freeze({
-        enabled: parseBoolean(process.env.PICLAW_TURN_AUTO_RECOVERY_ENABLED, DEFAULT_AUTOMATIC_RECOVERY_CONFIG.enabled),
-        maxAttempts: parsePositiveInt(process.env.PICLAW_TURN_AUTO_RECOVERY_MAX_ATTEMPTS, DEFAULT_AUTOMATIC_RECOVERY_CONFIG.maxAttempts),
+        enabled: parseBoolean(process.env.PICLAW_TURN_AUTO_RECOVERY_ENABLED, normalizedRetry.enabled),
+        maxAttempts: parsePositiveInt(process.env.PICLAW_TURN_AUTO_RECOVERY_MAX_ATTEMPTS, normalizedRetry.maxRetries),
         totalBudgetMs: parsePositiveInt(process.env.PICLAW_TURN_AUTO_RECOVERY_TOTAL_BUDGET_MS, DEFAULT_AUTOMATIC_RECOVERY_CONFIG.totalBudgetMs),
+        baseDelayMs: normalizedRetry.baseDelayMs,
+        maxDelayMs: normalizedRetry.maxDelayMs,
     });
+}
+export function getAutomaticRecoveryDelayMs(config, attempt) {
+    const exponent = Math.max(0, attempt - 1);
+    const raw = Math.max(0, Math.round(config.baseDelayMs * 2 ** exponent));
+    return Math.min(raw, Math.max(config.baseDelayMs, config.maxDelayMs));
 }
 export function isContextPressureFailure(errorText) {
     if (!errorText)
@@ -92,6 +124,17 @@ export function decideAutomaticRecovery(input) {
                 classifier: "context_pressure",
                 strategy: "compact_then_retry",
                 reason: "Failure looks context-related despite tool activity; compacting before retrying.",
+            };
+        }
+        if (input.snapshot.onlyReadOnlyToolActivity
+            && input.snapshot.sawAssistantToolCall
+            && !input.snapshot.hadCompletedTurnOutput
+            && /without emitting an assistant reply before finalization|provider stopped after tool use without a final assistant reply/i.test(errorText)) {
+            return {
+                recover: true,
+                classifier: "transient",
+                strategy: "retry",
+                reason: "Provider stopped after a read-only tool call without sending a final reply; retrying once is safe.",
             };
         }
         return {

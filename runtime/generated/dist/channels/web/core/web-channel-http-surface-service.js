@@ -123,6 +123,9 @@ export class WebChannelHttpSurfaceService {
     async handleAgentBranchRename(req) {
         return await this.channel.controlPlaneService.handleAgentBranchRename(req);
     }
+    async handleAgentRenameJid(req) {
+        return await this.channel.controlPlaneService.handleAgentRenameJid(req);
+    }
     async handleAgentBranchPrune(req) {
         return await this.channel.controlPlaneService.handleAgentBranchPrune(req);
     }

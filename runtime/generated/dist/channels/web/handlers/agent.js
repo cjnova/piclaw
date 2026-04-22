@@ -12,7 +12,7 @@ import { parseControlCommand } from "../../../agent-control/index.js";
 import { normalizeAgentMessagePayload, parseAgentMessageRequest, storeAgentUserMessage, } from "../messaging/agent-message-service.js";
 import { handleUiThemeCommand } from "../theming/ui-theme-commands.js";
 import { handleUiMetersCommand } from "../ui-meters-commands.js";
-import { beginChatRun, endChatRun, getChatCursor, getFailedRun, getInflightMessageId, getMessageRowIdById, getMessagesSince, getDb, rollbackChatRunWithError, rollbackInflightRun, setChatCursor, } from "../../../db.js";
+import { beginChatRun, clearFailedRun, endChatRun, getChatCursor, getFailedRun, getInflightMessageId, getMessageRowIdById, getMessagesSince, getDb, rollbackChatRunWithError, rollbackInflightRun, setChatCursor, } from "../../../db.js";
 import { detectChannel, formatMessages, formatOutbound } from "../../../router.js";
 import { createAgentProfileBuilder } from "../agent/agent-utils.js";
 import { resolveAvatarUrl } from "../media/avatar-service.js";
@@ -894,6 +894,22 @@ export async function processChat(channel, chatJid, agentId, threadRootId) {
         return;
     const unresolvedFailedRun = getFailedRun(chatJid);
     if (unresolvedFailedRun && unresolvedFailedRun.messageId === currentMessage.id) {
+        // If newer user messages arrived after the failed one, auto-recover:
+        // advance the cursor past the failure and process the next message.
+        if (messages.length > 1) {
+            log.info("processChat auto-recovering failed run — newer messages arrived", {
+                operation: "process_chat.auto_recover_failed_run",
+                chatJid,
+                failedMessageId: unresolvedFailedRun.messageId,
+                failedTs: unresolvedFailedRun.failedTs,
+                pendingMessageCount: messages.length,
+            });
+            clearFailedRun(chatJid);
+            setChatCursor(chatJid, currentMessage.timestamp);
+            // Re-enter with the cursor advanced past the failed message.
+            channel.resumeChat(chatJid);
+            return;
+        }
         log.info("processChat paused on unresolved failed run", {
             operation: "process_chat.blocked_failed_run",
             chatJid,

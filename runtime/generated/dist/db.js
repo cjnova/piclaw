@@ -9,7 +9,7 @@
  */
 export { initDatabase, getDb, closeDatabase } from "./db/connection.js";
 export { clampWebContent } from "./db/web-content.js";
-export { ensureChatBranch, getChatBranchByChatJid, getChatBranchByAgentName, listChatBranches, renameChatBranchIdentity, archiveChatBranch, restoreChatBranchIdentity, } from "./db/chat-branches.js";
+export { ensureChatBranch, getChatBranchByChatJid, getChatBranchByAgentName, listChatBranches, renameChatBranchIdentity, renameChatJid, archiveChatBranch, restoreChatBranchIdentity, } from "./db/chat-branches.js";
 export { storeChatMetadata, listRecentChatJids, storeMessage, getMessageByRowId, getMessageByAnyRowId, getMessageRowIdById, getMessageThreadRootIdById, deleteMessageByRowId, deleteThreadByRowId, getTimeline, hasOlderMessages, getMessagesByHashtag, searchMessages, searchMessagesAcrossChats, getNewMessages, getMessagesSince, updateMessageLinkPreviews, replaceMessageContent, } from "./db/messages.js";
 export { attachMediaToMessage, getMediaIdsForMessage, createMedia, getMediaById, getMediaInfoById, deleteUnreferencedMedia, } from "./db/media.js";
 export { getLinkPreviewImageCache, upsertLinkPreviewImageCache, touchLinkPreviewImageCache, purgeExpiredLinkPreviewImageCache, } from "./db/link-preview-image-cache.js";
