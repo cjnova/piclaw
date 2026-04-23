@@ -1080,7 +1080,7 @@ export function Post({ post, onClick, onHashtagClick, onMessageRef, onScrollToMe
                     `}
                     ${outcomeMarker && html`
                         <span
-                            class=${`post-recovery-chip post-outcome-chip post-outcome-chip-${String(outcomeMarker.severity || 'warning')}`}
+                            class=${`post-recovery-chip post-outcome-chip post-outcome-chip-${String(outcomeMarker.severity || 'warning')}${outcomeMarker.kind === 'tool_budget' ? ' post-outcome-chip-tool-budget' : ''}`}
                             title=${formatOutcomeChipTooltip(outcomeMarker)}
                         >
                             ${String(outcomeMarker.label || outcomeMarker.kind || 'issue')}

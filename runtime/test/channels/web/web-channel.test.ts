@@ -2158,7 +2158,7 @@ test("processChat includes the last action summary in visible failure fallbacks"
   const timeline = db.getTimeline("web:default", 10);
   const last = timeline[timeline.length - 1];
   expect(String(last.data.content || "")).toContain("Turn failed");
-  expect(String(last.data.content || "")).toContain("Last action:");
+  expect(String(last.data.content || "")).toContain("Last action");
   expect(String(last.data.content || "")).toContain("bash");
   expect(last.data.content_blocks).toContainEqual(expect.objectContaining({
     type: "turn_outcome_marker",

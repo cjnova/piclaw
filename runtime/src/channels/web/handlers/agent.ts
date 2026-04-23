@@ -104,6 +104,10 @@ function buildTurnOutcomeMarker(options: {
   };
 }
 
+function isToolBudgetExceededError(text: string): boolean {
+  return /tool.use budget exceeded/i.test(text);
+}
+
 function buildErrorOutcomeMarker(
   errorText: string,
   options: {
@@ -113,6 +117,19 @@ function buildErrorOutcomeMarker(
     severity?: TurnOutcomeSeverity;
   } = {},
 ): Record<string, unknown> {
+  if (isToolBudgetExceededError(errorText)) {
+    return buildTurnOutcomeMarker({
+      kind: "tool_budget",
+      label: "tool budget",
+      title: "Tool-use budget exceeded",
+      detail: errorText.slice(0, 500),
+      severity: "warning",
+      draftRecovered: options.draftRecovered,
+      attemptsUsed: options.attemptsUsed,
+      classifier: options.classifier,
+    });
+  }
+
   if (isRateLimitError(errorText)) {
     return buildTurnOutcomeMarker({
       kind: "provider",
@@ -1341,7 +1358,7 @@ export async function processChat(
       title,
       detail: detail || markerDetail,
       actionSummary: lastAction?.summary,
-      attemptsUsed: Number.isFinite(marker?.attempts_used) ? (marker.attempts_used as number) : undefined,
+      attemptsUsed: Number.isFinite(marker?.attempts_used) ? (marker?.attempts_used as number) : undefined,
       classifier: readTrimmedString(marker?.classifier),
     });
 
