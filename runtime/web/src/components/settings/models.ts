@@ -26,13 +26,12 @@ function ThinkingSlider({ thinkingLevel, supportsThinking, provider, onSetLevel,
     `;
 }
 
-export function ModelsSection() {
+export function ModelsSection({ filter = '' }) {
     const [models, setModels] = useState(null);
     const [switching, setSwitching] = useState(false);
     const [thinkingLevel, setThinkingLevel] = useState('off');
     const [supportsThinking, setSupportsThinking] = useState(false);
     const [thinkingBusy, setThinkingBusy] = useState(false);
-    const [filter, setFilter] = useState('');
 
     const loadModels = useCallback(async () => {
         const data = await getAgentModels();
@@ -70,9 +69,6 @@ export function ModelsSection() {
 
     return html`
         <div class="settings-section">
-            <div class="settings-model-filter">
-                <input type="text" placeholder="Filter models\u2026" value=${filter} onInput=${e => setFilter(e.target.value)} class="settings-filter-input" />
-            </div>
             <table class="settings-table settings-borderless">
                 <thead><tr><th style="width:32px"></th><th>Model</th><th>Provider</th><th>Context</th><th style="text-align:center">Reasoning</th></tr></thead>
                 <tbody>

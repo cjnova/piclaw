@@ -4,7 +4,7 @@
  * Self-manages open/close via 'piclaw:open-settings' custom event.
  * Section components live in ./settings/*.ts submodules.
  */
-import { html, useState, useEffect, useCallback } from '../vendor/preact-htm.js';
+import { html, useState, useEffect, useCallback, useRef } from '../vendor/preact-htm.js';
 import { BodyPortal } from './body-portal.js';
 import { GeneralSection } from './settings/general.js';
 import { ProvidersSection } from './settings/providers.js';
@@ -22,18 +22,20 @@ const iconTools = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="non
 const iconAddons = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`;
 
 const SECTIONS = [
-    { id: 'general', label: 'General', icon: iconGeneral },
-    { id: 'providers', label: 'Providers', icon: iconProviders },
-    { id: 'models', label: 'Models', icon: iconModels },
-    { id: 'theme', label: 'Appearance', icon: iconAppearance },
-    { id: 'tools', label: 'Tools', icon: iconTools },
-    { id: 'addons', label: 'Add-ons', icon: iconAddons },
+    { id: 'general', label: 'General', icon: iconGeneral, searchable: false },
+    { id: 'providers', label: 'Providers', icon: iconProviders, searchable: false },
+    { id: 'models', label: 'Models', icon: iconModels, searchable: true, placeholder: 'Filter models\u2026' },
+    { id: 'theme', label: 'Appearance', icon: iconAppearance, searchable: false },
+    { id: 'tools', label: 'Tools', icon: iconTools, searchable: true, placeholder: 'Filter tools\u2026' },
+    { id: 'addons', label: 'Add-ons', icon: iconAddons, searchable: true, placeholder: 'Filter add-ons\u2026' },
 ];
 
 function SettingsDialogContent({ onClose }) {
     const [activeSection, setActiveSection] = useState('general');
     const [settingsData, setSettingsData] = useState(null);
     const [statusMessage, setStatusMessage] = useState(null);
+    const [filter, setFilter] = useState('');
+    const filterRef = useRef(null);
 
     useEffect(() => {
         const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -49,14 +51,28 @@ function SettingsDialogContent({ onClose }) {
         setStatusMessage(text ? { text, type } : null);
     }, []);
 
+    const switchSection = useCallback((id) => {
+        setActiveSection(id);
+        setFilter('');
+    }, []);
+
+    const activeMeta = SECTIONS.find(s => s.id === activeSection);
+
+    // Auto-focus search when switching to a searchable section
+    useEffect(() => {
+        if (activeMeta?.searchable) {
+            requestAnimationFrame(() => filterRef.current?.focus());
+        }
+    }, [activeSection]);
+
     const renderSection = () => {
         switch (activeSection) {
             case 'general': return html`<${GeneralSection} settingsData=${settingsData} />`;
             case 'providers': return html`<${ProvidersSection} providers=${settingsData?.providers} setStatus=${setStatus} />`;
-            case 'models': return html`<${ModelsSection} />`;
+            case 'models': return html`<${ModelsSection} filter=${filter} />`;
             case 'theme': return html`<${ThemeSection} themes=${settingsData?.themes} colorKeys=${settingsData?.colorKeys} />`;
-            case 'tools': return html`<${ToolsSection} toolsets=${settingsData?.toolsets} />`;
-            case 'addons': return html`<${AddonsSection} setStatus=${setStatus} />`;
+            case 'tools': return html`<${ToolsSection} toolsets=${settingsData?.toolsets} filter=${filter} />`;
+            case 'addons': return html`<${AddonsSection} setStatus=${setStatus} filter=${filter} />`;
             default: return null;
         }
     };
@@ -66,12 +82,17 @@ function SettingsDialogContent({ onClose }) {
             <div class="settings-dialog">
                 <div class="settings-dialog-header">
                     <span class="settings-dialog-title">Settings</span>
+                    ${activeMeta?.searchable && html`
+                        <input ref=${filterRef} type="text" class="settings-header-filter"
+                            placeholder=${activeMeta.placeholder || 'Filter\u2026'}
+                            value=${filter} onInput=${e => setFilter(e.target.value)} />
+                    `}
                     <button class="settings-dialog-close" onClick=${onClose} title="Close (Esc)">\u2715</button>
                 </div>
                 <div class="settings-dialog-body">
                     <nav class="settings-nav">
                         ${SECTIONS.map(s => html`
-                            <button class=${`settings-nav-item ${s.id === activeSection ? 'active' : ''}`} onClick=${() => setActiveSection(s.id)}>
+                            <button class=${`settings-nav-item ${s.id === activeSection ? 'active' : ''}`} onClick=${() => switchSection(s.id)}>
                                 <span class="settings-nav-icon">${s.icon}</span>
                                 <span class="settings-nav-label">${s.label}</span>
                             </button>

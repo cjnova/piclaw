@@ -1,16 +1,31 @@
 // @ts-nocheck
-import { html, useState, useCallback } from '../../vendor/preact-htm.js';
+import { html, useState, useCallback, useMemo } from '../../vendor/preact-htm.js';
 
 const KIND_BADGE = { 'read-only': '\ud83d\udd0d', 'mutating': '\u270f\ufe0f', 'mixed': '\ud83d\udd04' };
 
-export function ToolsSection({ toolsets }) {
+export function ToolsSection({ toolsets, filter = '' }) {
     const groups = toolsets || [];
     const [enabledGroups, setEnabledGroups] = useState(() => { const m = {}; for (const g of groups) m[g.name] = true; return m; });
     const toggleGroup = useCallback((name) => { setEnabledGroups(prev => ({ ...prev, [name]: !prev[name] })); }, []);
-    if (groups.length === 0) return html`<div class="settings-section"><h3>Tools</h3><p class="settings-hint">Tool data not available.</p></div>`;
+
+    const lf = filter.toLowerCase();
+    const filteredGroups = useMemo(() => {
+        if (!lf) return groups;
+        return groups.map(g => {
+            const tools = g.tools.filter(t =>
+                t.name.toLowerCase().includes(lf) ||
+                g.name.toLowerCase().includes(lf) ||
+                (t.summary || '').toLowerCase().includes(lf)
+            );
+            return tools.length > 0 ? { ...g, tools } : null;
+        }).filter(Boolean);
+    }, [groups, lf]);
+
+    if (groups.length === 0) return html`<div class="settings-section"><p class="settings-hint">Tool data not available.</p></div>`;
+
     return html`
         <div class="settings-section">
-            ${groups.map(g => { const enabled = enabledGroups[g.name] !== false; return html`
+            ${filteredGroups.map(g => { const enabled = enabledGroups[g.name] !== false; return html`
                 <div class="settings-toolset">
                     <div class="settings-toolset-header">
                         <label class="settings-toolset-toggle"><input type="checkbox" checked=${enabled} onChange=${() => toggleGroup(g.name)} /><strong>${g.name}</strong></label>
@@ -27,6 +42,7 @@ export function ToolsSection({ toolsets }) {
                     `)}</div>`}
                 </div>
             `; })}
+            ${filteredGroups.length === 0 && html`<p class="settings-hint">No tools match "${filter}"</p>`}
             <p class="settings-hint">Tool activation is managed by the agent runtime. Group checkboxes collapse/expand; individual tools use <code>activate_tools</code>.</p>
         </div>
     `;

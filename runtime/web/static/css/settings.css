@@ -1069,3 +1069,38 @@
         height: 40px;
     }
 }
+
+/* ── Header filter input ─────────────────────────────────────── */
+
+.settings-header-filter {
+    flex: 1;
+    max-width: 320px;
+    margin: 0 12px;
+    padding: 5px 10px;
+    border: 1px solid var(--border-color, rgba(128,128,128,0.3));
+    border-radius: 6px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-size: 0.86em;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.settings-header-filter:focus {
+    border-color: var(--accent-color, #1d9bf0);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color, #1d9bf0) 20%, transparent);
+}
+
+.settings-header-filter::placeholder {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+    .settings-header-filter {
+        max-width: none;
+        margin: 0 8px;
+        font-size: 0.82em;
+        padding: 4px 8px;
+    }
+}

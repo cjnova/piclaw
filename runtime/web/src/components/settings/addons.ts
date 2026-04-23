@@ -1,11 +1,10 @@
 // @ts-nocheck
 import { html, useState, useEffect, useCallback } from '../../vendor/preact-htm.js';
 
-export function AddonsSection({ setStatus }) {
+export function AddonsSection({ setStatus, filter = '' }) {
     const [addons, setAddons] = useState(null);
     const [loading, setLoading] = useState(true);
     const [busy, setBusy] = useState(null);
-    const [filter, setFilter] = useState('');
 
     const loadAddons = useCallback(async () => {
         try {
@@ -48,10 +47,7 @@ export function AddonsSection({ setStatus }) {
 
     return html`
         <div class="settings-section">
-            <div class="settings-model-filter">
-                <input type="text" placeholder="Filter add-ons\u2026" value=${filter} onInput=${e => setFilter(e.target.value)} class="settings-filter-input" />
-            </div>
-            <p class="settings-hint" style="margin-top:0">From <a href="https://github.com/rcarmo/piclaw-addons" target="_blank">rcarmo/piclaw-addons</a>. Restart required after install/uninstall.</p>
+            <p class="settings-hint">From <a href="https://github.com/rcarmo/piclaw-addons" target="_blank">rcarmo/piclaw-addons</a>. Restart required after install/uninstall.</p>
             <div class="settings-addon-list">
                 ${filtered.map(a => html`
                     <div class=${`settings-addon-card${a.installed ? ' installed' : ''}`}>
