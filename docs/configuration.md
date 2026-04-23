@@ -402,10 +402,29 @@ Notes:
 
 ### Default active tools
 
-Piclaw now keeps the agent's always-active tool list intentionally small and uses
-`list_tools` and `activate_tools` to enable extra capabilities on demand (`list_internal_tools` remains as a deprecated compatibility alias during migration).
+Piclaw keeps the agent's always-active tool list intentionally small and uses
+`list_tools` and `activate_tools` to enable extra capabilities on demand
+(`list_internal_tools` remains as a deprecated compatibility alias during migration).
 
-Built-in default baseline:
+#### How tool activation affects token usage
+
+Every tool registered in piclaw falls into one of two activation tiers:
+
+| Tier | What's injected into the system prompt | Token cost |
+|------|----------------------------------------|------------|
+| **Default active** | Full JSON schema (name, description, all parameters with types and constraints) | ~50–200 tokens per tool |
+| **On-demand** | One-line catalog entry (name + short description only) | ~10–15 tokens per tool |
+
+The system prompt is sent with **every API request** to the model provider.
+More active tools = more tokens per request = higher cost and slower responses,
+because the model must parse the full schema even when it doesn't use the tool.
+
+With all bundled extensions loaded, a typical piclaw instance has 60–80 registered
+tools. The default baseline keeps ~12 active and the rest on-demand, keeping the
+system prompt around 40–50K tokens. Adding tools to the default set increases
+this baseline proportionally.
+
+#### Built-in default baseline
 
 - `read`
 - `edit`
@@ -419,7 +438,27 @@ Built-in default baseline:
 - `keychain`
 - `exit_process`
 
-Add more always-active tools in `.piclaw/config.json` under `tools.additionalDefaultTools`:
+Additionally, any registered tool that is **read-only** and **lightweight** is
+automatically promoted to default-active (e.g. `grep`, `find`, `ls`,
+`get_model_state`, `search_workspace`). This auto-promotion ensures safe
+inspection tools are always available without manual activation.
+
+#### The on-demand activation flow
+
+When the agent needs a tool that isn't in the default set, it follows this
+sequence:
+
+1. `list_tools` — discover available tools by name/description (no schema cost)
+2. `activate_tools` — promote specific tools to active for the current session
+3. Use the tool — full schema is now available
+
+This adds one extra round-trip the first time a tool is needed in a session,
+but avoids paying the schema cost for tools that are never used.
+
+#### Customizing the default set
+
+Add more always-active tools in `.piclaw/config.json` under
+`tools.additionalDefaultTools`:
 
 ```json
 {
@@ -442,12 +481,36 @@ A comma-separated string is also accepted:
 }
 ```
 
-Notes:
+This is a **power-user feature** for workspace-specific workflows. Consider
+the tradeoff before adding tools:
+
+| Scenario | Recommendation |
+|----------|----------------|
+| Tool used in nearly every session (e.g. `diagnostics` for a dev workspace) | Add to `additionalDefaultTools` — saves one activation round-trip per session |
+| Tool used occasionally (e.g. `introspect_sql`, `image_process`) | Leave on-demand — saves ~100+ tokens on every request |
+| Extension tools from workspace `.pi/extensions/` | Leave on-demand unless critical to your workflow |
+
+**Example — a development-focused workspace:**
+
+```json
+{
+  "tools": {
+    "additionalDefaultTools": ["diagnostics", "git_history"]
+  }
+}
+```
+
+This adds ~150 tokens to every request but means the agent can validate code
+and inspect git history immediately without an activation step.
+
+#### Notes
 
 - `reset_active_tools` restores this configured default set, not just the built-in baseline.
-- Unknown tool names are ignored when the active tool list is applied.
+- Unknown tool names are silently ignored when the active tool list is applied.
 - On Windows, `bash` is replaced by the `powershell` tool in the default active set.
 - Newly activated tools become available immediately to subsequent tool/model steps in the same turn; keep critical control tools in the default baseline or config-defined defaults.
+- The env var `PICLAW_ADDITIONAL_DEFAULT_TOOLS` (comma-separated) is equivalent to the config file option.
+- Tool activation is session-scoped: activated tools persist for the chat session but reset on session rotation or restart.
 
 ### Workspace search / FTS roots
 
