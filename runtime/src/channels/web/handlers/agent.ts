@@ -264,7 +264,7 @@ function buildFailureVisibleText(options: {
 
   const useTable = rows.length >= 2;
   const diagnosticText = useTable
-    ? ["| | |", "|---|---|", ...rows.map(([k, v]) => `| **${k}** | ${v} |`)].join("\n")
+    ? ["| Field | Detail |", "|---|---|", ...rows.map(([k, v]) => `| **${k}** | ${v} |`)].join("\n")
     : rows.map(([k, v]) => `${k}: ${v}`).join("\n\n");
 
   if (draftText && rows.length === 0) return draftText;

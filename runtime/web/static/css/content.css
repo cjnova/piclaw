@@ -581,6 +581,58 @@
     font-style: italic;
 }
 
+.post-content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.5em 0;
+    font-size: var(--font-size-sm, 0.85em);
+}
+
+.post-content th,
+.post-content td {
+    padding: 4px 10px;
+    border: 1px solid var(--border-color, rgba(128,128,128,0.2));
+    text-align: left;
+    vertical-align: top;
+}
+
+.post-content th {
+    font-weight: 600;
+    background: color-mix(in srgb, var(--bg-secondary, #f5f5f5) 50%, transparent);
+}
+
+.post-content th:first-child,
+.post-content td:first-child {
+    white-space: nowrap;
+    min-width: 120px;
+}
+
+.compose-command-notice table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.4em 0;
+    font-size: var(--font-size-sm, 0.85em);
+}
+
+.compose-command-notice th,
+.compose-command-notice td {
+    padding: 3px 8px;
+    border: 1px solid var(--border-color, rgba(128,128,128,0.2));
+    text-align: left;
+    vertical-align: top;
+}
+
+.compose-command-notice th {
+    font-weight: 600;
+    background: color-mix(in srgb, var(--bg-secondary, #f5f5f5) 50%, transparent);
+}
+
+.compose-command-notice th:first-child,
+.compose-command-notice td:first-child {
+    white-space: nowrap;
+    min-width: 100px;
+}
+
 .post-code-copy-btn {
     position: absolute;
     top: 8px;
