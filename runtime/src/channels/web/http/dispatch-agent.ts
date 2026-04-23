@@ -5,6 +5,8 @@
 import type { WebChannelLike } from "../core/web-channel-contracts.js";
 import { getIdentityConfig, PICLAW_CONFIG_PATH } from "../../../core/config.js";
 import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { THEME_PRESETS, THEME_LIST_COLOR_KEYS } from "../theming/ui-theme-data.js";
 import { TOOLSETS } from "../../../extensions/tool-activation.js";
 import { getToolCapability } from "../../../extensions/tool-capabilities.js";
@@ -227,6 +229,34 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
       const assistantSection = typeof rawConfig.assistant === "object" && rawConfig.assistant ? rawConfig.assistant as Record<string, unknown> : rawConfig;
       const userSection = typeof rawConfig.user === "object" && rawConfig.user ? rawConfig.user as Record<string, unknown> : rawConfig;
 
+      // Read auth state
+      const piAgentDir = process.env.PICLAW_PI_AGENT_DIR?.trim() || join(homedir(), ".pi", "agent");
+      let authProviders: Record<string, unknown> = {};
+      try {
+        const authPath = join(piAgentDir, "auth.json");
+        if (existsSync(authPath)) authProviders = JSON.parse(readFileSync(authPath, "utf-8"));
+      } catch { /* ignore */ }
+
+      const providerDefs = [
+        { id: "anthropic", name: "Anthropic", hasOAuth: true, hasApiKey: true, apiKeyHint: "sk-ant-..." },
+        { id: "github-copilot", name: "GitHub Copilot", hasOAuth: true, hasApiKey: false },
+        { id: "google-gemini-cli", name: "Google Gemini CLI", hasOAuth: true, hasApiKey: true, apiKeyHint: "AIza..." },
+        { id: "antigravity", name: "Antigravity (Google Cloud)", hasOAuth: true, hasApiKey: false },
+        { id: "openai-codex", name: "OpenAI Codex", hasOAuth: true, hasApiKey: false },
+        { id: "openai", name: "OpenAI", hasOAuth: false, hasApiKey: true, apiKeyHint: "sk-proj-..." },
+        { id: "opencode", name: "OpenCode", hasOAuth: false, hasApiKey: true, apiKeyHint: "OPENCODE_API_KEY" },
+        { id: "azure-openai", name: "Azure OpenAI", hasOAuth: false, hasApiKey: false, isCustom: true },
+        { id: "ollama", name: "Ollama", hasOAuth: false, hasApiKey: false, isCustom: true },
+        { id: "openai-compatible", name: "OpenAI-compatible", hasOAuth: false, hasApiKey: false, isCustom: true },
+      ];
+
+      const providers = providerDefs.map((p) => {
+        const auth = authProviders[p.id];
+        const configured = Boolean(auth);
+        const authType = typeof (auth as Record<string, unknown>)?.type === "string" ? (auth as Record<string, unknown>).type : null;
+        return { ...p, configured, authType };
+      });
+
       return channel.json({
         assistantName: identity.assistantName || "PiClaw",
         assistantAvatar: identity.assistantAvatar || "",
@@ -236,6 +266,7 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
         sessionAutoRotate: rawConfig.sessionAutoRotate ?? true,
         sessionMaxSizeMb: rawConfig.sessionMaxSizeMb ?? 32,
         webTerminalEnabled: rawConfig.webTerminalEnabled ?? true,
+        providers,
         themes,
         colorKeys: [...THEME_LIST_COLOR_KEYS],
         toolsets: TOOLSETS.map((ts) => ({

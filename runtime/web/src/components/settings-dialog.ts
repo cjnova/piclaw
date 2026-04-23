@@ -52,7 +52,7 @@ function SettingsDialogContent({ onClose }) {
     const renderSection = () => {
         switch (activeSection) {
             case 'general': return html`<${GeneralSection} settingsData=${settingsData} />`;
-            case 'providers': return html`<${ProvidersSection} />`;
+            case 'providers': return html`<${ProvidersSection} providers=${settingsData?.providers} setStatus=${setStatus} />`;
             case 'models': return html`<${ModelsSection} />`;
             case 'theme': return html`<${ThemeSection} themes=${settingsData?.themes} colorKeys=${settingsData?.colorKeys} />`;
             case 'tools': return html`<${ToolsSection} toolsets=${settingsData?.toolsets} />`;
