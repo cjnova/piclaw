@@ -168,6 +168,83 @@ function buildErrorOutcomeMarker(
   });
 }
 
+interface FailureActionSummary {
+  summary: string;
+  title?: string;
+  toolName?: string;
+  statusText?: string;
+}
+
+function readTrimmedString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function summarizeFailureActionFromStatus(status: Record<string, unknown> | null | undefined): FailureActionSummary | null {
+  if (!status || typeof status !== "object") return null;
+
+  const type = readTrimmedString(status.type);
+  const title = readTrimmedString(status.title);
+  const detail = readTrimmedString(status.detail);
+  const toolName = readTrimmedString(status.tool_name ?? status.toolName);
+  const statusText = readTrimmedString(status.status ?? status.tool_status ?? status.toolStatus);
+
+  if (type === "thinking" && !toolName) return null;
+
+  let summary = "";
+  if ((type === "tool_call" || type === "tool_status") && (title || toolName)) {
+    const statusSuffix = statusText && !/^(working\.\.\.|done)$/i.test(statusText) ? statusText : "";
+    summary = [title || toolName, statusSuffix].filter(Boolean).join(" — ");
+  } else if (type === "intent") {
+    summary = [title, detail].filter(Boolean).join(" — ");
+  } else if (title) {
+    summary = [title, detail].filter(Boolean).join(" — ");
+  }
+
+  if (!summary) return null;
+  return {
+    summary,
+    title: title || undefined,
+    toolName: toolName || undefined,
+    statusText: statusText || undefined,
+  };
+}
+
+function withFailureActionMetadata(
+  marker: Record<string, unknown> | null,
+  action: FailureActionSummary | null,
+): Record<string, unknown> | null {
+  if (!marker || !action?.summary) return marker;
+  return {
+    ...marker,
+    tool_action_summary: action.summary,
+    tool_title: action.title,
+    tool_name: action.toolName,
+    tool_status: action.statusText,
+  };
+}
+
+function buildFailureVisibleText(options: {
+  draftText?: string;
+  title?: string;
+  detail?: string;
+  actionSummary?: string;
+}): string {
+  const draftText = readTrimmedString(options.draftText);
+  const title = readTrimmedString(options.title);
+  const detail = readTrimmedString(options.detail);
+  const actionSummary = readTrimmedString(options.actionSummary);
+
+  const diagnostics: string[] = [];
+  if (title) diagnostics.push(title);
+  if (detail && detail !== title) diagnostics.push(detail);
+  if (actionSummary) diagnostics.push(`Last action: ${actionSummary}`);
+
+  if (draftText && diagnostics.length === 0) return draftText;
+  if (!draftText && diagnostics.length === 0) return "Turn failed.";
+  if (!draftText) return diagnostics.join("\n\n");
+  return [draftText, ...diagnostics].join("\n\n");
+}
+
 function buildRetryStatusPayload(base: {
   threadId: string | number | null;
   agentId: string;
@@ -1235,7 +1312,34 @@ export async function processChat(
       ...(Array.isArray(options.additionalBlocks) ? options.additionalBlocks : []),
     ],
   });
-  const publishDraftFallback = (reason?: "timeout" | "error" | "empty-final" | "rate-limit", detail?: string) => {
+  const persistVisibleFailureOutcome = (
+    markerBase: Record<string, unknown>,
+    detail?: string,
+    options: { requireDraft?: boolean } = {},
+  ) => {
+    const draft = channel.getBuffer(turnId, "draft");
+    const draftText = typeof draft?.text === "string" ? draft.text.trim() : "";
+    if (options.requireDraft && !draftText) return false;
+
+    const lastAction = summarizeFailureActionFromStatus(channel.getAgentStatus(chatJid));
+    const marker = withFailureActionMetadata(markerBase, lastAction);
+    const title = readTrimmedString(marker?.title) || "Turn failed";
+    const markerDetail = readTrimmedString(marker?.detail);
+    const text = buildFailureVisibleText({
+      draftText,
+      title,
+      detail: detail || markerDetail,
+      actionSummary: lastAction?.summary,
+    });
+
+    return persistTerminalOutcome(text, marker);
+  };
+
+  const publishDraftFallback = (
+    reason?: "timeout" | "error" | "empty-final" | "rate-limit",
+    detail?: string,
+    options: { requireDraft?: boolean } = {},
+  ) => {
     // Draft fallback should publish the currently visible draft for whichever
     // turn failed to finalize, even if earlier turns in the same session were
     // already flushed via onTurnComplete(). For the very first turn we must
@@ -1243,19 +1347,17 @@ export async function processChat(
     // accidentally stolen by the original response.
     const draft = channel.getBuffer(turnId, "draft");
     const draftText = typeof draft?.text === "string" ? draft.text.trim() : "";
-    if (!draftText) return false;
 
-    const marker = reason === "timeout"
+    const markerBase = reason === "timeout"
       ? {
           type: "timeout_marker",
           timed_out: true,
           title: "Timed out",
-          tool_action_summary: typeof detail === "string" ? detail.slice(0, 500) : "",
-          draft_recovered: true,
+          draft_recovered: Boolean(draftText),
         }
       : reason === "rate-limit"
         ? buildErrorOutcomeMarker(detail || "rate limit", {
-            draftRecovered: true,
+            draftRecovered: Boolean(draftText),
             attemptsUsed: lastRecoveryMeta?.attemptsUsed,
             classifier: lastRecoveryMeta?.lastClassifier ?? null,
           })
@@ -1266,17 +1368,17 @@ export async function processChat(
               title: "No final reply produced",
               detail: lastRecoveryMeta?.lastClassifier ? `Last recovery classifier: ${lastRecoveryMeta.lastClassifier}.` : undefined,
               severity: "warning",
-              draftRecovered: true,
+              draftRecovered: Boolean(draftText),
               attemptsUsed: lastRecoveryMeta?.attemptsUsed,
               classifier: lastRecoveryMeta?.lastClassifier ?? null,
             })
           : buildErrorOutcomeMarker(detail || "Response ended with an error before finalization", {
-              draftRecovered: true,
+              draftRecovered: Boolean(draftText),
               attemptsUsed: lastRecoveryMeta?.attemptsUsed,
               classifier: lastRecoveryMeta?.lastClassifier ?? null,
             });
 
-    return persistTerminalOutcome(draftText, marker);
+    return persistVisibleFailureOutcome(markerBase, reason === "timeout" ? detail : undefined, options);
   };
 
   const finalizeSuccessfulRun = async () => {
@@ -1388,7 +1490,7 @@ export async function processChat(
       detail: "Turn finished after tool use — no closing reply was emitted.",
       severity: "info",
     });
-    const persisted = persistTerminalOutcome("", marker);
+    const persisted = persistVisibleFailureOutcome(marker);
     if (persisted) {
       await finalizeSuccessfulRun();
     } else {
@@ -1450,7 +1552,7 @@ export async function processChat(
       classifier: output.recovery?.lastClassifier ?? null,
       severity: rateLimited ? "warning" : "error",
     });
-    const persisted = persistTerminalOutcome("", marker);
+    const persisted = persistVisibleFailureOutcome(marker);
     if (persisted) {
       await finalizeSuccessfulRun();
     } else {
@@ -1493,7 +1595,7 @@ export async function processChat(
         isTerminalAgentReply: true,
         extraContentBlocks: buildRecoveryMarkerBlocks(output.recovery),
       })
-    : publishDraftFallback("empty-final");
+    : publishDraftFallback("empty-final", undefined, { requireDraft: true });
 
   if (!finalized && hasOutput) {
     // The agent produced output but terminal persistence failed.
@@ -1613,7 +1715,7 @@ export async function processChat(
         attemptsUsed: lastRecoveryMeta?.attemptsUsed,
         classifier: lastRecoveryMeta?.lastClassifier ?? null,
       });
-      const persisted = persistTerminalOutcome("", marker);
+      const persisted = persistVisibleFailureOutcome(marker);
       if (persisted) {
         await finalizeSuccessfulRun();
       } else {
@@ -1661,7 +1763,7 @@ export async function processChat(
       attemptsUsed: lastRecoveryMeta?.attemptsUsed,
       classifier: lastRecoveryMeta?.lastClassifier ?? null,
     });
-    const persisted = persistTerminalOutcome("", marker);
+    const persisted = persistVisibleFailureOutcome(marker);
     if (persisted) {
       await finalizeSuccessfulRun();
     } else {
