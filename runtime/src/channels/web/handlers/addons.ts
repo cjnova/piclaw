@@ -19,9 +19,11 @@ interface CatalogAddon {
   slug: string;
   name: string;
   version?: string;
+  type?: string;
   description?: string;
   path?: string;
   tags?: string[];
+  skills?: string[];
 }
 
 interface CatalogData {
@@ -78,11 +80,11 @@ export async function handleGetAddons(
       slug: addon.slug,
       name: addon.name,
       version: addon.version || null,
-      type: (addon as Record<string, unknown>).type || "extension",
+      type: addon.type || "extension",
       description: addon.description || "",
       path: addon.path || "",
       tags: addon.tags || [],
-      skills: Array.isArray((addon as Record<string, unknown>).skills) ? (addon as Record<string, unknown>).skills : [],
+      skills: addon.skills || [],
       installed: Boolean(installedVersion),
       installedVersion: installedVersion || null,
       hasUpdate: Boolean(hasUpdate),
