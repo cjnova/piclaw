@@ -253,3 +253,53 @@
     color: var(--text-secondary);
     font-size: 0.88em;
 }
+
+/* Settings gear in workspace explorer header */
+.workspace-settings {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 0;
+}
+
+.workspace-settings:hover {
+    color: var(--text-primary);
+    background: var(--bg-hover, rgba(128,128,128,0.12));
+}
+
+.workspace-settings svg {
+    width: 15px;
+    height: 15px;
+}
+
+/* Floating settings button when workspace is collapsed */
+.settings-floating-btn {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    z-index: 100;
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border-color, rgba(128,128,128,0.2));
+    border-radius: 8px;
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    transition: color 0.15s, background 0.15s;
+}
+
+.settings-floating-btn:hover {
+    color: var(--accent-color, #1d9bf0);
+    background: var(--bg-hover, var(--bg-secondary));
+}
