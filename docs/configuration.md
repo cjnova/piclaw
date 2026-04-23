@@ -511,7 +511,7 @@ and inspect git history immediately without an activation step.
 - Newly activated tools become available immediately to subsequent tool/model steps in the same turn; keep critical control tools in the default baseline or config-defined defaults.
 - The env var `PICLAW_ADDITIONAL_DEFAULT_TOOLS` (comma-separated) is equivalent to the config file option.
 - Tool activation is session-scoped: activated tools persist for the chat session but reset on session rotation or restart.
-- On-demand tools still have a small system prompt cost (~10–15 tokens each for their catalog entry). With bundled extensions like M365 (20+ tools), Proxmox, and Portainer, this adds up to several hundred tokens even when those tools are never activated. Currently there is no way to hide or unregister bundled extension tools entirely without renaming extension directories.
+- On-demand tools still have a small system prompt cost (~10–15 tokens each for their catalog entry). With bundled extensions like M365 (20+ tools), Proxmox, and Portainer, this adds up to several hundred tokens even when those tools are never activated.
 
 ### Workspace search / FTS roots
 
