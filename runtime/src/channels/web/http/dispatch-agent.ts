@@ -3,7 +3,8 @@
  */
 
 import type { WebChannelLike } from "../core/web-channel-contracts.js";
-import { getIdentityConfig } from "../../../core/config.js";
+import { getIdentityConfig, PICLAW_CONFIG_PATH } from "../../../core/config.js";
+import { readFileSync, existsSync } from "node:fs";
 import { THEME_PRESETS, THEME_LIST_COLOR_KEYS } from "../theming/ui-theme-data.js";
 import { TOOLSETS } from "../../../extensions/tool-activation.js";
 import { getToolCapability } from "../../../extensions/tool-capabilities.js";
@@ -216,8 +217,25 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
         }
         return { name: p.name, label: p.label, mode: p.mode, colors };
       });
+      // Read raw config for extra fields
+      let rawConfig: Record<string, unknown> = {};
+      try {
+        if (existsSync(PICLAW_CONFIG_PATH)) {
+          rawConfig = JSON.parse(readFileSync(PICLAW_CONFIG_PATH, "utf-8"));
+        }
+      } catch { /* ignore */ }
+      const assistantSection = typeof rawConfig.assistant === "object" && rawConfig.assistant ? rawConfig.assistant as Record<string, unknown> : rawConfig;
+      const userSection = typeof rawConfig.user === "object" && rawConfig.user ? rawConfig.user as Record<string, unknown> : rawConfig;
+
       return channel.json({
         assistantName: identity.assistantName || "PiClaw",
+        assistantAvatar: identity.assistantAvatar || "",
+        userName: identity.userName || "",
+        userAvatar: identity.userAvatar || "",
+        userAvatarBackground: identity.userAvatarBackground || "",
+        sessionAutoRotate: rawConfig.sessionAutoRotate ?? true,
+        sessionMaxSizeMb: rawConfig.sessionMaxSizeMb ?? 32,
+        webTerminalEnabled: rawConfig.webTerminalEnabled ?? true,
         themes,
         colorKeys: [...THEME_LIST_COLOR_KEYS],
         toolsets: TOOLSETS.map((ts) => ({

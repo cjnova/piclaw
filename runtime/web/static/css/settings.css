@@ -751,3 +751,52 @@
     .settings-swatch-cell { display: none; }
     .settings-addon-bundled { display: none; }
 }
+
+/* ── Addon cards ─────────────────────────────────────────────── */
+
+.settings-addon-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.settings-addon-card {
+    border: 1px solid var(--border-color, rgba(128,128,128,0.2));
+    border-radius: 8px;
+    padding: 10px 12px;
+    background: var(--bg-primary);
+    transition: border-color 0.15s;
+}
+
+.settings-addon-card:hover {
+    border-color: color-mix(in srgb, var(--accent-color) 40%, var(--border-color));
+}
+
+.settings-addon-card.installed {
+    border-left: 3px solid var(--accent-color, #1d9bf0);
+}
+
+.settings-addon-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+
+.settings-addon-card-header strong {
+    font-size: 0.9em;
+}
+
+.settings-addon-card-body {
+    font-size: 0.84em;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    line-height: 1.4;
+}
+
+.settings-addon-card-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
