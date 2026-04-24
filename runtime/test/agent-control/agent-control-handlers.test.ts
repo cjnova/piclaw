@@ -72,11 +72,11 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanupRotatedSessionArtifacts(process.cwd());
+  restoreEnv?.();
+  restoreEnv = null;
   restoreIdentityState?.();
   restoreIdentityState = null;
   restoreConfig();
-  restoreEnv?.();
-  restoreEnv = null;
 });
 
 const registry = createTestModelRegistry([DEFAULT_TEST_MODEL]);

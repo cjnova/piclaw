@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-24T22:32:56.314Z",
+  "generated_at": "2026-04-24T23:24:06.355Z",
   "package_dir": "/workspace/piclaw",
   "runtime_dir": "/workspace/piclaw/runtime",
   "stage_size": 25,
@@ -10,9 +10,9 @@
   ],
   "total_files": 490,
   "stages_completed": 20,
-  "elapsed_ms": 89132,
-  "max_peak_process_tree_rss_kb": 529968,
-  "max_peak_cgroup_memory_bytes": 969273344,
+  "elapsed_ms": 87131,
+  "max_peak_process_tree_rss_kb": 533904,
+  "max_peak_cgroup_memory_bytes": 981450752,
   "failed_stage_index": null,
   "exit_code": 0,
   "stages": [
@@ -46,12 +46,12 @@
         "test/agent-pool/mcp-adapter-bundled.test.ts",
         "test/agent-pool/orphan-tool-results.test.ts"
       ],
-      "elapsed_ms": 14022,
+      "elapsed_ms": 14016,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 261564,
-      "peak_cgroup_memory_bytes": 792690688,
-      "peak_process_tree_at_ms": 1003,
-      "peak_cgroup_at_ms": 1003,
+      "peak_process_tree_rss_kb": 262756,
+      "peak_cgroup_memory_bytes": 802676736,
+      "peak_process_tree_at_ms": 1002,
+      "peak_cgroup_at_ms": 1002,
       "samples": 15
     },
     {
@@ -84,12 +84,12 @@
         "test/channels/web/agent/agent-control-plane-service.test.ts",
         "test/channels/web/agent/agent-debug.test.ts"
       ],
-      "elapsed_ms": 26023,
+      "elapsed_ms": 26034,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 198584,
-      "peak_cgroup_memory_bytes": 729554944,
-      "peak_process_tree_at_ms": 6007,
-      "peak_cgroup_at_ms": 6007,
+      "peak_process_tree_rss_kb": 196568,
+      "peak_cgroup_memory_bytes": 735776768,
+      "peak_process_tree_at_ms": 6008,
+      "peak_cgroup_at_ms": 6008,
       "samples": 27
     },
     {
@@ -122,13 +122,13 @@
         "test/channels/web/core/web-channel-lifecycle-special-surface-service.test.ts",
         "test/channels/web/core/web-channel-runtime-public-surface-service.test.ts"
       ],
-      "elapsed_ms": 2003,
+      "elapsed_ms": 1001,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 190700,
-      "peak_cgroup_memory_bytes": 720764928,
-      "peak_process_tree_at_ms": 1002,
-      "peak_cgroup_at_ms": 1002,
-      "samples": 3
+      "peak_process_tree_rss_kb": 660,
+      "peak_cgroup_memory_bytes": 570638336,
+      "peak_process_tree_at_ms": 0,
+      "peak_cgroup_at_ms": 0,
+      "samples": 2
     },
     {
       "index": 4,
@@ -162,10 +162,10 @@
       ],
       "elapsed_ms": 1002,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 740,
-      "peak_cgroup_memory_bytes": 561381376,
-      "peak_process_tree_at_ms": 1,
-      "peak_cgroup_at_ms": 1,
+      "peak_process_tree_rss_kb": 448,
+      "peak_cgroup_memory_bytes": 570789888,
+      "peak_process_tree_at_ms": 0,
+      "peak_cgroup_at_ms": 1002,
       "samples": 2
     },
     {
@@ -200,10 +200,10 @@
       ],
       "elapsed_ms": 3003,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 185072,
-      "peak_cgroup_memory_bytes": 709132288,
-      "peak_process_tree_at_ms": 1001,
-      "peak_cgroup_at_ms": 1001,
+      "peak_process_tree_rss_kb": 187708,
+      "peak_cgroup_memory_bytes": 720683008,
+      "peak_process_tree_at_ms": 1000,
+      "peak_cgroup_at_ms": 1000,
       "samples": 4
     },
     {
@@ -236,12 +236,12 @@
         "test/channels/web/web-channel-runtime-followup-delegation.test.ts",
         "test/channels/web/web-channel-runtime-public-surface-delegation.test.ts"
       ],
-      "elapsed_ms": 4012,
+      "elapsed_ms": 4006,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 529968,
-      "peak_cgroup_memory_bytes": 969273344,
-      "peak_process_tree_at_ms": 2007,
-      "peak_cgroup_at_ms": 2007,
+      "peak_process_tree_rss_kb": 533904,
+      "peak_cgroup_memory_bytes": 981450752,
+      "peak_process_tree_at_ms": 2002,
+      "peak_cgroup_at_ms": 2002,
       "samples": 5
     },
     {
@@ -276,8 +276,8 @@
       ],
       "elapsed_ms": 3005,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 248884,
-      "peak_cgroup_memory_bytes": 779632640,
+      "peak_process_tree_rss_kb": 250040,
+      "peak_cgroup_memory_bytes": 788537344,
       "peak_process_tree_at_ms": 2003,
       "peak_cgroup_at_ms": 2003,
       "samples": 4
@@ -314,10 +314,10 @@
       ],
       "elapsed_ms": 3006,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 255400,
-      "peak_cgroup_memory_bytes": 758231040,
-      "peak_process_tree_at_ms": 1001,
-      "peak_cgroup_at_ms": 1001,
+      "peak_process_tree_rss_kb": 221320,
+      "peak_cgroup_memory_bytes": 725950464,
+      "peak_process_tree_at_ms": 2005,
+      "peak_cgroup_at_ms": 2005,
       "samples": 4
     },
     {
@@ -350,13 +350,13 @@
         "test/extensions/m365-auth-source-contract.test.ts",
         "test/extensions/m365-sync-pattern.test.ts"
       ],
-      "elapsed_ms": 3006,
+      "elapsed_ms": 2003,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 234376,
-      "peak_cgroup_memory_bytes": 765300736,
-      "peak_process_tree_at_ms": 2004,
-      "peak_cgroup_at_ms": 2004,
-      "samples": 4
+      "peak_process_tree_rss_kb": 248592,
+      "peak_cgroup_memory_bytes": 782880768,
+      "peak_process_tree_at_ms": 1001,
+      "peak_cgroup_at_ms": 1001,
+      "samples": 3
     },
     {
       "index": 10,
@@ -388,12 +388,12 @@
         "test/helpers-async.test.ts",
         "test/helpers.test.ts"
       ],
-      "elapsed_ms": 2002,
+      "elapsed_ms": 2004,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 170512,
-      "peak_cgroup_memory_bytes": 699981824,
-      "peak_process_tree_at_ms": 1001,
-      "peak_cgroup_at_ms": 1001,
+      "peak_process_tree_rss_kb": 182752,
+      "peak_cgroup_memory_bytes": 715886592,
+      "peak_process_tree_at_ms": 1003,
+      "peak_cgroup_at_ms": 1003,
       "samples": 3
     },
     {
@@ -426,12 +426,12 @@
         "test/runtime/message-loop.test.ts",
         "test/runtime/process-tracker.test.ts"
       ],
-      "elapsed_ms": 13020,
+      "elapsed_ms": 13018,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 240160,
-      "peak_cgroup_memory_bytes": 766459904,
-      "peak_process_tree_at_ms": 12018,
-      "peak_cgroup_at_ms": 12018,
+      "peak_process_tree_rss_kb": 244712,
+      "peak_cgroup_memory_bytes": 780378112,
+      "peak_process_tree_at_ms": 12015,
+      "peak_cgroup_at_ms": 12015,
       "samples": 14
     },
     {
@@ -466,8 +466,8 @@
       ],
       "elapsed_ms": 5007,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 369724,
-      "peak_cgroup_memory_bytes": 872718336,
+      "peak_process_tree_rss_kb": 358628,
+      "peak_cgroup_memory_bytes": 870330368,
       "peak_process_tree_at_ms": 4005,
       "peak_cgroup_at_ms": 4005,
       "samples": 6
@@ -504,10 +504,10 @@
       ],
       "elapsed_ms": 3005,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 212216,
-      "peak_cgroup_memory_bytes": 718495744,
-      "peak_process_tree_at_ms": 2003,
-      "peak_cgroup_at_ms": 2003,
+      "peak_process_tree_rss_kb": 179148,
+      "peak_cgroup_memory_bytes": 716959744,
+      "peak_process_tree_at_ms": 1000,
+      "peak_cgroup_at_ms": 1000,
       "samples": 4
     },
     {
@@ -540,10 +540,10 @@
         "test/web/app-chat-refresh-lifecycle.test.ts",
         "test/web/app-compose-reference-orchestration.test.ts"
       ],
-      "elapsed_ms": 1003,
+      "elapsed_ms": 1002,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 1208,
-      "peak_cgroup_memory_bytes": 562544640,
+      "peak_process_tree_rss_kb": 1784,
+      "peak_cgroup_memory_bytes": 571416576,
       "peak_process_tree_at_ms": 0,
       "peak_cgroup_at_ms": 0,
       "samples": 2
@@ -580,10 +580,10 @@
       ],
       "elapsed_ms": 1001,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 532,
-      "peak_cgroup_memory_bytes": 563015680,
+      "peak_process_tree_rss_kb": 648,
+      "peak_cgroup_memory_bytes": 571179008,
       "peak_process_tree_at_ms": 0,
-      "peak_cgroup_at_ms": 1001,
+      "peak_cgroup_at_ms": 0,
       "samples": 2
     },
     {
@@ -616,12 +616,12 @@
         "test/web/app-view-refresh-lifecycle.test.ts",
         "test/web/app-window-actions.test.ts"
       ],
-      "elapsed_ms": 1000,
+      "elapsed_ms": 1003,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 1192,
-      "peak_cgroup_memory_bytes": 563458048,
-      "peak_process_tree_at_ms": 0,
-      "peak_cgroup_at_ms": 0,
+      "peak_process_tree_rss_kb": 624,
+      "peak_cgroup_memory_bytes": 571199488,
+      "peak_process_tree_at_ms": 1,
+      "peak_cgroup_at_ms": 1,
       "samples": 2
     },
     {
@@ -654,12 +654,12 @@
         "test/web/login-safety.test.ts",
         "test/web/markdown-live-preview-gating.test.ts"
       ],
-      "elapsed_ms": 1003,
+      "elapsed_ms": 1002,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 948,
-      "peak_cgroup_memory_bytes": 562778112,
-      "peak_process_tree_at_ms": 1,
-      "peak_cgroup_at_ms": 1,
+      "peak_process_tree_rss_kb": 1064,
+      "peak_cgroup_memory_bytes": 571277312,
+      "peak_process_tree_at_ms": 0,
+      "peak_cgroup_at_ms": 0,
       "samples": 2
     },
     {
@@ -694,10 +694,10 @@
       ],
       "elapsed_ms": 1002,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 880,
-      "peak_cgroup_memory_bytes": 562704384,
+      "peak_process_tree_rss_kb": 572,
+      "peak_cgroup_memory_bytes": 571297792,
       "peak_process_tree_at_ms": 0,
-      "peak_cgroup_at_ms": 0,
+      "peak_cgroup_at_ms": 1001,
       "samples": 2
     },
     {
@@ -730,12 +730,12 @@
         "test/web/tool-git-context.test.ts",
         "test/web/use-notifications.test.ts"
       ],
-      "elapsed_ms": 1002,
+      "elapsed_ms": 1003,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 1108,
-      "peak_cgroup_memory_bytes": 563171328,
+      "peak_process_tree_rss_kb": 568,
+      "peak_cgroup_memory_bytes": 571645952,
       "peak_process_tree_at_ms": 0,
-      "peak_cgroup_at_ms": 0,
+      "peak_cgroup_at_ms": 1002,
       "samples": 2
     },
     {
@@ -758,12 +758,12 @@
         "test/workspace-index-process.test.ts",
         "test/workspace-search.test.ts"
       ],
-      "elapsed_ms": 1003,
+      "elapsed_ms": 1002,
       "exit_code": 0,
-      "peak_process_tree_rss_kb": 592,
-      "peak_cgroup_memory_bytes": 562540544,
-      "peak_process_tree_at_ms": 1,
-      "peak_cgroup_at_ms": 1,
+      "peak_process_tree_rss_kb": 1664,
+      "peak_cgroup_memory_bytes": 572055552,
+      "peak_process_tree_at_ms": 0,
+      "peak_cgroup_at_ms": 0,
       "samples": 2
     }
   ]

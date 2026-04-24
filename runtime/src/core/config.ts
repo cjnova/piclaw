@@ -158,6 +158,13 @@ const HAS_DEFAULT_TLS = existsSync(DEFAULT_TLS_CERT_PATH) && existsSync(DEFAULT_
 
 /** Absolute path to the JSON config file. */
 export const PICLAW_CONFIG_PATH = resolve(WORKSPACE_DIR, ".piclaw", "config.json");
+
+/** Resolve the config path at call time so tests can override PICLAW_WORKSPACE. */
+export function getConfigPath(): string {
+  const ws = process.env.PICLAW_WORKSPACE?.trim();
+  return ws ? resolve(ws, ".piclaw", "config.json") : PICLAW_CONFIG_PATH;
+}
+
 const piclawConfig = readJsonConfig(PICLAW_CONFIG_PATH);
 
 // Sub-objects inside the config file for namespaced settings.
@@ -560,7 +567,7 @@ export function getWebRuntimeConfig(): Readonly<WebRuntimeConfig> {
 /** Persist and apply the web terminal toggle so new requests see it immediately. */
 export function setWebTerminalEnabled(enabled: boolean): boolean {
   const nextEnabled = Boolean(enabled);
-  const config = readJsonConfig(PICLAW_CONFIG_PATH);
+  const config = readJsonConfig(getConfigPath());
   const web =
     config.web && typeof config.web === "object"
       ? { ...(config.web as Record<string, unknown>) }
@@ -572,7 +579,7 @@ export function setWebTerminalEnabled(enabled: boolean): boolean {
   web.terminalEnabled = nextEnabled;
   config.web = web;
   delete config.webTerminalEnabled;
-  writeJsonConfig(PICLAW_CONFIG_PATH, config);
+  writeJsonConfig(getConfigPath(), config);
 
   process.env.PICLAW_WEB_TERMINAL_ENABLED = nextEnabled ? "1" : "0";
   WEB_RUNTIME_CONFIG.terminalEnabled = nextEnabled;
@@ -710,7 +717,7 @@ export function setSessionStorageConfig(patch: { maxSizeMb?: number; autoRotate?
     ? patch.autoRotate
     : SESSION_STORAGE_CONFIG.autoRotate;
 
-  const config = readJsonConfig(PICLAW_CONFIG_PATH);
+  const config = readJsonConfig(getConfigPath());
   const clearRootKeys = [
     "sessionMaxSizeMb",
     "session_max_size_mb",
@@ -724,7 +731,7 @@ export function setSessionStorageConfig(patch: { maxSizeMb?: number; autoRotate?
   }
   config.sessionMaxSizeMb = nextMaxSizeMb;
   config.sessionAutoRotate = nextAutoRotate;
-  writeJsonConfig(PICLAW_CONFIG_PATH, config);
+  writeJsonConfig(getConfigPath(), config);
 
   process.env.PICLAW_SESSION_MAX_SIZE_MB = String(nextMaxSizeMb);
   process.env.PICLAW_SESSION_AUTO_ROTATE = nextAutoRotate ? "1" : "0";
@@ -755,7 +762,7 @@ export function setToolUseMessageBudget(budget: number): number {
   const nextBudget = Number.isFinite(budget)
     ? Math.min(512, Math.max(8, Math.round(Number(budget))))
     : TOOL_USE_MESSAGE_BUDGET;
-  const config = readJsonConfig(PICLAW_CONFIG_PATH);
+  const config = readJsonConfig(getConfigPath());
   const clearRootKeys = [
     "turnMaxToolUseMessages",
     "turn_max_tool_use_messages",
@@ -767,7 +774,7 @@ export function setToolUseMessageBudget(budget: number): number {
     delete config[key];
   }
   config.turnMaxToolUseMessages = nextBudget;
-  writeJsonConfig(PICLAW_CONFIG_PATH, config);
+  writeJsonConfig(getConfigPath(), config);
 
   process.env.PICLAW_TURN_MAX_TOOL_USE_MESSAGES = String(nextBudget);
   TOOL_USE_MESSAGE_BUDGET = nextBudget;
@@ -890,7 +897,7 @@ export function setUserAvatarBackground(background: string): void {
 export function setWebTotpSecret(secret: string): string {
   const next = (secret || "").trim();
 
-  const config = readJsonConfig(PICLAW_CONFIG_PATH);
+  const config = readJsonConfig(getConfigPath());
   const web =
     config.web && typeof config.web === "object"
       ? { ...(config.web as Record<string, unknown>) }
@@ -918,7 +925,7 @@ export function setWebTotpSecret(secret: string): string {
     delete config.web;
   }
 
-  writeJsonConfig(PICLAW_CONFIG_PATH, config);
+  writeJsonConfig(getConfigPath(), config);
 
   WEB_RUNTIME_CONFIG.totpSecret = next;
   if (next) {

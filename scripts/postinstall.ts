@@ -19,7 +19,7 @@ const LOG = "[postinstall]";
 const CM_SINGLETONS = ["@codemirror/commands", "@codemirror/state", "@codemirror/view", "@codemirror/language"];
 const nodeModules = resolve(ROOT, "node_modules");
 
-import { readdirSync, rmSync } from "node:fs";
+import { readdirSync, rmSync, existsSync } from "node:fs";
 
 function removeNestedCmDuplicates(pkg: string): number {
   // Find every nested node_modules/@codemirror/state (etc.) that is NOT the
