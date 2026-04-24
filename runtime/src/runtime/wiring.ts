@@ -5,9 +5,9 @@
 import { existsSync } from "fs";
 import { resolve } from "path";
 
-import { ensureDreamTask, hasOutstandingDreamConsolidation, runDreamAgentTurn } from "../dream.js";
+import { ensureDreamTask, runDreamAgentTurn } from "../dream.js";
 import { WORKSPACE_DIR } from "../core/config.js";
-import { AUTO_DREAM_DEFAULT_DAYS, MANUAL_DREAM_DEFAULT_DAYS } from "../dream-defaults.js";
+import { MANUAL_DREAM_DEFAULT_DAYS } from "../dream-defaults.js";
 import { startIpcWatcher, type IpcDeps } from "../ipc.js";
 import { startSchedulerLoop, type SchedulerDeps } from "../task-scheduler.js";
 import { createUuid } from "../utils/ids.js";
@@ -33,8 +33,7 @@ export function getDreamBootstrapFiles(): string[] {
 }
 
 export function workspaceNeedsDreamBootstrap(): boolean {
-  if (getDreamBootstrapFiles().some((path) => !existsSync(path))) return true;
-  return hasOutstandingDreamConsolidation(MANUAL_DREAM_DEFAULT_DAYS);
+  return getDreamBootstrapFiles().some((path) => !existsSync(path));
 }
 
 /** Minimal sender contract exposed to runtime worker wiring. */
@@ -109,9 +108,7 @@ export function startRuntimeWorkers(
       operation: "start_runtime_workers.queue_dream_bootstrap",
       chatJid,
       days: MANUAL_DREAM_DEFAULT_DAYS,
-      nightlyDefaultDays: AUTO_DREAM_DEFAULT_DAYS,
       missingFiles: getDreamBootstrapFiles().filter((path) => !existsSync(path)),
-      hasOutstandingConsolidation: hasOutstandingDreamConsolidation(MANUAL_DREAM_DEFAULT_DAYS),
     });
     queue.enqueueTask(taskId, async () => {
       const result = await runDreamAgentTurn({
