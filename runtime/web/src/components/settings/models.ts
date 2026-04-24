@@ -68,22 +68,26 @@ export function ModelsSection({ filter = '' }) {
     const filtered = lf ? options.filter(m => m.label.toLowerCase().includes(lf) || (m.provider || '').toLowerCase().includes(lf)) : options;
 
     return html`
-        <div class="settings-section">
-            <table class="settings-table settings-borderless">
-                <thead><tr><th style="width:32px"></th><th>Model</th><th>Provider</th><th>Context</th><th style="text-align:center">Reasoning</th></tr></thead>
-                <tbody>
-                    ${filtered.map(m => html`
-                        <tr class=${m.label === current ? 'settings-row-active' : ''}>
-                            <td><input type="radio" name="settings-model" checked=${m.label === current} disabled=${switching} onChange=${() => switchModel(m.label)} /></td>
-                            <td>${m.label}</td><td>${m.provider}</td>
-                            <td>${m.context_window ? (m.context_window / 1000).toFixed(0) + 'K' : '\u2014'}</td>
-                            <td style="text-align:center">${m.reasoning ? '\ud83e\udde0' : '\u2014'}</td>
-                        </tr>
-                    `)}
-                    ${filtered.length === 0 && html`<tr><td colspan="5" class="settings-empty">No models match "${filter}"</td></tr>`}
-                </tbody>
-            </table>
-            <${ThinkingSlider} thinkingLevel=${thinkingLevel} supportsThinking=${supportsThinking} provider=${provider} onSetLevel=${setLevel} disabled=${thinkingBusy || switching} />
+        <div class="settings-models-split">
+            <div class="settings-models-list">
+                <table class="settings-table settings-borderless">
+                    <thead><tr><th style="width:32px"></th><th>Model</th><th>Provider</th><th>Context</th><th style="text-align:center">Reasoning</th></tr></thead>
+                    <tbody>
+                        ${filtered.map(m => html`
+                            <tr class=${m.label === current ? 'settings-row-active' : ''}>
+                                <td><input type="radio" name="settings-model" checked=${m.label === current} disabled=${switching} onChange=${() => switchModel(m.label)} /></td>
+                                <td>${m.label}</td><td>${m.provider}</td>
+                                <td>${m.context_window ? (m.context_window / 1000).toFixed(0) + 'K' : '\u2014'}</td>
+                                <td style="text-align:center">${m.reasoning ? '\ud83e\udde0' : '\u2014'}</td>
+                            </tr>
+                        `)}
+                        ${filtered.length === 0 && html`<tr><td colspan="5" class="settings-empty">No models match "${filter}"</td></tr>`}
+                    </tbody>
+                </table>
+            </div>
+            <div class="settings-models-footer">
+                <${ThinkingSlider} thinkingLevel=${thinkingLevel} supportsThinking=${supportsThinking} provider=${provider} onSetLevel=${setLevel} disabled=${thinkingBusy || switching} />
+            </div>
         </div>
     `;
 }
