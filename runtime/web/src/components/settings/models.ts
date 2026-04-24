@@ -2,14 +2,13 @@
 import { html, useState, useEffect, useCallback } from '../../vendor/preact-htm.js';
 import { getAgentModels, sendAgentMessage } from '../../api.js';
 
-const ALL_THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 const EFFORT_DISPLAY = { off: 'off', minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'max' };
 const DEFAULT_DISPLAY = { off: 'off', minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh' };
 function isEffortProvider(p) { return typeof p === 'string' && p.toLowerCase() === 'anthropic'; }
 
-function ThinkingSlider({ thinkingLevel, supportsThinking, provider, onSetLevel, disabled }) {
+function ThinkingSlider({ thinkingLevel, supportsThinking, provider, availableLevels, onSetLevel, disabled }) {
     const displayMap = isEffortProvider(provider) ? EFFORT_DISPLAY : DEFAULT_DISPLAY;
-    const levels = ALL_THINKING_LEVELS;
+    const levels = (availableLevels && availableLevels.length > 1) ? availableLevels : ['off', 'minimal', 'low', 'medium', 'high'];
     const idx = Math.max(0, levels.indexOf(thinkingLevel ?? 'off'));
     if (!supportsThinking) return html`<div class="settings-thinking-slider"><label>Thinking level</label><p class="settings-hint" style="margin:4px 0 0">Current model does not support thinking.</p></div>`;
     return html`
@@ -31,6 +30,7 @@ export function ModelsSection({ filter = '' }) {
     const [switching, setSwitching] = useState(false);
     const [thinkingLevel, setThinkingLevel] = useState('off');
     const [supportsThinking, setSupportsThinking] = useState(false);
+    const [availableLevels, setAvailableLevels] = useState(['off']);
     const [thinkingBusy, setThinkingBusy] = useState(false);
 
     const loadModels = useCallback(async () => {
@@ -38,6 +38,9 @@ export function ModelsSection({ filter = '' }) {
         setModels(data);
         if (data.thinking_level) setThinkingLevel(data.thinking_level);
         setSupportsThinking(Boolean(data.supports_thinking));
+        if (Array.isArray(data.available_thinking_levels) && data.available_thinking_levels.length > 0) {
+            setAvailableLevels(data.available_thinking_levels);
+        }
         return data;
     }, []);
     useEffect(() => { loadModels().catch(() => setModels({ models: [], model_options: [] })); }, []);
@@ -55,6 +58,8 @@ export function ModelsSection({ filter = '' }) {
             const resp = await sendAgentMessage('default', `/thinking ${level}`, null, []);
             if (resp?.command?.thinking_level) setThinkingLevel(resp.command.thinking_level);
             setSupportsThinking(resp?.command?.supports_thinking !== false);
+            // Reload to get updated available levels after model/thinking change
+            await loadModels();
         } catch (e) { console.error('Failed to set thinking:', e); await loadModels().catch(() => {}); }
         finally { setThinkingBusy(false); }
     }, [thinkingBusy, loadModels]);
@@ -86,7 +91,13 @@ export function ModelsSection({ filter = '' }) {
                 </table>
             </div>
             <div class="settings-models-footer">
-                <${ThinkingSlider} thinkingLevel=${thinkingLevel} supportsThinking=${supportsThinking} provider=${provider} onSetLevel=${setLevel} disabled=${thinkingBusy || switching} />
+                <${ThinkingSlider}
+                    thinkingLevel=${thinkingLevel}
+                    supportsThinking=${supportsThinking}
+                    provider=${provider}
+                    availableLevels=${availableLevels}
+                    onSetLevel=${setLevel}
+                    disabled=${thinkingBusy || switching} />
             </div>
         </div>
     `;
