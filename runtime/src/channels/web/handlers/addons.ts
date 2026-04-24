@@ -1,11 +1,13 @@
 /**
  * web/handlers/addons.ts — Backend add-on management endpoints.
  *
- * GET  /agent/addons          — fetch catalog + local install state
- * POST /agent/addons/install  — install an addon by slug (download files via GitHub raw API)
- * POST /agent/addons/uninstall — uninstall an addon by slug
+ * GET  /agent/addons           — fetch catalog + local install state
+ * POST /agent/addons/install   — install an addon by slug (package-first via bun add)
+ * POST /agent/addons/uninstall — uninstall an addon by slug (package-first via bun remove)
  *
- * No git dependency — uses GitHub Contents API + raw file downloads.
+ * Preferred flow: install a real package spec from the catalog (npm/tarball/etc).
+ * Legacy fallback: download a package directory from GitHub raw URLs when a package
+ * spec is unavailable or package install fails.
  */
 
 import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "fs";
@@ -22,6 +24,12 @@ const GITHUB_API_BASE = "https://api.github.com";
 
 let catalogCache: { data: unknown; ts: number } | null = null;
 
+interface CatalogAddonInstall {
+  kind?: string;
+  spec?: string;
+  piSource?: string;
+}
+
 interface CatalogAddon {
   slug: string;
   name: string;
@@ -31,6 +39,7 @@ interface CatalogAddon {
   path?: string;
   tags?: string[];
   skills?: string[];
+  install?: CatalogAddonInstall;
 }
 
 interface CatalogData {
@@ -48,7 +57,11 @@ function ensureAddonsDir(): string {
   const pkgJson = join(addonsDir, "package.json");
   if (!existsSync(pkgJson)) {
     mkdirSync(addonsDir, { recursive: true });
-    writeFileSync(pkgJson, JSON.stringify({ private: true, dependencies: {} }));
+    writeFileSync(pkgJson, JSON.stringify({
+      name: "piclaw-local-addons",
+      private: true,
+      dependencies: {},
+    }, null, 2));
   }
   return addonsDir;
 }
@@ -83,7 +96,44 @@ async function fetchCatalog(catalogUrl?: string): Promise<CatalogData | null> {
   }
 }
 
-/** Fetch the file tree for an addon path via GitHub Contents API. */
+export function resolveAddonInstallSpec(addon: Pick<CatalogAddon, "name" | "version" | "install">): { kind: string; spec: string; piSource?: string } {
+  const explicitSpec = addon.install?.spec?.trim();
+  if (explicitSpec) {
+    return {
+      kind: addon.install?.kind?.trim() || "package",
+      spec: explicitSpec,
+      piSource: addon.install?.piSource?.trim() || undefined,
+    };
+  }
+  const version = addon.version?.trim();
+  return {
+    kind: "npm",
+    spec: version ? `${addon.name}@${version}` : addon.name,
+    piSource: version ? `npm:${addon.name}@${version}` : `npm:${addon.name}`,
+  };
+}
+
+async function runBunCommand(args: string[], cwd: string): Promise<{ ok: boolean; exitCode: number; stdout: string; stderr: string }> {
+  const proc = Bun.spawn(args, {
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, BUN_INSTALL: undefined },
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  return {
+    ok: exitCode === 0,
+    exitCode,
+    stdout: stdout.trim(),
+    stderr: stderr.trim(),
+  };
+}
+
+/** Fetch the file tree for an addon path via GitHub Contents API (legacy fallback). */
 async function fetchAddonFileTree(
   addonPath: string,
   owner = DEFAULT_REPO_OWNER,
@@ -103,7 +153,7 @@ async function fetchAddonFileTree(
     .map(entry => entry.path);
 }
 
-/** Download a single file from GitHub raw and write to disk. */
+/** Download a single file from GitHub raw and write to disk (legacy fallback). */
 async function downloadFile(
   repoPath: string,
   destPath: string,
@@ -145,6 +195,7 @@ export async function handleGetAddons(
       installed: Boolean(installedVersion),
       installedVersion: installedVersion || null,
       hasUpdate: Boolean(hasUpdate),
+      installKind: resolveAddonInstallSpec(addon).kind,
     };
   });
 
@@ -171,13 +222,31 @@ export async function handleInstallAddon(
   const addonsDir = ensureAddonsDir();
   const destDir = join(addonsDir, "node_modules", addon.name);
   const addonPath = addon.path || `addons/${slug}`;
+  const installPlan = resolveAddonInstallSpec(addon);
 
   try {
-    // Fetch the file tree from GitHub API
-    const files = await fetchAddonFileTree(addonPath);
-    if (files.length === 0) return json({ error: `No files found for ${addonPath}` }, 404);
+    const packageInstall = await runBunCommand(["bun", "add", "--force", installPlan.spec], addonsDir);
+    if (packageInstall.ok) {
+      const installedVersion = getInstalledVersion(addon.name);
+      return json({
+        ok: true,
+        slug,
+        name: addon.name,
+        installedVersion,
+        installKind: installPlan.kind,
+        installSpec: installPlan.spec,
+        message: `Installed ${addon.name}@${installedVersion || addon.version || "?"} via ${installPlan.kind}. Restart required to load.`,
+      });
+    }
 
-    // Clean destination and download all files
+    // Legacy fallback: download the package directory directly when the catalog
+    // still points at repo paths or the package has not been published yet.
+    const files = await fetchAddonFileTree(addonPath);
+    if (files.length === 0) {
+      const detail = packageInstall.stderr || packageInstall.stdout || `bun add exited ${packageInstall.exitCode}`;
+      return json({ error: `Install failed via ${installPlan.kind}: ${detail}` }, 500);
+    }
+
     if (existsSync(destDir)) rmSync(destDir, { recursive: true, force: true });
     mkdirSync(destDir, { recursive: true });
 
@@ -189,7 +258,6 @@ export async function handleInstallAddon(
       downloaded++;
     }
 
-    // Update package.json dependencies
     const pkgJsonPath = join(addonsDir, "package.json");
     try {
       const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
@@ -198,27 +266,23 @@ export async function handleInstallAddon(
       writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2));
     } catch {}
 
-    // Run bun install for any dependencies the addon declares
     const addonPkg = join(destDir, "package.json");
     if (existsSync(addonPkg)) {
-      try {
-        const proc = Bun.spawn(["bun", "install", "--force"], {
-          cwd: destDir,
-          stdout: "pipe", stderr: "pipe",
-          env: { ...process.env, BUN_INSTALL: undefined },
-        });
-        await proc.exited;
-      } catch {}
+      await runBunCommand(["bun", "install", "--force"], destDir);
     }
 
     const installedVersion = getInstalledVersion(addon.name);
+    const detail = packageInstall.stderr || packageInstall.stdout || `bun add exited ${packageInstall.exitCode}`;
     return json({
       ok: true,
       slug,
       name: addon.name,
       installedVersion,
       filesDownloaded: downloaded,
-      message: `Installed ${addon.name}@${installedVersion || "?"} (${downloaded} files). Restart required to load.`,
+      installKind: "legacy-download",
+      installSpec: installPlan.spec,
+      message: `Installed ${addon.name}@${installedVersion || "?"} via legacy package download fallback. Restart required to load.`,
+      warning: `Package install via ${installPlan.kind} failed first: ${detail}`,
     });
   } catch (e) {
     return json({ error: `Install failed: ${String(e)}` }, 500);
@@ -228,6 +292,7 @@ export async function handleInstallAddon(
 export async function handleUninstallAddon(
   req: Request,
   json: (body: unknown, status?: number) => Response,
+  url?: URL,
 ): Promise<Response> {
   let body: unknown;
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
@@ -236,7 +301,8 @@ export async function handleUninstallAddon(
   const slug = typeof rawSlug === "string" ? rawSlug.trim() : "";
   if (!slug) return json({ error: "Missing slug" }, 400);
 
-  const catalog = await fetchCatalog();
+  const catalogUrl = url?.searchParams.get("catalog_url") || undefined;
+  const catalog = await fetchCatalog(catalogUrl);
   const addon = catalog?.addons?.find((a) => a.slug === slug);
   if (!addon) return json({ error: `Add-on "${slug}" not found in catalog` }, 404);
 
@@ -244,17 +310,16 @@ export async function handleUninstallAddon(
   const destDir = join(addonsDir, "node_modules", addon.name);
 
   try {
-    if (existsSync(destDir)) {
+    const removal = await runBunCommand(["bun", "remove", addon.name], addonsDir);
+    if (!removal.ok && existsSync(destDir)) {
       rmSync(destDir, { recursive: true, force: true });
+      const pkgJsonPath = join(addonsDir, "package.json");
+      try {
+        const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+        if (pkg.dependencies) delete pkg.dependencies[addon.name];
+        writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2));
+      } catch {}
     }
-
-    // Update package.json
-    const pkgJsonPath = join(addonsDir, "package.json");
-    try {
-      const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-      if (pkg.dependencies) { delete pkg.dependencies[addon.name]; }
-      writeFileSync(pkgJsonPath, JSON.stringify(pkg, null, 2));
-    } catch {}
 
     return json({
       ok: true,

@@ -73,6 +73,7 @@ The hamburger menu button uses `position: fixed` and appears:
 - Shows version, description, tags, bundled skills
 - **Install** / **Upgrade** / **Remove** buttons with spinner progress in status bar
 - Fetches catalog from `rcarmo/piclaw-addons` (5-minute cache)
+- Package-first install flow: prefers `bun add <package-spec>` and falls back to direct package download only for legacy/unpublished entries
 
 ## Extension Settings Pane API
 
@@ -126,10 +127,12 @@ Panes self-register on import. The dialog discovers them via `getRegisteredSetti
 
 ### Install Flow
 
-1. Backend clones `rcarmo/piclaw-addons` to `.piclaw/tmp/addons-repo/` (or pulls if cached)
-2. Runs `bun add <local-path>` in `.pi/addons/` directory
-3. Checks installed version from `.pi/addons/node_modules/<name>/package.json`
-4. Returns success message; restart required to load the extension
+1. Backend fetches `catalog.json`
+2. Resolves the add-on's package install spec from the catalog (`install.spec`)
+3. Runs `bun add --force <spec>` in `.pi/addons/`
+4. Checks installed version from `.pi/addons/node_modules/<name>/package.json`
+5. Returns success message; restart required to load the extension
+6. If package install is unavailable or fails for a legacy/unpublished entry, backend falls back to direct package-directory download from GitHub and runs `bun install` inside that add-on directory
 
 ### Add-on Manifest Format
 
@@ -175,7 +178,12 @@ Machine-readable catalog at `rcarmo/piclaw-addons/catalog.json` (v2):
       "description": "...",
       "path": "addons/autoresearch",
       "tags": ["experiments"],
-      "skills": ["autoresearch-create"]
+      "skills": ["autoresearch-create"],
+      "install": {
+        "kind": "npm",
+        "spec": "piclaw-addon-autoresearch@0.1.0",
+        "piSource": "npm:piclaw-addon-autoresearch@0.1.0"
+      }
     }
   ]
 }

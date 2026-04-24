@@ -328,7 +328,7 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
   {
     method: "POST",
     path: "/agent/addons/uninstall",
-    handle: (channel, req) => handleUninstallAddon(req, (body, status) => channel.json(body, status)),
+    handle: (channel, req, url) => handleUninstallAddon(req, (body, status) => channel.json(body, status), url),
   },
 ];
 

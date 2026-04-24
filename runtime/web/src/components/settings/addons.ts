@@ -44,7 +44,7 @@ export function AddonsSection({ setStatus, filter = '' }) {
     const uninstallAddon = useCallback(async (slug) => {
         if (busy) return; setBusy(slug); setStatus?.(`Removing ${slug}\u2026`, 'info');
         try {
-            const resp = await fetch('/agent/addons/uninstall', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug }) });
+            const resp = await fetch(`/agent/addons/uninstall${devParams()}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug }) });
             const data = await resp.json();
             if (data.error) { setStatus?.(data.error, 'error'); return; }
             setStatus?.(data.message, 'success'); await loadAddons();
@@ -60,7 +60,7 @@ export function AddonsSection({ setStatus, filter = '' }) {
 
     return html`
         <div class="settings-section">
-            <p class="settings-hint">From <a href="https://github.com/rcarmo/piclaw-addons" target="_blank">rcarmo/piclaw-addons</a>. Restart required after install/uninstall.</p>
+            <p class="settings-hint">Catalog from <a href="https://github.com/rcarmo/piclaw-addons" target="_blank">rcarmo/piclaw-addons</a>. Package-first install via Bun; restart required after install/uninstall.</p>
             <div class="settings-addon-list">
                 ${filtered.map(a => {
                     const hasSkills = (a.skills || []).length > 0;
@@ -73,6 +73,7 @@ export function AddonsSection({ setStatus, filter = '' }) {
                             <strong>${a.slug}</strong>
                             <span class=${`settings-tag settings-tag-type ${typeCls}`}>${typeLabel}</span>
                             <span class="settings-addon-version">${a.installed ? (a.installedVersion || '?') : (a.version || '')}</span>
+                            ${a.installKind && html`<span class="settings-tag">${a.installKind}</span>`}
                             ${a.hasUpdate && html`<span class="settings-tag settings-tag-skill">\u2191 ${a.version}</span>`}
                         </div>
                         <div class="settings-addon-card-body">${a.description}</div>
