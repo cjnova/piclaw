@@ -81,7 +81,7 @@ test('web sessions load installed addon extensions from .pi/addons/node_modules'
 
 test('installed eml addon registers the attachment preview route', async () => {
   await withTempWorkspaceEnv('piclaw-installed-addon-eml-', {}, async (workspace) => {
-    const sourceDir = '/workspace/piclaw-addons/addons/eml-viewer';
+    const sourceDir = join(import.meta.dir, 'fixtures', 'eml-viewer');
     const addonDir = join(workspace.workspace, '.pi', 'addons', 'node_modules', 'piclaw-addon-eml-viewer');
     mkdirSync(addonDir, { recursive: true });
     writeFileSync(join(addonDir, 'package.json'), readFileSync(join(sourceDir, 'package.json'), 'utf8'));
