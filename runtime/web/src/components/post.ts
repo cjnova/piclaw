@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { html, useEffect, useMemo, useRef, useState } from '../vendor/preact-htm.js';
+import { html, useCallback, useEffect, useMemo, useRef, useState } from '../vendor/preact-htm.js';
 import { getMediaInfo, getMediaUrl, getThumbnailUrl, submitAdaptiveCardAction } from '../api.js';
 import { renderMarkdown, renderMermaidDiagrams, sanitizeUrl } from '../markdown.js';
 import { formatCount, formatFileSize, formatTime, formatTimestamp } from '../utils/format.js';
@@ -122,6 +122,38 @@ export function formatOutcomeChipTooltip(marker) {
     const parts = [title, detail];
     if (action) parts.push(`Last action: ${action}`);
     return parts.filter(Boolean).join(' — ') + recoveredDraft;
+}
+
+function OutcomePill({ marker }) {
+    const [expanded, setExpanded] = useState(false);
+    const toggle = useCallback((e) => { e.stopPropagation(); setExpanded(v => !v); }, []);
+
+    const title = typeof marker?.title === 'string' ? marker.title.trim() : '';
+    const detail = typeof marker?.detail === 'string' ? marker.detail.trim() : '';
+    const action = typeof marker?.tool_action_summary === 'string' ? marker.tool_action_summary.trim() : '';
+    const draftRecovered = marker?.draft_recovered;
+    const severity = String(marker?.severity || 'warning');
+    const label = action || title || String(marker?.label || marker?.kind || 'issue');
+
+    const hasDetail = Boolean(detail || (title && action));
+
+    return html`
+        <div class=${`post-outcome-pill post-outcome-pill-${severity}`}>
+            <div class="post-outcome-pill-header" onClick=${hasDetail ? toggle : undefined}>
+                ${hasDetail && html`
+                    <span class=${`post-outcome-pill-toggle${expanded ? ' expanded' : ''}`} aria-hidden="true">▶</span>
+                `}
+                <span class="post-outcome-pill-label">${label}</span>
+                ${draftRecovered && html`<span class="post-outcome-pill-badge">draft recovered</span>`}
+            </div>
+            ${expanded && hasDetail && html`
+                <div class="post-outcome-pill-detail">
+                    ${title && html`<div><strong>${title}</strong></div>`}
+                    ${detail && detail !== title && html`<div>${detail}</div>`}
+                </div>
+            `}
+        </div>
+    `;
 }
 
 function AttachmentPill({ attachment, onPreview }) {
@@ -1081,12 +1113,15 @@ export function Post({ post, onClick, onHashtagClick, onMessageRef, onScrollToMe
                     ${outcomeMarker && html`
                         <span
                             class=${`post-recovery-chip post-outcome-chip post-outcome-chip-${String(outcomeMarker.severity || 'warning')}${outcomeMarker.kind === 'tool_budget' ? ' post-outcome-chip-tool-budget' : ''}`}
-                            title=${formatOutcomeChipTooltip(outcomeMarker)}
+                            title=${String(outcomeMarker.label || outcomeMarker.kind || 'issue')}
                         >
                             ${String(outcomeMarker.label || outcomeMarker.kind || 'issue')}
                         </span>
                     `}
                 </div>
+                ${outcomeMarker && html`
+                    <${OutcomePill} marker=${outcomeMarker} />
+                `}
                 ${isHardTruncated && truncatedInfo && html`
                     <div class="post-content truncated">
                         <div class="truncated-title">Message too large to display.</div>
