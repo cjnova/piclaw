@@ -31,7 +31,9 @@ export function AddonsSection({ setStatus, filter = '' }) {
     useEffect(() => { loadAddons(); }, []);
 
     const installAddon = useCallback(async (slug) => {
-        if (busy) return; setBusy(slug); setStatus?.(`Installing ${slug}\u2026`, 'info');
+        if (busy) return;
+        setBusy({ slug, action: 'install' });
+        setStatus?.(`Installing ${slug}\u2026`, 'info');
         try {
             const resp = await fetch(`/agent/addons/install${devParams()}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug }) });
             const data = await resp.json();
@@ -42,7 +44,9 @@ export function AddonsSection({ setStatus, filter = '' }) {
     }, [busy, loadAddons, setStatus]);
 
     const uninstallAddon = useCallback(async (slug) => {
-        if (busy) return; setBusy(slug); setStatus?.(`Removing ${slug}\u2026`, 'info');
+        if (busy) return;
+        setBusy({ slug, action: 'remove' });
+        setStatus?.(`Removing ${slug}\u2026`, 'info');
         try {
             const resp = await fetch(`/agent/addons/uninstall${devParams()}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug }) });
             const data = await resp.json();
@@ -52,15 +56,49 @@ export function AddonsSection({ setStatus, filter = '' }) {
         finally { setBusy(null); }
     }, [busy, loadAddons, setStatus]);
 
+    const restartRuntime = useCallback(async () => {
+        if (busy) return;
+        setBusy({ slug: null, action: 'restart' });
+        setStatus?.('Restarting piclaw\u2026', 'info');
+        try {
+            const resp = await fetch('/agent/addons/restart', { method: 'POST' });
+            const data = await resp.json();
+            if (data.error) { setStatus?.(data.error, 'error'); setBusy(null); return; }
+            setStatus?.(data.message || 'Restarting piclaw\u2026', 'success');
+        } catch (e) {
+            setStatus?.(String(e.message || e), 'error');
+            setBusy(null);
+        }
+    }, [busy, setStatus]);
+
     if (loading) return html`<div class="settings-loading">Fetching add-ons\u2026</div>`;
     if (!addons) return html`<div class="settings-section"><p class="settings-hint">Could not load add-ons.</p></div>`;
 
     const lf = filter.toLowerCase();
     const filtered = lf ? addons.filter(a => a.slug.toLowerCase().includes(lf) || (a.description || '').toLowerCase().includes(lf) || (a.tags || []).some(t => t.toLowerCase().includes(lf))) : addons;
+    const busySlug = busy?.slug || null;
+    const busyLabel = busy
+        ? (busy.action === 'remove'
+            ? `Removing ${busy.slug}\u2026`
+            : busy.action === 'restart'
+                ? 'Restarting piclaw\u2026'
+                : `Installing ${busy.slug}\u2026`)
+        : '';
 
     return html`
-        <div class="settings-section">
-            <p class="settings-hint">Catalog from <a href="https://github.com/rcarmo/piclaw-addons" target="_blank">rcarmo/piclaw-addons</a>. Package-first install via Bun; restart required after install/uninstall.</p>
+        <div class=${`settings-section settings-addon-panel${busy ? ' busy' : ''}`} aria-busy=${busy ? 'true' : 'false'}>
+            <div class="settings-addon-toolbar">
+                <p class="settings-hint">Catalog from <a href="https://github.com/rcarmo/piclaw-addons" target="_blank">rcarmo/piclaw-addons</a>. Package-first install via Bun; restart required after install/uninstall.</p>
+                <button class="settings-addon-btn" type="button" disabled=${Boolean(busy)} onClick=${restartRuntime}>Restart piclaw</button>
+            </div>
+            ${busy && html`
+                <div class="settings-addon-panel-overlay" role="status" aria-live="polite" aria-label=${busyLabel}>
+                    <div class="settings-addon-panel-overlay-card">
+                        <div class="settings-spinner"></div>
+                        <span>${busyLabel}</span>
+                    </div>
+                </div>
+            `}
             <div class="settings-addon-list">
                 ${filtered.map(a => {
                     const hasSkills = (a.skills || []).length > 0;
@@ -81,10 +119,10 @@ export function AddonsSection({ setStatus, filter = '' }) {
                             <div class="settings-addon-tags">${(a.tags || []).map(t => html`<span class="settings-tag">${t}</span>`)}${(a.skills || []).map(s => html`<span class="settings-tag settings-tag-skill">\ud83d\udcdd ${s}</span>`)}</div>
                             <div class="settings-addon-actions">
                                 ${a.installed ? html`
-                                    ${a.hasUpdate && html`<button class="settings-addon-btn settings-addon-btn-upgrade" disabled=${busy === a.slug} onClick=${() => installAddon(a.slug)}>${busy === a.slug ? '\u2026' : '\u2b06 Upgrade'}</button>`}
-                                    <button class="settings-addon-btn settings-addon-btn-remove" disabled=${busy === a.slug} onClick=${() => uninstallAddon(a.slug)}>${busy === a.slug ? '\u2026' : '\ud83d\uddd1'}</button>
+                                    ${a.hasUpdate && html`<button class="settings-addon-btn settings-addon-btn-upgrade" disabled=${Boolean(busy)} onClick=${() => installAddon(a.slug)}>${busySlug === a.slug ? '\u2026' : '\u2b06 Upgrade'}</button>`}
+                                    <button class="settings-addon-btn settings-addon-btn-remove" disabled=${Boolean(busy)} onClick=${() => uninstallAddon(a.slug)}>${busySlug === a.slug ? '\u2026' : '\ud83d\uddd1'}</button>
                                 ` : html`
-                                    <button class="settings-addon-btn settings-addon-btn-install" disabled=${busy === a.slug} onClick=${() => installAddon(a.slug)}>${busy === a.slug ? '\u2026' : 'Install'}</button>
+                                    <button class="settings-addon-btn settings-addon-btn-install" disabled=${Boolean(busy)} onClick=${() => installAddon(a.slug)}>${busySlug === a.slug ? '\u2026' : 'Install'}</button>
                                 `}
                             </div>
                         </div>

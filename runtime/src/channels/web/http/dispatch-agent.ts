@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 import { THEME_PRESETS, THEME_LIST_COLOR_KEYS } from "../theming/ui-theme-data.js";
 import { TOOLSETS } from "../../../extensions/tool-activation.js";
 import { getToolCapability } from "../../../extensions/tool-capabilities.js";
-import { handleGetAddons, handleInstallAddon, handleUninstallAddon } from "../handlers/addons.js";
+import { handleGetAddons, handleInstallAddon, handleRestartAddonRuntime, handleUninstallAddon } from "../handlers/addons.js";
 import {
   handleWebPushPresence,
   handleWebPushSubscriptionDelete,
@@ -324,6 +324,11 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
     method: "POST",
     path: "/agent/addons/install",
     handle: (channel, req, url) => handleInstallAddon(req, (body, status) => channel.json(body, status), url),
+  },
+  {
+    method: "POST",
+    path: "/agent/addons/restart",
+    handle: (channel) => handleRestartAddonRuntime((body, status) => channel.json(body, status)),
   },
   {
     method: "POST",

@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test';
 
-import { resolveAddonInstallSpec } from '../../src/channels/web/handlers/addons.js';
+import {
+  handleRestartAddonRuntime,
+  resolveAddonInstallSpec,
+  WEB_RESTART_DELAY_MS,
+} from '../../src/channels/web/handlers/addons.js';
 
 test('resolveAddonInstallSpec prefers explicit catalog install spec', () => {
   expect(resolveAddonInstallSpec({
@@ -37,4 +41,28 @@ test('resolveAddonInstallSpec falls back to bare npm package name when version i
     spec: 'piclaw-addon-dev-tools',
     piSource: 'npm:piclaw-addon-dev-tools',
   });
+});
+
+test('handleRestartAddonRuntime returns success and schedules graceful restart', async () => {
+  let scheduled = 0;
+  (globalThis as any).__PICLAW_EXIT_SCHEDULER__ = () => {
+    scheduled += 1;
+  };
+
+  try {
+    const res = handleRestartAddonRuntime((body, status = 200) => new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      message: 'Restarting piclaw… The UI should reconnect automatically.',
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, WEB_RESTART_DELAY_MS + 30));
+    expect(scheduled).toBe(1);
+  } finally {
+    delete (globalThis as any).__PICLAW_EXIT_SCHEDULER__;
+  }
 });

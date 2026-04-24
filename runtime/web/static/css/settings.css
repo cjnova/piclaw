@@ -801,6 +801,67 @@
 
 /* ── Addon cards ─────────────────────────────────────────────── */
 
+.settings-addon-panel {
+    position: relative;
+}
+
+.settings-addon-panel.busy .settings-addon-list,
+.settings-addon-panel.busy .settings-hint {
+    opacity: 0.55;
+}
+
+.settings-addon-panel-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
+    backdrop-filter: blur(1px);
+}
+
+.settings-addon-panel-overlay-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-color, rgba(128,128,128,0.2));
+    border-radius: 999px;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    font-size: 0.9em;
+    font-weight: 600;
+}
+
+.settings-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid color-mix(in srgb, var(--accent-color, #1d9bf0) 22%, transparent);
+    border-top-color: var(--accent-color, #1d9bf0);
+    border-radius: 999px;
+    animation: settings-spin 0.75s linear infinite;
+}
+
+@keyframes settings-spin {
+    to { transform: rotate(360deg); }
+}
+
+.settings-addon-toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+
+.settings-addon-toolbar .settings-hint {
+    margin: 0;
+}
+
 .settings-addon-list {
     display: flex;
     flex-direction: column;

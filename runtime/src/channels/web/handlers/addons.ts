@@ -13,6 +13,7 @@
 import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { WORKSPACE_DIR } from "../../../core/config.js";
+import { requestGracefulShutdown } from "../../../runtime/shutdown-registry.js";
 
 const DEFAULT_CATALOG_URL = "https://raw.githubusercontent.com/rcarmo/piclaw-addons/main/catalog.json";
 const DEFAULT_REPO_OWNER = "rcarmo";
@@ -21,6 +22,7 @@ const DEFAULT_REPO_BRANCH = "main";
 const CATALOG_CACHE_MS = 5 * 60 * 1000;
 const GITHUB_RAW_BASE = "https://raw.githubusercontent.com";
 const GITHUB_API_BASE = "https://api.github.com";
+export const WEB_RESTART_DELAY_MS = 150;
 
 let catalogCache: { data: unknown; ts: number } | null = null;
 
@@ -287,6 +289,18 @@ export async function handleInstallAddon(
   } catch (e) {
     return json({ error: `Install failed: ${String(e)}` }, 500);
   }
+}
+
+export function handleRestartAddonRuntime(
+  json: (body: unknown, status?: number) => Response,
+): Response {
+  setTimeout(() => {
+    requestGracefulShutdown("web addons restart");
+  }, WEB_RESTART_DELAY_MS);
+  return json({
+    ok: true,
+    message: "Restarting piclaw… The UI should reconnect automatically.",
+  });
 }
 
 export async function handleUninstallAddon(
