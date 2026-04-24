@@ -30,8 +30,18 @@ import {
   resolveAddonAttachmentPreview,
 } from './addon-web-extensions.js';
 
+const EML_PREVIEW_TYPES = new Set([
+  "application/eml",
+  "message/rfc822",
+]);
+
 function normalize(value: unknown): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function isEmlFilename(filename: unknown): boolean {
+  const name = normalize(filename);
+  return !!name && name.endsWith(".eml");
 }
 
 function isPdfFilename(filename: unknown): boolean {
@@ -81,12 +91,13 @@ function isTextFilename(filename: unknown): boolean {
   );
 }
 
-export type AttachmentPreviewKind = "image" | "video" | "pdf" | "office" | "html" | "text" | "archive" | "unsupported" | string;
+export type AttachmentPreviewKind = "image" | "video" | "pdf" | "office" | "eml" | "html" | "text" | "archive" | "unsupported" | string;
 
 export function getAttachmentPreviewKind(contentType: unknown, filename?: unknown): AttachmentPreviewKind {
   const addonPreview = resolveAddonAttachmentPreview(contentType, filename);
   if (addonPreview?.id) return addonPreview.id;
   const normalized = normalize(contentType);
+  if (isEmlFilename(filename) || EML_PREVIEW_TYPES.has(normalized)) return "eml";
   if (isPdfFilename(filename) || normalized === "application/pdf") return "pdf";
   if (isOfficeFilename(filename) || OFFICE_PREVIEW_TYPES.has(normalized)) return "office";
   if (isArchiveFilename(filename) || ARCHIVE_PREVIEW_TYPES.has(normalized)) return "archive";
@@ -114,6 +125,8 @@ export function getAttachmentPreviewLabel(kind: AttachmentPreviewKind): string {
       return "PDF preview";
     case "office":
       return "Office viewer";
+    case "eml":
+      return "Email preview";
     case "html":
       return "HTML preview";
     case "text":

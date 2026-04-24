@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from 'bun:test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { AuthStorage, ModelRegistry, SettingsManager, getAgentDir } from '@mariozechner/pi-coding-agent';
 import '../helpers.js';
 import { withTempWorkspaceEnv } from '../helpers.js';
 import { createSessionInDir, getInstalledAddonExtensionPaths } from '../../src/agent-pool/session.ts';
-import { clearExtensionRoutes, getRegisteredRoutes } from '../../src/channels/web/http/extension-routes.js';
+import { clearExtensionRoutes, getRegisteredRoutes, handleExtensionRoutes } from '../../src/channels/web/http/extension-routes.js';
 
 afterEach(() => {
   clearExtensionRoutes();
@@ -73,6 +73,46 @@ test('web sessions load installed addon extensions from .pi/addons/node_modules'
       expect(getRegisteredRoutes()).toEqual([
         expect.objectContaining({ prefix: '/example-addon' }),
       ]);
+    } finally {
+      runtime.dispose?.();
+    }
+  });
+});
+
+test('installed eml addon registers the attachment preview route', async () => {
+  await withTempWorkspaceEnv('piclaw-installed-addon-eml-', {}, async (workspace) => {
+    const sourceDir = '/workspace/piclaw-addons/addons/eml-viewer';
+    const addonDir = join(workspace.workspace, '.pi', 'addons', 'node_modules', 'piclaw-addon-eml-viewer');
+    mkdirSync(addonDir, { recursive: true });
+    writeFileSync(join(addonDir, 'package.json'), readFileSync(join(sourceDir, 'package.json'), 'utf8'));
+    writeFileSync(join(addonDir, 'index.ts'), readFileSync(join(sourceDir, 'index.ts'), 'utf8'));
+
+    const authStorage = AuthStorage.create();
+    const modelRegistry = ModelRegistry.inMemory(authStorage);
+    const settingsManager = SettingsManager.create(workspace.workspace, getAgentDir());
+    const sessionDir = join(workspace.workspace, 'sessions', 'web-eml-test');
+
+    const runtime = await createSessionInDir(sessionDir, {
+      authStorage,
+      modelRegistry,
+      settingsManager,
+      tools: [],
+      chatJid: 'web:test',
+    });
+
+    try {
+      expect(getRegisteredRoutes()).toEqual([
+        expect.objectContaining({ prefix: '/eml-viewer' }),
+      ]);
+
+      const response = await handleExtensionRoutes(
+        new Request('http://localhost/eml-viewer/?media=1&name=sample.eml', { method: 'GET' }),
+        '/eml-viewer/',
+      );
+      expect(response).not.toBeNull();
+      expect(response?.status).toBe(200);
+      expect(response?.headers.get('Content-Type')).toContain('text/html');
+      expect(await response?.text()).toContain('Loading email');
     } finally {
       runtime.dispose?.();
     }

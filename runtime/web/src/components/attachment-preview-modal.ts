@@ -168,6 +168,10 @@ function buildFrameUrl(mediaId, filename, previewKind) {
         return `/office-viewer/?url=${encodeURIComponent(mediaUrl)}&name=${safeName}`;
     }
 
+    if (previewKind === 'eml') {
+        return `/eml-viewer/?media=${safeMediaId}&name=${safeName}`;
+    }
+
     return null;
 }
 
@@ -304,7 +308,7 @@ export function AttachmentPreviewModal({ mediaId, info, onClose }) {
                         ${!loading && !error && previewKind === 'html' && html`
                             <iframe class="attachment-preview-frame" srcdoc=${textContent || ''} sandbox=${HTML_ATTACHMENT_PREVIEW_SANDBOX} title=${filename}></iframe>
                         `}
-                        ${!loading && !error && (previewKind === 'pdf' || previewKind === 'office' || Boolean(addonPreview)) && frameUrl && html`
+                        ${!loading && !error && (previewKind === 'pdf' || previewKind === 'office' || previewKind === 'eml' || Boolean(addonPreview)) && frameUrl && html`
                             <iframe class="attachment-preview-frame" src=${frameUrl} title=${filename}></iframe>
                         `}
                         ${!loading && !error && addonPreviewNote && html`
