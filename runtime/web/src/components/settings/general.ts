@@ -1,5 +1,6 @@
 // @ts-nocheck
 import { html, useState, useEffect, useCallback, useMemo, useRef } from '../../vendor/preact-htm.js';
+import { METERS_EVENT_NAME, applyMetersEnabled, readStoredMetersEnabled } from '../../ui/meters.js';
 
 function resolveAvatarPreview(value) {
     const raw = String(value || '').trim();
@@ -75,9 +76,7 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
     const [webTerminalEnabled, setWebTerminalEnabled] = useState(true);
     const [toolUseBudget, setToolUseBudget] = useState(64);
     const [saving, setSaving] = useState(false);
-    const [metersEnabled, setMetersEnabled] = useState(() => {
-        try { const v = localStorage.getItem('piclaw_system_meters_enabled'); return v === null ? true : v === 'true'; } catch { return true; }
-    });
+    const [metersEnabled, setMetersEnabled] = useState(() => readStoredMetersEnabled(false));
     const savedSnapshotRef = useRef('');
 
     const applyIncoming = useCallback((data) => {
@@ -96,6 +95,14 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
     useEffect(() => {
         applyIncoming(settingsData || {});
     }, [settingsData, applyIncoming]);
+
+    useEffect(() => {
+        const onMetersChange = (event) => {
+            setMetersEnabled(Boolean(event?.detail?.enabled));
+        };
+        window.addEventListener(METERS_EVENT_NAME, onMetersChange);
+        return () => window.removeEventListener(METERS_EVENT_NAME, onMetersChange);
+    }, []);
 
     const currentSnapshot = useMemo(() => JSON.stringify(normalizeGeneralSettings({
         userName,
@@ -194,12 +201,14 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
             </div>
             <div class="settings-row">
                 <label>System meters</label>
-                <input type="checkbox" checked=${metersEnabled}
-                    onChange=${() => {
-                        const v = !metersEnabled; setMetersEnabled(v);
-                        try { localStorage.setItem('piclaw_system_meters_enabled', String(v)); } catch (e) { void e; }
-                        window.dispatchEvent(new CustomEvent('piclaw-meters-change', { detail: { enabled: v } }));
-                    }} />
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <input type="checkbox" checked=${metersEnabled}
+                        onChange=${() => {
+                            const next = applyMetersEnabled(!metersEnabled);
+                            setMetersEnabled(next);
+                        }} />
+                    <span class="settings-hint" style="margin:0">Same toggle as <code>/meters on|off|toggle</code>. Applies immediately in this browser.</span>
+                </div>
             </div>
             <div class="settings-row">
                 <label>Tool use budget</label>
@@ -212,7 +221,7 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
                     ${saving ? 'Saving…' : 'Save & apply'}
                 </button>
                 <span class="settings-hint" style="margin:0">
-                    Identity, session rotation, terminal availability, and tool budget apply to new turns immediately.
+                    Identity, session rotation, size caps, terminal availability, and tool budget apply to new turns immediately.
                 </span>
             </div>
         </div>
