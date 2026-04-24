@@ -124,6 +124,16 @@ See [docs/development.md](docs/development.md).
 | Other references | [Dream memory system](docs/dream-memory.md), [Web notification delivery policy](docs/web-notification-delivery-policy.md), [iOS PWA reference](docs/PWA.md), [WhatsApp](docs/whatsapp.md), [Cross-instance interop](docs/cross-instance-ipc.md), [Experimental M365 extension](docs/m365-experimental-extension.md), [Development](docs/development.md) |
 | Platform study | [Azure Functions feasibility study](docs/azure/azure-functions-feasibility-study-2026-04-17.md) |
 
+## Contributing
+
+Work items and bug reports are tracked in **[GitHub Issues](https://github.com/rcarmo/piclaw/issues)**.
+
+- [Open a work item or bug report](https://github.com/rcarmo/piclaw/issues/new?template=workitem.md)
+- [Ask a question](https://github.com/rcarmo/piclaw/issues/new?template=question.md)
+- [View the project board](https://github.com/users/rcarmo/projects/13)
+
+See [WORKITEMS.md](WORKITEMS.md) for board lane definitions and label taxonomy.
+
 ## Credits
 
 - [rcarmo/agentbox](https://github.com/rcarmo/agentbox)

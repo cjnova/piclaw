@@ -115,6 +115,7 @@ export interface HandleAppSseEventDependencies {
   removeStalledPost: () => void;
   setPosts: StateSetter<any[] | null>;
   preserveTimelineScrollTop: (mutate: () => void) => void;
+  openEditor?: (path: string, options?: { label?: string }) => void;
 }
 
 /**
@@ -186,6 +187,7 @@ export function handleAppSseEvent(
     removeStalledPost,
     setPosts,
     preserveTimelineScrollTop,
+    openEditor,
   } = deps;
 
   const { turnId, isCurrentChatEvent } = resolveSseEventRoutingContext(eventType, data, currentChatJid);
@@ -202,6 +204,19 @@ export function handleAppSseEvent(
 
   if (eventType === 'ui_meters') {
     applyMetersFromEvent(data);
+    return;
+  }
+
+  if (eventType === 'ui_open_tab') {
+    const path = typeof data?.path === 'string' ? data.path.trim() : '';
+    const label = typeof data?.label === 'string' ? data.label.trim() : undefined;
+    if (path === 'piclaw://settings') {
+      window.dispatchEvent(new CustomEvent('piclaw:open-settings'));
+      return;
+    }
+    if (path && typeof openEditor === 'function') {
+      openEditor(path, label ? { label } : undefined);
+    }
     return;
   }
 

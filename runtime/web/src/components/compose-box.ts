@@ -73,6 +73,7 @@ export const SLASH_COMMANDS = [
   { name: "/exit", description: "Exit the current piclaw process immediately (Supervisor will restart it)" },
   { name: "/login", description: "Login to an AI model provider (OAuth or API key)" },
   { name: "/logout", description: "Logout from an AI model provider" },
+  { name: "/settings", description: "Open the settings pane" },
   { name: "/commands", description: "List available commands" },
   { name: "/skill:", description: "Run a workspace skill (e.g. /skill:visual-artifact-generator, /skill:web-search)" },
 ];
@@ -1248,6 +1249,15 @@ export function ComposeBox({
     };
 
     const handleSubmit = async (overrideContent, submitMode, submitOptions = {}) => {
+        // Client-side interception for /settings — open dialog immediately
+        const rawInput = typeof overrideContent === 'string' ? overrideContent : content;
+        if (/^\/settings\s*$/i.test(rawInput.trim())) {
+            setContent('');
+            requestAnimationFrame(() => resizeTextarea());
+            window.dispatchEvent(new CustomEvent('piclaw:open-settings'));
+            return;
+        }
+
         const {
             includeMedia = true,
             includeFileRefs = true,

@@ -50,7 +50,7 @@ export async function handleState(session: AgentSession, _command: StateCommand)
   const lines = [
     "**Session state**",
     "",
-    "| | |",
+    "| Setting | Value |",
     "|---|---|",
     `| **Model** | ${modelLabel} |`,
     `| **Thinking** | ${session.thinkingLevel}${session.supportsThinking() ? "" : " (off)"} |`,
@@ -166,7 +166,7 @@ export async function handleContext(session: AgentSession, _command: ContextComm
     message: [
       "**Context usage**",
       "",
-      "| | |",
+      "| Metric | Value |",
       "|---|---|",
       `| **Used** | ${formatCompactNumber(usage.tokens)} / ${formatCompactNumber(usage.contextWindow)} tokens |`,
       `| **Fill** | ${bar} ${percent.toFixed(1)}% |`,

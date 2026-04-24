@@ -3,6 +3,14 @@
  */
 
 import type { WebChannelLike } from "../core/web-channel-contracts.js";
+import { getIdentityConfig, PICLAW_CONFIG_PATH } from "../../../core/config.js";
+import { readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { THEME_PRESETS, THEME_LIST_COLOR_KEYS } from "../theming/ui-theme-data.js";
+import { TOOLSETS } from "../../../extensions/tool-activation.js";
+import { getToolCapability } from "../../../extensions/tool-capabilities.js";
+import { handleGetAddons, handleInstallAddon, handleUninstallAddon } from "../handlers/addons.js";
 import {
   handleWebPushPresence,
   handleWebPushSubscriptionDelete,
@@ -195,6 +203,97 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
     method: "POST",
     path: "/agent/whitelist",
     handle: (channel) => channel.json({ error: "Not found" }, 404),
+  },
+  {
+    method: "GET",
+    path: "/agent/settings-data",
+    handle: (channel) => {
+      const identity = getIdentityConfig();
+      const themes = THEME_PRESETS.map((p) => {
+        const palette = p.mode === "dark" ? p.dark : p.mode === "light" ? p.light : (p.light || p.dark);
+        const colors: Record<string, string> = {};
+        if (palette) {
+          for (const key of THEME_LIST_COLOR_KEYS) {
+            if (palette[key]) colors[key] = palette[key];
+          }
+        }
+        return { name: p.name, label: p.label, mode: p.mode, colors };
+      });
+      // Read raw config for extra fields
+      let rawConfig: Record<string, unknown> = {};
+      try {
+        if (existsSync(PICLAW_CONFIG_PATH)) {
+          rawConfig = JSON.parse(readFileSync(PICLAW_CONFIG_PATH, "utf-8"));
+        }
+      } catch { /* ignore */ }
+      const assistantSection = typeof rawConfig.assistant === "object" && rawConfig.assistant ? rawConfig.assistant as Record<string, unknown> : rawConfig;
+      const userSection = typeof rawConfig.user === "object" && rawConfig.user ? rawConfig.user as Record<string, unknown> : rawConfig;
+
+      // Read auth state
+      const piAgentDir = process.env.PICLAW_PI_AGENT_DIR?.trim() || join(homedir(), ".pi", "agent");
+      let authProviders: Record<string, unknown> = {};
+      try {
+        const authPath = join(piAgentDir, "auth.json");
+        if (existsSync(authPath)) authProviders = JSON.parse(readFileSync(authPath, "utf-8"));
+      } catch { /* ignore */ }
+
+      const providerDefs = [
+        { id: "anthropic", name: "Anthropic", hasOAuth: true, hasApiKey: true, apiKeyHint: "sk-ant-..." },
+        { id: "github-copilot", name: "GitHub Copilot", hasOAuth: true, hasApiKey: false },
+        { id: "google-gemini-cli", name: "Google Gemini CLI", hasOAuth: true, hasApiKey: true, apiKeyHint: "AIza..." },
+        { id: "antigravity", name: "Antigravity (Google Cloud)", hasOAuth: true, hasApiKey: false },
+        { id: "openai-codex", name: "OpenAI Codex", hasOAuth: true, hasApiKey: false },
+        { id: "openai", name: "OpenAI", hasOAuth: false, hasApiKey: true, apiKeyHint: "sk-proj-..." },
+        { id: "opencode", name: "OpenCode", hasOAuth: false, hasApiKey: true, apiKeyHint: "OPENCODE_API_KEY" },
+        { id: "azure-openai", name: "Azure OpenAI", hasOAuth: false, hasApiKey: false, isCustom: true },
+        { id: "ollama", name: "Ollama", hasOAuth: false, hasApiKey: false, isCustom: true },
+        { id: "openai-compatible", name: "OpenAI-compatible", hasOAuth: false, hasApiKey: false, isCustom: true },
+      ];
+
+      const providers = providerDefs.map((p) => {
+        const auth = authProviders[p.id];
+        const configured = Boolean(auth);
+        const authType = typeof (auth as Record<string, unknown>)?.type === "string" ? (auth as Record<string, unknown>).type : null;
+        return { ...p, configured, authType };
+      });
+
+      return channel.json({
+        assistantName: identity.assistantName || "PiClaw",
+        assistantAvatar: identity.assistantAvatar || "",
+        userName: identity.userName || "",
+        userAvatar: identity.userAvatar || "",
+        userAvatarBackground: identity.userAvatarBackground || "",
+        sessionAutoRotate: rawConfig.sessionAutoRotate ?? true,
+        sessionMaxSizeMb: rawConfig.sessionMaxSizeMb ?? 32,
+        webTerminalEnabled: rawConfig.webTerminalEnabled ?? true,
+        providers,
+        themes,
+        colorKeys: [...THEME_LIST_COLOR_KEYS],
+        toolsets: TOOLSETS.map((ts) => ({
+          name: ts.name,
+          description: ts.description,
+          tools: ts.toolNames.map((tn) => {
+            const cap = getToolCapability(tn);
+            return { name: tn, kind: cap.kind, weight: cap.weight, summary: cap.summary };
+          }),
+        })),
+      });
+    },
+  },
+  {
+    method: "GET",
+    path: "/agent/addons",
+    handle: (channel) => handleGetAddons((body, status) => channel.json(body, status)),
+  },
+  {
+    method: "POST",
+    path: "/agent/addons/install",
+    handle: (channel, req) => handleInstallAddon(req, (body, status) => channel.json(body, status)),
+  },
+  {
+    method: "POST",
+    path: "/agent/addons/uninstall",
+    handle: (channel, req) => handleUninstallAddon(req, (body, status) => channel.json(body, status)),
   },
 ];
 

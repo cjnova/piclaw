@@ -249,28 +249,12 @@ function buildFailureVisibleText(options: {
   classifier?: string;
 }): string {
   const draftText = readTrimmedString(options.draftText);
+  // Diagnostic info is now carried in the outcome marker content block
+  // and rendered by the client as a collapsible pill. The visible text
+  // is just the draft output (or a minimal fallback).
+  if (draftText) return draftText;
   const title = readTrimmedString(options.title);
-  const detail = readTrimmedString(options.detail);
-  const actionSummary = readTrimmedString(options.actionSummary);
-  const attemptsUsed = Number.isFinite(options.attemptsUsed) && (options.attemptsUsed ?? 0) > 0 ? options.attemptsUsed : undefined;
-  const classifier = readTrimmedString(options.classifier);
-
-  const rows: Array<[string, string]> = [];
-  if (title) rows.push(["Issue", title]);
-  if (detail && detail !== title) rows.push(["Detail", detail]);
-  if (actionSummary) rows.push(["Last action", actionSummary]);
-  if (attemptsUsed) rows.push(["Recovery attempts", String(attemptsUsed)]);
-  if (classifier) rows.push(["Classifier", classifier.replace(/_/g, " ")]);
-
-  const useTable = rows.length >= 2;
-  const diagnosticText = useTable
-    ? ["| | |", "|---|---|", ...rows.map(([k, v]) => `| **${k}** | ${v} |`)].join("\n")
-    : rows.map(([k, v]) => `${k}: ${v}`).join("\n\n");
-
-  if (draftText && rows.length === 0) return draftText;
-  if (!draftText && rows.length === 0) return "Turn failed.";
-  if (!draftText) return diagnosticText;
-  return [draftText, "", diagnosticText].join("\n");
+  return title || "Turn failed.";
 }
 
 function buildRetryStatusPayload(base: {
@@ -478,6 +462,7 @@ export async function handleAgentMessage(
   const trimmed = content.trim();
   const themeCommand = handleUiThemeCommand(trimmed);
   const metersCommand = handleUiMetersCommand(trimmed);
+  const isSettingsCommand = /^\/settings\s*$/i.test(trimmed);
   const isStreaming = typeof channel.agentPool.isStreaming === "function"
     ? channel.agentPool.isStreaming(chatJid)
     : false;
@@ -587,7 +572,7 @@ export async function handleAgentMessage(
     contentPreview: content.slice(0, 60),
   });
 
-  if (!command && !themeCommand && !metersCommand && isStreaming && requestMode === "steer") {
+  if (!command && !themeCommand && !metersCommand && !isSettingsCommand && isStreaming && requestMode === "steer") {
     const steerResponse = await queueDeferredSteer(content, "compose");
     if (steerResponse) return steerResponse;
   }
@@ -654,6 +639,14 @@ export async function handleAgentMessage(
     return channel.json(
       { thread_id: null, command: metersCommand, ui_only: true },
       200
+    );
+  }
+
+  if (isSettingsCommand) {
+    channel.broadcastEvent("ui_open_tab", { chat_jid: chatJid, path: "piclaw://settings", label: "Settings" });
+    return channel.json(
+      { thread_id: null, command: { message: "Opening settings…" }, ui_only: true },
+      200,
     );
   }
 
