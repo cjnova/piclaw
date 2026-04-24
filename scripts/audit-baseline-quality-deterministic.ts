@@ -444,6 +444,8 @@ const groupDefinitions: GroupDefinition[] = [
           "post-recovery-chip.test.ts",
           "post-runtime-safety.test.ts",
           "addons-handler.test.ts",
+          "addon-web-extensions.test.ts",
+          "general-settings-handler.test.ts",
           "mindmap-history.test.ts",
           "mindmap-layout-utils.test.ts",
           "mindmap-pane-source.test.ts",
