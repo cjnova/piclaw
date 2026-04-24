@@ -17,6 +17,7 @@ import {
   drawioPaneExtension,
   mindmapPaneExtension,
   kanbanPaneExtension,
+  emlViewerExtension,
 } from '../panes/index.js';
 import { resolveOptionalApi } from './optional-api.js';
 
@@ -67,6 +68,7 @@ export function registerAppPaneExtensions(): void {
   paneRegistry.register(drawioPaneExtension);
   paneRegistry.register(mindmapPaneExtension);
   paneRegistry.register(kanbanPaneExtension);
+  paneRegistry.register(emlViewerExtension);
   paneRegistry.register(vncPaneExtension);
   preloadEditorBundle();
   paneRegistry.register(terminalPaneExtension);

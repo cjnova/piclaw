@@ -54,6 +54,9 @@ export function GeneralSection({ settingsData }) {
     const [sessionMaxSizeMb, setSessionMaxSizeMb] = useState(d.sessionMaxSizeMb ?? 32);
     const [webTerminalEnabled, setWebTerminalEnabled] = useState(d.webTerminalEnabled !== false);
     const [toolUseBudget, setToolUseBudget] = useState(d.toolUseBudget ?? 64);
+    const [metersEnabled, setMetersEnabled] = useState(() => {
+        try { const v = localStorage.getItem('piclaw_system_meters_enabled'); return v === null ? true : v === 'true'; } catch { return true; }
+    });
 
     // Auto-save agent name on change (debounced)
     const nameTimer = useRef(null);
@@ -93,6 +96,15 @@ export function GeneralSection({ settingsData }) {
             <div class="settings-row">
                 <label>Web terminal</label>
                 <input type="checkbox" checked=${webTerminalEnabled} onChange=${e => setWebTerminalEnabled(e.target.checked)} />
+            </div>
+            <div class="settings-row">
+                <label>System meters</label>
+                <input type="checkbox" checked=${metersEnabled}
+                    onChange=${() => {
+                        const v = !metersEnabled; setMetersEnabled(v);
+                        try { localStorage.setItem('piclaw_system_meters_enabled', String(v)); } catch {}
+                        window.dispatchEvent(new CustomEvent('piclaw-meters-change', { detail: { enabled: v } }));
+                    }} />
             </div>
             <div class="settings-row">
                 <label>Tool use budget</label>
