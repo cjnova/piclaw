@@ -1218,3 +1218,9 @@
     text-transform: uppercase;
     letter-spacing: 0.03em;
 }
+
+.settings-nav-separator {
+    height: 1px;
+    margin: 6px 16px;
+    background: var(--border-color, rgba(128,128,128,0.2));
+}

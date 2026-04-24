@@ -125,12 +125,17 @@ function SettingsDialogContent({ onClose }) {
                 </div>
                 <div class="settings-dialog-body">
                     <nav class="settings-nav">
-                        ${allSections.map(s => html`
-                            <button class=${`settings-nav-item ${s.id === activeSection ? 'active' : ''}`} onClick=${() => switchSection(s.id)}>
-                                <span class="settings-nav-icon">${s.icon}</span>
-                                <span class="settings-nav-label">${s.label}</span>
-                            </button>
-                        `)}
+                        ${allSections.map((s, i) => {
+                            const prevIsBuiltin = i > 0 && !allSections[i - 1].isExtension;
+                            const showSep = s.isExtension && prevIsBuiltin;
+                            return html`
+                                ${showSep && html`<div class="settings-nav-separator"></div>`}
+                                <button class=${`settings-nav-item ${s.id === activeSection ? 'active' : ''}`} onClick=${() => switchSection(s.id)}>
+                                    <span class="settings-nav-icon">${s.icon}</span>
+                                    <span class="settings-nav-label">${s.label}</span>
+                                </button>
+                            `;
+                        })}
                     </nav>
                     <main class="settings-content">
                         ${settingsData === null ? html`<div class="settings-loading">Loading\u2026</div>` : renderSection()}
