@@ -4,7 +4,7 @@ import { findPopupTypeaheadMatch, isPopupTypeaheadKey, resolvePopupTypeaheadMatc
 import { getAgentModels, sendAgentMessage, uploadMedia } from '../api.js';
 import { getLocalStorageItem, setLocalStorageItem } from '../utils/storage.js';
 import { buildMentionValue, filterMentionAgents, parseMentionAutocompleteQuery } from '../ui/agent-mentions.js';
-import { shouldOpenSessionSwitcherFromBlankCompose } from '../ui/compose-session-switcher.js';
+import { shouldOpenSessionSwitcherFromBlankCompose, shouldRouteComposeValueToSessionSwitcher } from '../ui/compose-session-switcher.js';
 import { formatBranchPickerLabel, formatCurrentBranchLabel } from '../ui/branch-lifecycle.js';
 import { buildComposeStatusDotClass } from '../ui/status-dot.js';
 import { getStatusElapsedLabel, isCompactionStatus, resolveStatusPanelTitle } from '../ui/status-duration.js';
@@ -969,6 +969,14 @@ export function ComposeBox({
     };
 
     const updateMentionAutocomplete = (value) => {
+        if (shouldRouteComposeValueToSessionSwitcher(value, {
+            searchMode,
+            showSessionSwitcherButton,
+        })) {
+            setShowMention(false);
+            setMentionMatches([]);
+            return;
+        }
         if (parseMentionAutocompleteQuery(value) == null) {
             setShowMention(false);
             setMentionMatches([]);
@@ -1901,6 +1909,22 @@ export function ComposeBox({
         setSubmitNotice(null);
         if (showSessionPopup) setShowSessionPopup(false);
         resizeTextarea(e.target);
+        if (shouldRouteComposeValueToSessionSwitcher(value, {
+            searchMode,
+            showSessionSwitcherButton,
+        })) {
+            updateValue('');
+            requestAnimationFrame(() => {
+                const textarea = textareaRef.current;
+                if (!textarea) return;
+                textarea.value = '';
+                textarea.selectionStart = 0;
+                textarea.selectionEnd = 0;
+                textarea.focus();
+            });
+            openSessionPopup();
+            return;
+        }
         updateValue(value);
     };
 
