@@ -191,9 +191,43 @@ export function TimelineQuickActions({
     }), [activeChatAgents, query, settings, slashCommands, workspaceCommands]);
 
     useEffect(() => {
-        if (highlightIndex < items.length) return;
-        setHighlightIndex(items.length > 0 ? 0 : -1);
-    }, [highlightIndex, items.length]);
+        if (items.length === 0) {
+            setHighlightIndex(-1);
+            return;
+        }
+        if (!query.trim()) {
+            setHighlightIndex(0);
+            return;
+        }
+        const normalizedQuery = query.toLowerCase().replace(/^[@/]+/, '').trim();
+        if (!normalizedQuery) {
+            setHighlightIndex(0);
+            return;
+        }
+        let bestIndex = 0;
+        let bestScore = 0;
+        for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            const title = (item.title || '').toLowerCase().replace(/^[@/]+/, '');
+            if (title === normalizedQuery) {
+                bestIndex = i;
+                break;
+            }
+            let score = 0;
+            if (title.startsWith(normalizedQuery)) {
+                score = 3;
+            } else if (title.includes(normalizedQuery)) {
+                score = 2;
+            } else if ((item.subtitle || '').toLowerCase().includes(normalizedQuery)) {
+                score = 1;
+            }
+            if (score > bestScore) {
+                bestScore = score;
+                bestIndex = i;
+            }
+        }
+        setHighlightIndex(bestIndex);
+    }, [items, query]);
 
     useEffect(() => {
         if (!open) return;
