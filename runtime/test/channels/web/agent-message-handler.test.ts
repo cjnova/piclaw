@@ -142,7 +142,7 @@ describe("web agent message handler", () => {
     expect(queuedFollowups).toHaveLength(0);
   });
 
-  test("fast-paths /abort while a run is active without writing a timeline command message", async () => {
+  test("handles /abort as a UI-only hard stop without writing a timeline command message", async () => {
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
     const applyCalls: Array<{ chatJid: string; command: { type: string; raw: string } }> = [];
     let storeMessageCalls = 0;
@@ -180,12 +180,12 @@ describe("web agent message handler", () => {
     });
 
     const response = await handleAgentMessage(channel, req, "/agent/default/message", "web:default", "default");
-    expect(response.status).toBe(202);
+    expect(response.status).toBe(200);
 
     const body = await response.json();
     expect(body.ui_only).toBe(true);
     expect(body.immediate).toBe(true);
-    expect(body.command?.message).toBe("Aborting current response.");
+    expect(body.command?.message).toBe("Aborted current response.");
     expect(applyCalls).toEqual([{ chatJid: "web:default", command: { type: "abort", raw: "/abort" } }]);
     expect(storeMessageCalls).toBe(0);
     expect(broadcasts.some((entry) => entry.event === "new_post")).toBe(false);

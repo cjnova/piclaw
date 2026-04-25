@@ -655,28 +655,14 @@ export async function handleAgentMessage(
   }
 
   if (command?.type === "abort" && !hasAttachments) {
-    if (isActive) {
-      void channel.agentPool.applyControlCommand(chatJid, command).catch((error: unknown) => {
-        log.warn("Fast-path /abort failed", {
-          operation: "handle_agent_message.fast_abort",
-          chatJid,
-          err: error,
-        });
-      });
-      return channel.json(
-        {
-          thread_id: null,
-          command: { status: "success", message: "Aborting current response." },
-          ui_only: true,
-          immediate: true,
-        },
-        202,
-      );
-    }
-
     const result = await channel.agentPool.applyControlCommand(chatJid, command);
     return channel.json(
-      { thread_id: null, command: result, ui_only: true },
+      {
+        thread_id: null,
+        command: result,
+        ui_only: true,
+        immediate: isActive,
+      },
       200,
     );
   }
