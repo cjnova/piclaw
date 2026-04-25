@@ -2240,6 +2240,26 @@ export function ComposeBox({
                                             >
                                                 ${label}
                                             </button>
+                                            <button
+                                                type="button"
+                                                class="compose-model-popup-item-popout"
+                                                title=${`Open @${chat.agent_name} in new window`}
+                                                aria-label=${`Open @${chat.agent_name} in new window`}
+                                                onClick=${(e) => {
+                                                    e.stopPropagation();
+                                                    setShowSessionPopup(false);
+                                                    const url = new URL(window.location.href);
+                                                    url.searchParams.set('chat_jid', chat.chat_jid);
+                                                    url.searchParams.set('chat_only', '1');
+                                                    window.open(url.toString(), '_blank');
+                                                }}
+                                            >
+                                                <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                                    <rect x="2.25" y="2.25" width="8.5" height="8.5" rx="1.5"/>
+                                                    <path d="M8.5 2.25h5.25v5.25"/>
+                                                    <path d="M13.75 2.25 7.75 8.25"/>
+                                                </svg>
+                                            </button>
                                             ${(canPrune || canPurgeArchived) && html`
                                                 <button
                                                     type="button"

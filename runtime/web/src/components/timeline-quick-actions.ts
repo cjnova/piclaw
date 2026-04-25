@@ -216,9 +216,17 @@ export function TimelineQuickActions({
             if (event.key === 'Enter' && items[highlightIndex]) {
                 event.preventDefault();
                 const current = items[highlightIndex];
+                const popOut = event.altKey;
                 if (current) {
                     if (current.kind === 'agent' && current.chatJid) {
-                        onSwitchChat?.(current.chatJid);
+                        if (popOut) {
+                            const url = new URL(window.location.href);
+                            url.searchParams.set('chat_jid', current.chatJid);
+                            url.searchParams.set('chat_only', '1');
+                            window.open(url.toString(), '_blank');
+                        } else {
+                            onSwitchChat?.(current.chatJid);
+                        }
                     } else if (current.kind === 'workspace' && current.commandId) {
                         if (current.commandId === 'toggle-workspace' || current.commandId === 'open-explorer') onToggleWorkspace?.();
                         if (current.commandId === 'toggle-chat-only') toggleChatOnlyMode(chatOnlyMode);
@@ -275,21 +283,24 @@ export function TimelineQuickActions({
             <div class="timeline-quick-actions-overlay">
                 <div class="timeline-quick-actions" ref=${rootRef}>
                     <div class="timeline-quick-actions-header">
-                        <input
-                            ref=${inputRef}
-                            class="timeline-quick-actions-input"
-                            type="text"
-                            value=${query}
-                            placeholder="Type to jump to an agent, workspace action, or slash command…"
-                            onInput=${(event) => {
-                                setQuery(event.currentTarget?.value || '');
-                                setHighlightIndex(0);
-                            }}
-                        />
-                        <div class="timeline-quick-actions-hints" aria-hidden="true">
-                            ${renderKeyboardHint('Move', '↑↓')}
-                            ${renderKeyboardHint('Select', '↵')}
-                            ${renderKeyboardHint('Close', 'Esc')}
+                        <div class="timeline-quick-actions-search-row">
+                            <input
+                                ref=${inputRef}
+                                class="timeline-quick-actions-input"
+                                type="text"
+                                value=${query}
+                                placeholder="Type to jump to an agent, workspace action, or slash command…"
+                                onInput=${(event) => {
+                                    setQuery(event.currentTarget?.value || '');
+                                    setHighlightIndex(0);
+                                }}
+                            />
+                            <div class="timeline-quick-actions-hints" aria-hidden="true">
+                                ${renderKeyboardHint('Move', '↑↓')}
+                                ${renderKeyboardHint('Select', '↵')}
+                                ${renderKeyboardHint('Pop out', 'Alt+↵')}
+                                ${renderKeyboardHint('Close', 'Esc')}
+                            </div>
                         </div>
                     </div>
                     <div class="timeline-quick-actions-list">
