@@ -1378,6 +1378,16 @@
     color: var(--text-secondary);
 }
 
+.send-btn.queue-mode {
+    color: var(--accent-color);
+}
+
+.send-btn.queue-mode:hover,
+.send-btn.queue-mode:focus-visible {
+    color: var(--accent-color);
+    background-color: var(--accent-soft, rgba(29, 155, 240, 0.1));
+}
+
 .send-btn.abort-mode {
     color: var(--danger-color);
 }

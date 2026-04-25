@@ -117,24 +117,14 @@ export function resolveUiOnlyCommandNotice(commandText, response) {
     return null;
 }
 
-export function resolveComposeSubmitButtonState(isAgentActive, canSend, isCompacting = false) {
-    if (isAgentActive && isCompacting) {
-        return {
-            mode: 'compacting',
-            className: 'icon-btn send-btn abort-mode compacting-mode',
-            title: 'Compacting context — Stop response',
-            ariaLabel: 'Compacting context — Stop response',
-            disabled: false,
-        };
-    }
-
+export function resolveComposeSubmitButtonState(isAgentActive, canSend, _isCompacting = false) {
     if (isAgentActive) {
         return {
-            mode: 'abort',
-            className: 'icon-btn send-btn abort-mode',
-            title: 'Stop response',
-            ariaLabel: 'Stop response',
-            disabled: false,
+            mode: 'queue',
+            className: 'icon-btn send-btn queue-mode',
+            title: 'Queue follow-up (Enter)',
+            ariaLabel: 'Queue follow-up message',
+            disabled: !canSend,
         };
     }
 
@@ -144,6 +134,26 @@ export function resolveComposeSubmitButtonState(isAgentActive, canSend, isCompac
         title: 'Send (Enter)',
         ariaLabel: 'Send message',
         disabled: !canSend,
+    };
+}
+
+export function resolveComposeAbortButtonState(isAgentActive, isCompacting = false) {
+    if (!isAgentActive) return null;
+    if (isCompacting) {
+        return {
+            mode: 'compacting',
+            className: 'icon-btn send-btn abort-mode compacting-mode',
+            title: 'Compacting context — Stop response',
+            ariaLabel: 'Compacting context — Stop response',
+            disabled: false,
+        };
+    }
+    return {
+        mode: 'abort',
+        className: 'icon-btn send-btn abort-mode',
+        title: 'Stop response',
+        ariaLabel: 'Stop response',
+        disabled: false,
     };
 }
 
@@ -707,6 +717,7 @@ export function ComposeBox({
     isRenameSessionInProgress = false,
     onCreateSession,
     onDeleteSession,
+    onPurgeArchivedSession,
     onRestoreSession,
     showQueueStack = true,
     statusNotice = null,
@@ -855,6 +866,7 @@ export function ComposeBox({
     const connectionStatusLabel = connectionStatusPresentation.label;
     const connectionStatusTitle = connectionStatusPresentation.title;
     const submitButtonState = resolveComposeSubmitButtonState(isAgentActive, canSend, statusNoticeIsCompaction);
+    const abortButtonState = resolveComposeAbortButtonState(isAgentActive, statusNoticeIsCompaction);
 
     const mentionAgents = (Array.isArray(activeChatAgents) ? activeChatAgents : [])
         .filter((chat) => !chat?.archived_at);
@@ -890,7 +902,8 @@ export function ComposeBox({
     const canRenameSession = !searchMode && typeof onRenameSession === 'function' && !renameInProgress;
     const canCreateSession = !searchMode && typeof onCreateSession === 'function';
     const canDeleteSession = !searchMode && typeof onDeleteSession === 'function' && !isCurrentDefaultRootSession;
-    const showSessionSwitcherButton = !searchMode && (canSwitchSession || canRestoreSession || canRenameSession || canCreateSession || canDeleteSession);
+    const canPurgeArchivedSession = !searchMode && typeof onPurgeArchivedSession === 'function';
+    const showSessionSwitcherButton = !searchMode && (canSwitchSession || canRestoreSession || canRenameSession || canCreateSession || canDeleteSession || canPurgeArchivedSession);
     const modelPickerState = resolveComposeModelPickerState(activeModel, agentModelsPayload);
     const showModelPickerHint = modelPickerState.showPicker;
     const modelHintLabel = modelPickerState.label;
@@ -2206,6 +2219,7 @@ export function ComposeBox({
                                     const archived = Boolean(chat.archived_at);
                                     const isRoot = chat.chat_jid === (chat.root_chat_jid || chat.chat_jid);
                                     const canPrune = !isRoot && !chat.is_active && !archived && typeof onDeleteSession === 'function';
+                                    const canPurgeArchived = archived && !isRoot && canPurgeArchivedSession;
                                     const label = formatBranchPickerLabel(chat, { currentChatJid });
                                     return html`
                                         <div key=${chat.chat_jid} class=${`compose-model-popup-item-row${archived ? ' archived' : ''}`}>
@@ -2225,15 +2239,19 @@ export function ComposeBox({
                                             >
                                                 ${label}
                                             </button>
-                                            ${canPrune && html`
+                                            ${(canPrune || canPurgeArchived) && html`
                                                 <button
                                                     type="button"
                                                     class="compose-model-popup-item-delete"
-                                                    title="Delete this branch"
-                                                    aria-label=${`Delete @${chat.agent_name}`}
+                                                    title=${canPurgeArchived ? 'Permanently delete this archived branch' : 'Delete this branch'}
+                                                    aria-label=${canPurgeArchived ? `Permanently delete @${chat.agent_name}` : `Delete @${chat.agent_name}`}
                                                     onClick=${(e) => {
                                                         e.stopPropagation();
                                                         setShowSessionPopup(false);
+                                                        if (canPurgeArchived) {
+                                                            void onPurgeArchivedSession?.(chat.chat_jid);
+                                                            return;
+                                                        }
                                                         void onDeleteSession(chat.chat_jid);
                                                     }}
                                                 >
@@ -2444,29 +2462,39 @@ export function ComposeBox({
                                     class=${submitButtonState.className}
                                     type="button"
                                     onClick=${() => {
-                                        if (isComposeSubmitAbortMode(submitButtonState.mode)) {
-                                            void handleSubmit('/abort', 'steer');
-                                            return;
-                                        }
                                         void handleSubmit();
                                     }}
                                     disabled=${submitButtonState.disabled}
                                     title=${submitButtonState.title}
                                     aria-label=${submitButtonState.ariaLabel}
                                 >
-                                    ${submitButtonState.mode === 'compacting'
-                                        ? html`
-                                            <span class="compose-submit-spinner" aria-hidden="true">
-                                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                                    <circle class="compose-submit-spinner-ring" cx="12" cy="12" r="10.5" stroke-width="2.25" stroke-linecap="round"></circle>
-                                                    <rect class="compose-submit-spinner-stop" x="6" y="6" width="12" height="12" rx="0" fill="currentColor"></rect>
-                                                </svg>
-                                            </span>
-                                        `
-                                        : submitButtonState.mode === 'abort'
-                                            ? html`<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2.5"/></svg>`
-                                            : html`<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`}
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                                 </button>
+                                ${abortButtonState && html`
+                                    <button 
+                                        class=${abortButtonState.className}
+                                        type="button"
+                                        onClick=${() => {
+                                            if (isComposeSubmitAbortMode(abortButtonState.mode)) {
+                                                void handleSubmit('/abort', 'steer');
+                                            }
+                                        }}
+                                        disabled=${abortButtonState.disabled}
+                                        title=${abortButtonState.title}
+                                        aria-label=${abortButtonState.ariaLabel}
+                                    >
+                                        ${abortButtonState.mode === 'compacting'
+                                            ? html`
+                                                <span class="compose-submit-spinner" aria-hidden="true">
+                                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                                        <circle class="compose-submit-spinner-ring" cx="12" cy="12" r="10.5" stroke-width="2.25" stroke-linecap="round"></circle>
+                                                        <rect class="compose-submit-spinner-stop" x="6" y="6" width="12" height="12" rx="0" fill="currentColor"></rect>
+                                                    </svg>
+                                                </span>
+                                            `
+                                            : html`<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2.5"/></svg>`}
+                                    </button>
+                                `}
                             `}
                         </div>
                     `}

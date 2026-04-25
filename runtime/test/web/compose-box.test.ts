@@ -13,6 +13,7 @@ import {
   parseQueuedContent,
   resolveComposePrefillRequest,
   resolveComposeSubmitButtonState,
+  resolveComposeAbortButtonState,
   isComposeSubmitAbortMode,
   resolveUiOnlyCommandNotice,
 } from '../../web/src/components/compose-box.ts';
@@ -247,21 +248,21 @@ test('resolveComposeExtensionWorkingDisplay renders default, custom, and hidden 
   });
 });
 
-test('resolveComposeSubmitButtonState stays coherent across send, stop, and compacting states', () => {
-  expect(resolveComposeSubmitButtonState(true, false, true)).toEqual({
-    mode: 'compacting',
-    className: 'icon-btn send-btn abort-mode compacting-mode',
-    title: 'Compacting context — Stop response',
-    ariaLabel: 'Compacting context — Stop response',
+test('resolveComposeSubmitButtonState stays coherent across send and queue states', () => {
+  expect(resolveComposeSubmitButtonState(true, true, true)).toEqual({
+    mode: 'queue',
+    className: 'icon-btn send-btn queue-mode',
+    title: 'Queue follow-up (Enter)',
+    ariaLabel: 'Queue follow-up message',
     disabled: false,
   });
 
   expect(resolveComposeSubmitButtonState(true, false, false)).toEqual({
-    mode: 'abort',
-    className: 'icon-btn send-btn abort-mode',
-    title: 'Stop response',
-    ariaLabel: 'Stop response',
-    disabled: false,
+    mode: 'queue',
+    className: 'icon-btn send-btn queue-mode',
+    title: 'Queue follow-up (Enter)',
+    ariaLabel: 'Queue follow-up message',
+    disabled: true,
   });
 
   expect(resolveComposeSubmitButtonState(false, true, true)).toEqual({
@@ -278,6 +279,26 @@ test('resolveComposeSubmitButtonState stays coherent across send, stop, and comp
     title: 'Send (Enter)',
     ariaLabel: 'Send message',
     disabled: true,
+  });
+});
+
+test('resolveComposeAbortButtonState stays coherent across idle, stop, and compacting states', () => {
+  expect(resolveComposeAbortButtonState(false, false)).toBeNull();
+
+  expect(resolveComposeAbortButtonState(true, true)).toEqual({
+    mode: 'compacting',
+    className: 'icon-btn send-btn abort-mode compacting-mode',
+    title: 'Compacting context — Stop response',
+    ariaLabel: 'Compacting context — Stop response',
+    disabled: false,
+  });
+
+  expect(resolveComposeAbortButtonState(true, false)).toEqual({
+    mode: 'abort',
+    className: 'icon-btn send-btn abort-mode',
+    title: 'Stop response',
+    ariaLabel: 'Stop response',
+    disabled: false,
   });
 });
 
