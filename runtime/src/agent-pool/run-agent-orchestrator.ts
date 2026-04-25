@@ -933,7 +933,10 @@ export async function runAgentPrompt(
           maxAttempts: recoveryConfig.maxAttempts,
           totalBudgetMs: recoveryConfig.totalBudgetMs,
           delayMs: retryDelayMs,
-          reason: decision.reason,
+          reason: decision.classifier === "unknown" && errorText
+            ? `${decision.reason} Error: ${errorText}`
+            : decision.reason,
+          errorMessage: errorText,
         });
 
         if (retryDelayMs > 0) {

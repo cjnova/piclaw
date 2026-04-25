@@ -534,14 +534,17 @@ export function createStreamingEventHandler(options: StreamingEventHandlerOption
     const customEventType = (event as { type?: string }).type;
 
     if (customEventType === "recovery_start") {
-      const e = event as { strategy?: string; attempt?: number; maxAttempts?: number; delayMs?: number; reason?: string };
+      const e = event as { strategy?: string; attempt?: number; maxAttempts?: number; delayMs?: number; reason?: string; errorMessage?: string };
       const strategy = e.strategy === "compact_then_retry"
         ? "Compacting context and continuing"
         : "Recovering interrupted response";
       const delaySuffix = e.strategy === "retry" && typeof e.delayMs === "number"
         ? ` · ${Math.max(0, Math.round(e.delayMs / 1000))}s delay`
         : "";
-      const detail = `Attempt ${e.attempt ?? "?"}/${e.maxAttempts ?? "?"}${delaySuffix}${e.reason ? ` — ${e.reason}` : ""}`;
+      const reasonOrError = e.errorMessage && e.errorMessage !== e.reason
+        ? (e.reason ? `${e.reason} (${e.errorMessage})` : e.errorMessage)
+        : (e.reason || null);
+      const detail = `Attempt ${e.attempt ?? "?"}/${e.maxAttempts ?? "?"}${delaySuffix}${reasonOrError ? ` — ${reasonOrError}` : ""}`;
       options.emitter.status({
         ...base,
         type: "intent",
