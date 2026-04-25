@@ -116,7 +116,7 @@ export function buildAddonAttachmentPreviewFrameUrl(kind: string | null | undefi
 export function createAddonWebApi(): AddonWebApiSurface {
   return {
     registerPane: registerAddonPane,
-    registerStandaloneTabUrlResolver,
+    registerStandaloneTabUrlResolver: registerAddonStandaloneTabUrlResolver,
     registerAttachmentPreview: registerAddonAttachmentPreview,
   };
 }
