@@ -325,7 +325,7 @@ export function TimelineQuickActions({
                                     key=${item.key}
                                     type="button"
                                     class=${`timeline-quick-actions-item timeline-quick-actions-item-${item.kind}${index === highlightIndex ? ' active' : ''}`}
-                                    onMouseEnter=${() => setHighlightIndex(index)}
+                                    onMouseEnter=${null}
                                     onClick=${() => {
                                         if (item.kind === 'agent' && item.chatJid) onSwitchChat?.(item.chatJid);
                                         if (item.kind === 'workspace' && item.commandId === 'toggle-workspace') onToggleWorkspace?.();
