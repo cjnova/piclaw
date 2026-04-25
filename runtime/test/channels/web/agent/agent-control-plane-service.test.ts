@@ -172,6 +172,10 @@ describe("WebAgentControlPlaneService", () => {
           agent_name: options?.agentName ?? null,
         }),
         pruneChatBranch: async (chatJid: string) => ({ chat_jid: chatJid, archived_at: "2024-01-01T00:00:00.000Z" }),
+        permanentPurgeChatBranch: async (chatJid: string) => ({
+          branch: { chat_jid: chatJid, agent_name: "archived", archived_at: "2024-01-01T00:00:00.000Z" },
+          removedSessionArtifacts: ["/tmp/session"],
+        }),
         restoreChatBranch: async (chatJid: string, options?: { agentName?: string | null }) => ({
           chat_jid: chatJid,
           agent_name: options?.agentName ?? "restored",
@@ -211,6 +215,18 @@ describe("WebAgentControlPlaneService", () => {
     expect(await pruneResponse.json()).toEqual({
       status: "ok",
       branch: { chat_jid: "web:root:branch:1", archived_at: "2024-01-01T00:00:00.000Z" },
+    });
+
+    const purgeResponse = await service.handleAgentBranchPurge(new Request("https://example.com/agent/branch-purge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_jid: "web:root:branch:1" }),
+    }));
+    expect(purgeResponse.status).toBe(200);
+    expect(await purgeResponse.json()).toEqual({
+      status: "ok",
+      branch: { chat_jid: "web:root:branch:1", agent_name: "archived", archived_at: "2024-01-01T00:00:00.000Z" },
+      removedSessionArtifacts: ["/tmp/session"],
     });
 
     const restoreResponse = await service.handleAgentBranchRestore(new Request("https://example.com/agent/branch-restore", {

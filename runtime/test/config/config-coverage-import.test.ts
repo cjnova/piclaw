@@ -35,6 +35,8 @@ test("plain import covers config module init branches with isolated argv and env
       PICLAW_TOOL_OUTPUT_CLEANUP_INTERVAL_MS: "60000",
       PICLAW_AGENT_TIMEOUT: "120000",
       PICLAW_BACKGROUND_AGENT_TIMEOUT: "45000",
+      PICLAW_SESSION_MAX_SIZE_MB: undefined,
+      PICLAW_SESSION_AUTO_ROTATE: undefined,
       PUSHOVER_APP_TOKEN: "push-app",
       PUSHOVER_USER_KEY: "push-user",
       PUSHOVER_DEVICE: "push-device",
@@ -106,6 +108,8 @@ test("plain import covers config module init branches with isolated argv and env
           vncTargetsRaw: "",
           debugCardSubmissions: false,
           trustProxy: true,
+          composeUploadLimitMb: 32,
+          workspaceUploadLimitMb: 512,
         });
         expect(cfg.getWebRuntimeConfig()).toBe(cfg.WEB_RUNTIME_CONFIG);
         expect(cfg.SESSION_STORAGE_CONFIG).toEqual({

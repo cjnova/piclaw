@@ -282,6 +282,55 @@ export async function handleWorkspaceUpload(req: Request): Promise<Response> {
   return jsonResponse(result.body, result.status);
 }
 
+function readRequiredHeader(req: Request, name: string): string | null {
+  const value = req.headers.get(name);
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function readRequiredHeaderInt(req: Request, name: string): number | null {
+  const value = readRequiredHeader(req, name);
+  if (!value) return null;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+/**
+ * Handle POST `/workspace/upload-chunk` requests for chunked workspace uploads.
+ * Accepts raw request-body bytes plus upload metadata headers.
+ */
+export async function handleWorkspaceUploadChunk(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const uploadId = readRequiredHeader(req, "X-Upload-Id");
+  const chunkIndex = readRequiredHeaderInt(req, "X-Chunk-Index");
+  const chunkTotal = readRequiredHeaderInt(req, "X-Chunk-Total");
+  const fileName = readRequiredHeader(req, "X-File-Name");
+  const fileSize = readRequiredHeaderInt(req, "X-File-Size");
+  if (!uploadId || chunkIndex === null || chunkTotal === null || !fileName || fileSize === null) {
+    return errorJson("Missing upload chunk metadata", 400);
+  }
+
+  let data: Uint8Array;
+  try {
+    data = new Uint8Array(await req.arrayBuffer());
+  } catch {
+    return errorJson("Invalid upload body", 400);
+  }
+
+  const overwrite = url.searchParams.get("overwrite") === "1" || url.searchParams.get("overwrite") === "true";
+  const result = await workspaceService.uploadChunk({
+    pathParam: url.searchParams.get("path"),
+    uploadId,
+    chunkIndex,
+    chunkTotal,
+    fileName,
+    fileSize,
+    overwrite,
+    data,
+  });
+  return jsonResponse(result.body, result.status);
+}
+
 /**
  * Handle POST `/workspace/file` requests to create a new workspace file.
  * @param req Incoming HTTP request containing JSON `{ path, name, content }`.

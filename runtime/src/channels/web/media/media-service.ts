@@ -2,7 +2,7 @@
  * web/media-service.ts – File upload and retrieval service.
  *
  * Wraps db/media.ts operations with validation:
- *   - File size limit (10 MB) — returns 413 if exceeded
+ *   - File size limit (configurable; default 32 MB) — returns 413 if exceeded
  *   - Content-type normalization (non-image types are served as downloads)
  *
  * Consumers: web/handlers/media.ts delegates to MediaService methods.
@@ -11,16 +11,19 @@
 import { readFileSync, statSync } from "fs";
 import { basename, extname } from "path";
 import { createMedia, getMediaById, getMediaInfoById } from "../../../db.js";
+import { getWebRuntimeConfig } from "../../../core/config.js";
 import { createLogger, debugSuppressedError } from "../../../utils/logger.js";
 
 const log = createLogger("web.media");
 
 /**
- * Max upload size: 10 MB.
+ * Resolve the current compose/media upload size in bytes.
  * This is enforced at the application level. The Bun.serve()
  * maxRequestBodySize (512 MB) is a separate hard cap.
  */
-const MAX_MEDIA_UPLOAD_BYTES = 10 * 1024 * 1024;
+function getMaxMediaUploadBytes(): number {
+  return Math.max(1, Math.round((getWebRuntimeConfig().composeUploadLimitMb || 32) * 1024 * 1024));
+}
 
 /**
  * File upload/download service wrapping db/media.ts operations.
@@ -95,14 +98,15 @@ function maybePromoteUnknownTextType(pathLike: string, contentType: string, data
 export class MediaService {
   /**
    * Validate and store an uploaded file.
-   * Returns 413 if file exceeds MAX_MEDIA_UPLOAD_BYTES.
+   * Returns 413 if file exceeds the configured compose/media upload limit.
    */
   async createFromFile(file: File): Promise<{ status: number; body: unknown }> {
     // Size check — reject before reading the full body into memory
-    if (file.size > MAX_MEDIA_UPLOAD_BYTES) {
+    const maxMediaUploadBytes = getMaxMediaUploadBytes();
+    if (file.size > maxMediaUploadBytes) {
       return {
         status: 413,
-        body: { error: `File too large (max ${MAX_MEDIA_UPLOAD_BYTES / 1024 / 1024} MB)` },
+        body: { error: `File too large (max ${maxMediaUploadBytes / 1024 / 1024} MB)` },
       };
     }
 
@@ -137,7 +141,7 @@ export class MediaService {
 
   /**
    * Validate and store a file by filesystem path.
-   * Returns 413 if file exceeds MAX_MEDIA_UPLOAD_BYTES.
+   * Returns 413 if file exceeds the configured compose/media upload limit.
    * Returns 404 if the file does not exist.
    */
   async createFromPath(filePath: string, contentTypeOverride?: string, filenameOverride?: string): Promise<{ status: number; body: unknown }> {
@@ -152,10 +156,11 @@ export class MediaService {
       return { status: 400, body: { error: `Media path is not a regular file: ${filePath}` } };
     }
 
-    if (stats.size > MAX_MEDIA_UPLOAD_BYTES) {
+    const maxMediaUploadBytes = getMaxMediaUploadBytes();
+    if (stats.size > maxMediaUploadBytes) {
       return {
         status: 413,
-        body: { error: `File too large (max ${MAX_MEDIA_UPLOAD_BYTES / 1024 / 1024} MB)` },
+        body: { error: `File too large (max ${maxMediaUploadBytes / 1024 / 1024} MB)` },
       };
     }
 

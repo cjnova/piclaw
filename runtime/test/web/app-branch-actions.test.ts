@@ -4,6 +4,7 @@ import {
   closeRenameBranchForm,
   openRenameBranchForm,
   pruneCurrentBranch,
+  purgeArchivedBranch,
   renameCurrentBranch,
   restoreBranch,
   runBranchLoader,
@@ -196,6 +197,49 @@ test('pruneCurrentBranch blocks archiving a root session while child branches st
   expect(toasts).toEqual([
     ['Cannot archive session', 'Archive or delete the child branch sessions first.', 'warning', 4500],
   ]);
+});
+
+test('purgeArchivedBranch requires archived state and uses irreversible confirmation copy', async () => {
+  const toasts: Array<[string, string, string, number]> = [];
+  const confirmations: string[] = [];
+
+  const rejected = await purgeArchivedBranch({
+    targetChatJid: 'web:active',
+    purgeChatBranch: async () => ({ branch: { chat_jid: 'web:active' } }),
+    currentChatBranches: [{ chat_jid: 'web:active', agent_name: 'active', archived_at: null }],
+    refreshActiveChatAgents: async () => {},
+    refreshCurrentChatBranches: async () => {},
+    showIntentToast: (title: string, message: string, kind: string, timeout: number) => {
+      toasts.push([title, message, kind, timeout]);
+    },
+    confirm: (message: string) => {
+      confirmations.push(message);
+      return true;
+    },
+  });
+  expect(rejected).toBe(false);
+  expect(toasts[0]).toEqual(['Could not delete branch', 'Only archived sessions can be permanently deleted.', 'warning', 4500]);
+
+  toasts.length = 0;
+  const deleted = await purgeArchivedBranch({
+    targetChatJid: 'web:archived',
+    purgeChatBranch: async () => ({ branch: { chat_jid: 'web:archived' } }),
+    currentChatBranches: [{ chat_jid: 'web:archived', agent_name: 'feature', archived_at: '2026-03-29T00:00:00Z' }],
+    refreshActiveChatAgents: async () => {},
+    refreshCurrentChatBranches: async () => {},
+    showIntentToast: (title: string, message: string, kind: string, timeout: number) => {
+      toasts.push([title, message, kind, timeout]);
+    },
+    confirm: (message: string) => {
+      confirmations.push(message);
+      return true;
+    },
+  });
+
+  expect(deleted).toBe(true);
+  expect(confirmations[0]).toContain('Permanently delete @feature?');
+  expect(confirmations[0]).toContain('It cannot be undone.');
+  expect(toasts[0]).toEqual(['Archived branch deleted', '@feature was permanently deleted.', 'info', 4000]);
 });
 
 test('restoreBranch shows collision-aware messaging and navigates to restored branch', async () => {

@@ -21,6 +21,7 @@ describe("web http workspace dispatch", () => {
       handleWorkspaceDownload: () => new Response("download"),
       handleWorkspaceAttach: () => new Response("attach"),
       handleWorkspaceUpload: () => new Response("upload"),
+      handleWorkspaceUploadChunk: () => new Response("upload-chunk"),
       handleWorkspaceReindex: () => new Response("reindex"),
       handleWorkspaceVisibility: () => new Response("visibility"),
     } as any;
@@ -54,6 +55,9 @@ describe("web http workspace dispatch", () => {
 
     const uploadReq = new Request("https://example.com/workspace/upload", { method: "POST" });
     expect(await (await handleWorkspaceRoutes(channel, uploadReq, "/workspace/upload"))?.text()).toBe("upload");
+
+    const uploadChunkReq = new Request("https://example.com/workspace/upload-chunk", { method: "POST" });
+    expect(await (await handleWorkspaceRoutes(channel, uploadChunkReq, "/workspace/upload-chunk"))?.text()).toBe("upload-chunk");
 
     const reindexReq = new Request("https://example.com/workspace/reindex", { method: "POST" });
     expect(await (await handleWorkspaceRoutes(channel, reindexReq, "/workspace/reindex"))?.text()).toBe("reindex");

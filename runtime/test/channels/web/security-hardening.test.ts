@@ -110,8 +110,8 @@ import { MediaService } from "../../../src/channels/web/media/media-service.js";
 describe("MediaService.createFromFile", () => {
   const service = new MediaService();
 
-  test("rejects files over 10 MB", async () => {
-    const bigData = new Uint8Array(10 * 1024 * 1024 + 1);
+  test("rejects files over the default 32 MB compose upload limit", async () => {
+    const bigData = new Uint8Array(32 * 1024 * 1024 + 1);
     const file = new File([bigData], "big.png", { type: "image/png" });
     const result = await service.createFromFile(file);
     expect(result.status).toBe(413);

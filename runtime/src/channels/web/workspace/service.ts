@@ -8,7 +8,7 @@
  */
 
 import { markWorkspaceIndexStale, getWorkspaceIndexStatus, refreshWorkspaceIndex } from "../../../workspace-search.js";
-import { WorkspaceFileService } from "./file-service.js";
+import { WorkspaceFileService, type WorkspaceChunkUploadParams } from "./file-service.js";
 import { getWorkspaceGitBranch } from "./git-branch.js";
 import { WorkspaceTreeCache } from "./tree-cache.js";
 import { startWorkspaceWatcher } from "./watcher.js";
@@ -71,6 +71,17 @@ export class WorkspaceService {
     if (result.status === 200) {
       const body = result.body as { path?: string } | undefined;
       this.markIndexStale([body?.path]);
+    }
+    return result;
+  }
+
+  async uploadChunk(params: WorkspaceChunkUploadParams) {
+    const result = await this.fileService.uploadChunk(params);
+    if (result.status === 200) {
+      const body = result.body as { path?: string; complete?: boolean } | undefined;
+      if (body?.complete) {
+        this.markIndexStale([body?.path]);
+      }
     }
     return result;
   }

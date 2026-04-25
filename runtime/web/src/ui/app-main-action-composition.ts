@@ -145,6 +145,7 @@ interface ComposeBranchPaneActionOptionsInput {
   currentChatBranches: any[];
   activeChatAgents: any[];
   pruneChatBranch: (chatJid: string) => Promise<any>;
+  purgeChatBranch: (chatJid: string) => Promise<any>;
   restoreChatBranch: (chatJid: string) => Promise<any>;
   branchLoaderMode: boolean;
   branchLoaderSourceChatJid: string;
@@ -197,6 +198,7 @@ export function composeBranchPaneActionOptions(input: ComposeBranchPaneActionOpt
     currentChatBranches: input.currentChatBranches,
     activeChatAgents: input.activeChatAgents,
     pruneChatBranch: input.pruneChatBranch,
+    purgeChatBranch: input.purgeChatBranch,
     restoreChatBranch: input.restoreChatBranch,
     branchLoaderMode: input.branchLoaderMode,
     branchLoaderSourceChatJid: input.branchLoaderSourceChatJid,

@@ -107,7 +107,7 @@ chosen TypeBox 1.x adoption strategy.
 ## Updates
 
 ### 2026-04-22
-- Created from the 0.69.0 adoption audit as PR2 of 3.
+- Created from the 0.70.x adoption audit as PR2 of 3.
 - Sequenced after the audit/staging PR so TypeBox migration can land independently from the upstream dependency bump.
 - Initial migration target surfaces identified in the audit checklist, including runtime extensions, bundled integrations, and vendored `pi-autoresearch` code.
 

@@ -7,18 +7,23 @@
  * Consumers: web/handlers/workspace.ts delegates file operations here.
  */
 
-import { existsSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "fs";
 import { readdir } from "fs/promises";
 import path from "path";
 import { gunzipSync } from "zlib";
 
 import { createMedia } from "../../../db.js";
+import { DATA_DIR, getWebRuntimeConfig } from "../../../core/config.js";
 import { createLogger, debugSuppressedError } from "../../../utils/logger.js";
-import { MAX_ATTACH_BYTES, MAX_EDIT_BYTES, MAX_PREVIEW_BYTES, MAX_UPLOAD_BYTES } from "./constants.js";
+import { MAX_ATTACH_BYTES, MAX_EDIT_BYTES, MAX_PREVIEW_BYTES } from "./constants.js";
 import { contentTypeForPath, detectBinary, formatMtime, isImageFile, isTextFile } from "./file-utils.js";
 import { isHiddenPath, resolveWorkspacePath, shouldIgnorePath, toRelativePath } from "./paths.js";
 
 const log = createLogger("web.workspace.file-service");
+
+function getWorkspaceUploadMaxBytes(): number {
+  return Math.max(1, Math.round((getWebRuntimeConfig().workspaceUploadLimitMb || 512) * 1024 * 1024));
+}
 
 type FflateModule = typeof import("fflate");
 
@@ -171,6 +176,86 @@ function normalizeEntryName(raw: string | null | undefined): string | null {
   const base = path.basename(name);
   if (base !== name) return null;
   return name;
+}
+
+const WORKSPACE_UPLOAD_CHUNK_ROOT = path.join(DATA_DIR, "workspace-upload-chunks");
+const WORKSPACE_UPLOAD_CHUNK_TTL_MS = 24 * 60 * 60 * 1000;
+
+interface WorkspaceUploadState {
+  version: 1;
+  uploadId: string;
+  targetDir: string;
+  filename: string;
+  fileSize: number;
+  chunkTotal: number;
+  nextChunkIndex: number;
+  overwrite: boolean;
+  bytesWritten: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceChunkUploadParams {
+  pathParam: string | null;
+  uploadId: string;
+  chunkIndex: number;
+  chunkTotal: number;
+  fileName: string;
+  fileSize: number;
+  overwrite?: boolean;
+  data: Uint8Array;
+}
+
+function sanitizeUploadId(raw: string | null | undefined): string | null {
+  const value = (raw || "").trim();
+  if (!value || value.length > 160) return null;
+  return /^[A-Za-z0-9._-]+$/.test(value) ? value : null;
+}
+
+function getUploadStatePaths(uploadId: string): { dir: string; statePath: string; partPath: string } {
+  const dir = path.join(WORKSPACE_UPLOAD_CHUNK_ROOT, uploadId);
+  return {
+    dir,
+    statePath: path.join(dir, "state.json"),
+    partPath: path.join(dir, "upload.part"),
+  };
+}
+
+function readUploadState(statePath: string): WorkspaceUploadState | null {
+  try {
+    const raw = readFileSync(statePath, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed as WorkspaceUploadState;
+  } catch {
+    return null;
+  }
+}
+
+function writeUploadState(statePath: string, state: WorkspaceUploadState): void {
+  writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
+function cleanupStaleChunkUploads(now = Date.now()): void {
+  try {
+    mkdirSync(WORKSPACE_UPLOAD_CHUNK_ROOT, { recursive: true });
+    for (const entry of readdirSync(WORKSPACE_UPLOAD_CHUNK_ROOT, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dirPath = path.join(WORKSPACE_UPLOAD_CHUNK_ROOT, entry.name);
+      try {
+        const stats = statSync(dirPath);
+        if (now - stats.mtimeMs > WORKSPACE_UPLOAD_CHUNK_TTL_MS) {
+          rmSync(dirPath, { recursive: true, force: true });
+        }
+      } catch (e) {
+        // Ignore stale upload cleanup failures; later requests can retry cleanup.
+        void e;
+      }
+    }
+  } catch (e) {
+    // Ignore cleanup bootstrap failures; upload requests will fail later if storage is unusable.
+    void e;
+  }
 }
 
 /** File read/write service for the workspace explorer API. */
@@ -389,7 +474,8 @@ export class WorkspaceFileService {
     if (!filename) return { status: 400, body: { error: "Missing filename" } };
 
     const size = typeof file?.size === "number" ? file.size : 0;
-    if (size > MAX_UPLOAD_BYTES) {
+    const maxUploadBytes = getWorkspaceUploadMaxBytes();
+    if (size > maxUploadBytes) {
       return { status: 400, body: { error: "File too large to upload" } };
     }
 
@@ -408,7 +494,7 @@ export class WorkspaceFileService {
     try {
       await Bun.write(destPath, file);
       const updated = statSync(destPath);
-      if (updated.size > MAX_UPLOAD_BYTES) {
+      if (updated.size > maxUploadBytes) {
         try { unlinkSync(destPath); } catch (error) {
           log.warn("Failed to remove oversized upload", {
             operation: "upload.cleanup_oversized_file",
@@ -430,6 +516,173 @@ export class WorkspaceFileService {
       };
     } catch {
       return { status: 500, body: { error: "Failed to upload file" } };
+    }
+  }
+
+  async uploadChunk(params: WorkspaceChunkUploadParams): Promise<{ status: number; body: unknown }> {
+    cleanupStaleChunkUploads();
+
+    const uploadId = sanitizeUploadId(params.uploadId);
+    if (!uploadId) return { status: 400, body: { error: "Invalid upload ID" } };
+
+    const targetDir = resolveWorkspacePath(params.pathParam);
+    if (!targetDir) return { status: 400, body: { error: "Invalid path" } };
+
+    try {
+      const stats = statSync(targetDir);
+      if (!stats.isDirectory()) {
+        return { status: 400, body: { error: "Path is not a directory" } };
+      }
+    } catch {
+      return { status: 404, body: { error: "Directory not found" } };
+    }
+
+    const filename = normalizeEntryName(params.fileName || "");
+    if (!filename) return { status: 400, body: { error: "Invalid filename" } };
+
+    const chunkIndex = Number(params.chunkIndex);
+    const chunkTotal = Number(params.chunkTotal);
+    const fileSize = Number(params.fileSize);
+    const overwrite = Boolean(params.overwrite);
+    if (!Number.isInteger(chunkIndex) || chunkIndex < 0) {
+      return { status: 400, body: { error: "Invalid chunk index" } };
+    }
+    if (!Number.isInteger(chunkTotal) || chunkTotal <= 0) {
+      return { status: 400, body: { error: "Invalid chunk total" } };
+    }
+    if (chunkIndex >= chunkTotal) {
+      return { status: 400, body: { error: "Chunk index exceeds chunk total" } };
+    }
+    if (!Number.isInteger(fileSize) || fileSize < 0) {
+      return { status: 400, body: { error: "Invalid file size" } };
+    }
+
+    const maxUploadBytes = getWorkspaceUploadMaxBytes();
+    if (fileSize > maxUploadBytes) {
+      return { status: 400, body: { error: "File too large to upload" } };
+    }
+
+    const { dir, statePath, partPath } = getUploadStatePaths(uploadId);
+    const destPath = path.join(targetDir, filename);
+    let state = readUploadState(statePath);
+
+    if (!state) {
+      if (chunkIndex !== 0) {
+        return { status: 409, body: { error: "Upload state not initialized", expected_chunk_index: 0 } };
+      }
+      const existed = existsSync(destPath);
+      if (existed && !overwrite) {
+        return { status: 409, body: { error: "File already exists", code: "file_exists" } };
+      }
+      if (existed) {
+        const existing = statSync(destPath);
+        if (existing.isDirectory()) {
+          return { status: 400, body: { error: "Path is a directory" } };
+        }
+      }
+
+      mkdirSync(dir, { recursive: true });
+      state = {
+        version: 1,
+        uploadId,
+        targetDir,
+        filename,
+        fileSize,
+        chunkTotal,
+        nextChunkIndex: 0,
+        overwrite,
+        bytesWritten: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      writeUploadState(statePath, state);
+    }
+
+    if (
+      state.targetDir !== targetDir ||
+      state.filename !== filename ||
+      state.fileSize !== fileSize ||
+      state.chunkTotal !== chunkTotal ||
+      state.overwrite !== overwrite
+    ) {
+      return { status: 409, body: { error: "Upload metadata mismatch" } };
+    }
+
+    if (chunkIndex !== state.nextChunkIndex) {
+      return {
+        status: 409,
+        body: { error: "Unexpected chunk index", expected_chunk_index: state.nextChunkIndex },
+      };
+    }
+
+    const chunkBytes = params.data instanceof Uint8Array ? params.data : new Uint8Array(params.data || []);
+    if (state.bytesWritten + chunkBytes.length > fileSize) {
+      return { status: 400, body: { error: "Chunk exceeds declared file size" } };
+    }
+
+    try {
+      mkdirSync(dir, { recursive: true });
+      appendFileSync(partPath, chunkBytes);
+      state.bytesWritten += chunkBytes.length;
+      state.nextChunkIndex += 1;
+      state.updatedAt = new Date().toISOString();
+
+      if (state.nextChunkIndex < state.chunkTotal) {
+        writeUploadState(statePath, state);
+        return {
+          status: 200,
+          body: {
+            upload_id: uploadId,
+            chunk_index: chunkIndex,
+            chunk_total: chunkTotal,
+            received_bytes: state.bytesWritten,
+            complete: false,
+          },
+        };
+      }
+
+      if (state.bytesWritten !== fileSize) {
+        rmSync(dir, { recursive: true, force: true });
+        return { status: 400, body: { error: "Uploaded bytes did not match declared file size" } };
+      }
+
+      const existed = existsSync(destPath);
+      if (existed && !overwrite) {
+        rmSync(dir, { recursive: true, force: true });
+        return { status: 409, body: { error: "File already exists", code: "file_exists" } };
+      }
+      if (existed) {
+        const existing = statSync(destPath);
+        if (existing.isDirectory()) {
+          rmSync(dir, { recursive: true, force: true });
+          return { status: 400, body: { error: "Path is a directory" } };
+        }
+        unlinkSync(destPath);
+      }
+
+      renameSync(partPath, destPath);
+      rmSync(dir, { recursive: true, force: true });
+      const updated = statSync(destPath);
+      const relPath = toRelativePath(destPath);
+      return {
+        status: 200,
+        body: {
+          upload_id: uploadId,
+          path: relPath,
+          name: filename,
+          size: updated.size,
+          overwritten: existed,
+          complete: true,
+        },
+      };
+    } catch (error) {
+      log.warn("Failed to process workspace upload chunk", {
+        operation: "workspace_upload_chunk",
+        uploadId,
+        chunkIndex,
+        err: error,
+      });
+      return { status: 500, body: { error: "Failed to process upload chunk" } };
     }
   }
 

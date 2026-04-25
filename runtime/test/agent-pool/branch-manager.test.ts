@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { writeFileSync } from "fs";
+import { mkdirSync, writeFileSync } from "fs";
 
 import type { AgentSessionRuntime } from "@mariozechner/pi-coding-agent";
 import { SessionManager } from "@mariozechner/pi-coding-agent";
@@ -221,6 +221,56 @@ test("AgentBranchManager prunes inactive branches and disposes cached sessions",
   // Prune must also cancel any queued prewarm so a background realization
   // cannot materialize a runtime for an archived chat.
   expect(cancelled).toEqual(["web:default:branch:prune"]);
+  expect(disposed).toBe(2);
+
+  ws.cleanup();
+});
+
+test("AgentBranchManager permanently purges archived branches and removes session artifacts", async () => {
+  const ws = createTempWorkspace("piclaw-branch-purge-");
+  restoreEnv = setEnv({ PICLAW_WORKSPACE: ws.workspace, PICLAW_STORE: ws.store, PICLAW_DATA: ws.data });
+
+  const db = await importFresh<typeof import("../src/db.js")>("../src/db.js");
+  db.initDatabase();
+  db.storeChatMetadata("web:default", new Date().toISOString(), "Default");
+  const root = db.getChatBranchByChatJid("web:default");
+  db.storeChatMetadata("web:default:branch:purge", new Date().toISOString(), "Purge Me");
+  db.ensureChatBranch({
+    chat_jid: "web:default:branch:purge",
+    root_chat_jid: "web:default",
+    parent_branch_id: root?.branch_id ?? null,
+    agent_name: "purge-me",
+  });
+  db.archiveChatBranch("web:default:branch:purge");
+
+  let disposed = 0;
+  const session = {
+    sessionName: "Purge Me",
+    isStreaming: false,
+    isCompacting: false,
+    isRetrying: false,
+    isBashRunning: false,
+    dispose() {
+      disposed += 1;
+    },
+  };
+
+  const fixture = createManager();
+  fixture.pool.set("web:default:branch:purge", { runtime: createRuntime(session), lastUsed: Date.now() });
+  fixture.sidePool.set("web:default:branch:purge", { runtime: createRuntime(session), lastUsed: Date.now() });
+  const baseDir = ensureSessionDir("web:default:branch:purge");
+  writeFileSync(join(baseDir, ".branch-seed.json"), JSON.stringify({ version: 1, parentSession: null, sessionName: "Purge Me", model: null, thinkingLevel: null, mode: "rotated_context" }), "utf8");
+  const namedVariantDir = `${baseDir}__variant`;
+  mkdirSync(namedVariantDir, { recursive: true });
+  writeFileSync(join(namedVariantDir, ".branch-seed.claimed.json"), JSON.stringify({ version: 1, parentSession: null, sessionName: "Purge Me", model: null, thinkingLevel: null, mode: "rotated_context" }), "utf8");
+
+  const result = await fixture.manager.permanentPurgeChatBranch("web:default:branch:purge");
+  expect(result.branch.chat_jid).toBe("web:default:branch:purge");
+  expect(result.removedSessionArtifacts).toContain(baseDir);
+  expect(result.removedSessionArtifacts).toContain(namedVariantDir);
+  expect(fixture.pool.has("web:default:branch:purge")).toBe(false);
+  expect(fixture.sidePool.has("web:default:branch:purge")).toBe(false);
+  expect(db.getChatBranchByChatJid("web:default:branch:purge")).toBeNull();
   expect(disposed).toBe(2);
 
   ws.cleanup();

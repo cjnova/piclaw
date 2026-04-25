@@ -154,6 +154,10 @@ describe("web channel http surface service", () => {
           calls.push(`branch-prune:${req.method}`);
           return response("branch-prune");
         },
+        handleAgentBranchPurge: async (req: Request) => {
+          calls.push(`branch-purge:${req.method}`);
+          return response("branch-purge");
+        },
         handleAgentBranchRestore: async (req: Request) => {
           calls.push(`branch-restore:${req.method}`);
           return response("branch-restore");
@@ -251,6 +255,7 @@ describe("web channel http surface service", () => {
     expect(await (await service.handleAgentBranchFork(postReq)).text()).toBe("branch-fork");
     expect(await (await service.handleAgentBranchRename(postReq)).text()).toBe("branch-rename");
     expect(await (await service.handleAgentBranchPrune(postReq)).text()).toBe("branch-prune");
+    expect(await (await service.handleAgentBranchPurge(postReq)).text()).toBe("branch-purge");
     expect(await (await service.handleAgentBranchRestore(postReq)).text()).toBe("branch-restore");
     expect(await (await service.handleAgentRespond(postReq)).text()).toBe("respond");
     expect(await (await service.handleRemote(getReq)).text()).toBe("remote");
@@ -296,6 +301,7 @@ describe("web channel http surface service", () => {
       "branch-fork:POST",
       "branch-rename:POST",
       "branch-prune:POST",
+      "branch-purge:POST",
       "branch-restore:POST",
       "respond:POST",
       "remote:GET",

@@ -592,6 +592,11 @@ export function installWebChannelPrototype(
       writable: true,
       value: withHttpSurface(async (service, req: Request) => await service.handleAgentBranchPrune(req)),
     },
+    handleAgentBranchPurge: {
+      configurable: true,
+      writable: true,
+      value: withHttpSurface(async (service, req: Request) => await service.handleAgentBranchPurge(req)),
+    },
     handleAgentBranchRestore: {
       configurable: true,
       writable: true,

@@ -8,12 +8,11 @@ test('countAvailableModels counts model_options first and falls back to models',
   expect(countAvailableModels(null)).toBe(0);
 });
 
-test('configured-model hints suppress provider-missing when the current model exists but options are not loaded yet', () => {
+test('configured-model hints suppress the panel when the current model exists', () => {
   expect(resolveOobePanelState({
     modelsLoaded: true,
     modelPayload: { current: 'openai/gpt-5' },
     providerMissingDismissed: false,
-    providerReadyCompleted: false,
   })).toEqual({
     kind: 'hidden',
     hasAvailableModels: false,
@@ -22,7 +21,7 @@ test('configured-model hints suppress provider-missing when the current model ex
   });
 });
 
-test('configured instances keep provider-ready guidance hidden once actual available models exist', () => {
+test('configured instances with available providers stay hidden', () => {
   expect(resolveOobePanelState({
     modelsLoaded: true,
     modelPayload: {
@@ -30,24 +29,6 @@ test('configured instances keep provider-ready guidance hidden once actual avail
       model_options: [{ label: 'openai/gpt-5', provider: 'openai', id: 'gpt-5' }],
     },
     providerMissingDismissed: false,
-    providerReadyCompleted: false,
-  })).toEqual({
-    kind: 'hidden',
-    hasAvailableModels: true,
-    availableModelCount: 1,
-    hasConfiguredModelHint: true,
-  });
-});
-
-test('provider-ready guidance stays hidden once completed', () => {
-  expect(resolveOobePanelState({
-    modelsLoaded: true,
-    modelPayload: {
-      current: 'openai/gpt-5',
-      model_options: [{ label: 'openai/gpt-5', provider: 'openai', id: 'gpt-5' }],
-    },
-    providerMissingDismissed: false,
-    providerReadyCompleted: true,
   })).toEqual({
     kind: 'hidden',
     hasAvailableModels: true,

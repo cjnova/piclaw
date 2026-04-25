@@ -1,6 +1,6 @@
 ---
-id: plan-and-sequence-pi-0.68.0-follow-up-rollout
-title: Plan and sequence the Pi 0.68.0 follow-up rollout
+id: plan-and-sequence-pi-0.70.x-follow-up-rollout
+title: Plan and sequence the Pi 0.70.x follow-up rollout
 status: review
 priority: medium
 created: 2026-04-21
@@ -17,11 +17,11 @@ owner: smith
 blocked-by: []
 ---
 
-# Plan and sequence the Pi 0.68.0 follow-up rollout
+# Plan and sequence the Pi 0.70.x follow-up rollout
 
 ## Summary
 
-The follow-up list from the 0.68.0 audit is already clear. This ticket turns it into a delivery sequence with explicit P1/P2/P3 boundaries so we can land useful product improvements without mixing architecture, extension upgrades, and regression work into one oversized batch.
+The follow-up list from the 0.70.x audit is already clear. This ticket turns it into a delivery sequence with explicit P1/P2/P3 boundaries so we can land useful product improvements without mixing architecture, extension upgrades, and regression work into one oversized batch.
 
 ## Input priority list
 
@@ -108,16 +108,16 @@ The follow-up list from the 0.68.0 audit is already clear. This ticket turns it 
 ## Update history
 
 - 2026-04-21: Reconciled the rollout sequence against the implementation state after landing built-in and packaged progress adoptions.
-- 2026-04-21: Marked Phases 1–4 complete for the 0.68.0 upstream implementation scope.
+- 2026-04-21: Marked Phases 1–4 complete for the 0.70.x upstream implementation scope.
 - 2026-04-21: Left only optional polish items deferred because they are not required for the upstream upgrade closure.
 
 ## Evidence
 
 - `runtime/test/workitems/upstream-068-audit-summary.md`
-- `workitems/20-doing/audit-core-pi-0.68.0-runtime-and-web-surfaces.md`
-- `workitems/20-doing/audit-built-in-extensions-for-pi-0.68.0-adoption.md`
-- `workitems/20-doing/audit-packaged-integrations-for-pi-0.68.0-adoption.md`
+- `workitems/20-doing/audit-core-pi-0.70.x-runtime-and-web-surfaces.md`
+- `workitems/20-doing/audit-built-in-extensions-for-pi-0.70.x-adoption.md`
+- `workitems/20-doing/audit-packaged-integrations-for-pi-0.70.x-adoption.md`
 
 ## Links
 
-- Parent: `workitems/20-doing/adopt-pi-coding-agent-0.68.0-followups-and-web-progress-mapping.md`
+- Parent: `workitems/20-doing/adopt-pi-coding-agent-0.70.x-followups-and-web-progress-mapping.md`

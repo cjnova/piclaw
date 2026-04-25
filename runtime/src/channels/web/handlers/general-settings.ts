@@ -14,9 +14,12 @@ import {
   setUserAvatar,
   setUserAvatarBackground,
   setUserName,
+  setWebComposeUploadLimitMb,
   setWebTerminalEnabled,
+  setWebWorkspaceUploadLimitMb,
 } from "../../../core/config.js";
 import { updateAssistantConfig, updateUserConfig } from "../../../agent-control/agent-control-helpers.js";
+import { generateTotpQr } from "../../../utils/totp-qr.js";
 
 export interface GeneralSettingsData {
   assistantName: string;
@@ -27,7 +30,17 @@ export interface GeneralSettingsData {
   sessionAutoRotate: boolean;
   sessionMaxSizeMb: number;
   webTerminalEnabled: boolean;
+  composeUploadLimitMb: number;
+  workspaceUploadLimitMb: number;
   toolUseBudget: number;
+  instanceTotp: {
+    configured: boolean;
+    issuer: string;
+    label: string;
+    secret: string;
+    otpauth: string;
+    qrSvg: string;
+  };
 }
 
 export interface GeneralSettingsInput {
@@ -38,6 +51,8 @@ export interface GeneralSettingsInput {
   sessionAutoRotate?: unknown;
   sessionMaxSizeMb?: unknown;
   webTerminalEnabled?: unknown;
+  composeUploadLimitMb?: unknown;
+  workspaceUploadLimitMb?: unknown;
   toolUseBudget?: unknown;
 }
 
@@ -58,6 +73,35 @@ function normalizeOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
+function buildTotpSettingsData(): GeneralSettingsData["instanceTotp"] {
+  const identity = getIdentityConfig();
+  const web = getWebRuntimeConfig();
+  const secret = (web.totpSecret || "").trim();
+  const issuer = identity.assistantName || "Piclaw";
+  const label = identity.userName ? `${issuer}:${identity.userName}` : issuer;
+
+  if (!secret) {
+    return {
+      configured: false,
+      issuer,
+      label,
+      secret: "",
+      otpauth: "",
+      qrSvg: "",
+    };
+  }
+
+  const qr = generateTotpQr({ secret, issuer, label });
+  return {
+    configured: true,
+    issuer: qr.issuer,
+    label: qr.label,
+    secret: qr.secret,
+    otpauth: qr.otpauth,
+    qrSvg: qr.svg,
+  };
+}
+
 export function getGeneralSettingsData(): GeneralSettingsData {
   const identity = getIdentityConfig();
   const session = getSessionStorageConfig();
@@ -71,7 +115,10 @@ export function getGeneralSettingsData(): GeneralSettingsData {
     sessionAutoRotate: session.autoRotate,
     sessionMaxSizeMb: session.maxSizeMb,
     webTerminalEnabled: web.terminalEnabled,
+    composeUploadLimitMb: web.composeUploadLimitMb,
+    workspaceUploadLimitMb: web.workspaceUploadLimitMb,
     toolUseBudget: getToolUseMessageBudget(),
+    instanceTotp: buildTotpSettingsData(),
   };
 }
 
@@ -122,6 +169,16 @@ export async function saveGeneralSettings(input: GeneralSettingsInput): Promise<
   const nextWebTerminalEnabled = normalizeOptionalBoolean(input.webTerminalEnabled);
   if (nextWebTerminalEnabled !== undefined) {
     setWebTerminalEnabled(nextWebTerminalEnabled);
+  }
+
+  const nextComposeUploadLimitMb = normalizeOptionalInt(input.composeUploadLimitMb, 1, 512);
+  if (nextComposeUploadLimitMb !== undefined) {
+    setWebComposeUploadLimitMb(nextComposeUploadLimitMb);
+  }
+
+  const nextWorkspaceUploadLimitMb = normalizeOptionalInt(input.workspaceUploadLimitMb, 1, 512);
+  if (nextWorkspaceUploadLimitMb !== undefined) {
+    setWebWorkspaceUploadLimitMb(nextWorkspaceUploadLimitMb);
   }
 
   const nextToolUseBudget = normalizeOptionalInt(input.toolUseBudget, 8, 512);

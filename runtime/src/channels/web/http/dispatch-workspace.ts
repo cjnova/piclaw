@@ -18,6 +18,7 @@ import {
   handleWorkspaceTree,
   handleWorkspaceUpdate,
   handleWorkspaceUpload,
+  handleWorkspaceUploadChunk,
 } from "../handlers/workspace.js";
 
 /** Channel contract required by workspace-route HTTP dispatcher. */
@@ -44,6 +45,8 @@ export interface WorkspaceDispatchChannel {
   handleWorkspaceAttach?(req: Request): Promise<Response>;
   /** Optional override for POST `/workspace/upload` requests. */
   handleWorkspaceUpload?(req: Request): Promise<Response>;
+  /** Optional override for POST `/workspace/upload-chunk` requests. */
+  handleWorkspaceUploadChunk?(req: Request): Promise<Response>;
   /** Optional override for POST `/workspace/file` create requests. */
   handleWorkspaceCreate?(req: Request): Promise<Response>;
   /** Optional override for POST `/workspace/rename` requests. */
@@ -108,6 +111,10 @@ export async function handleWorkspaceRoutes(
 
   if (req.method === "POST" && pathname === "/workspace/upload") {
     return await (channel.handleWorkspaceUpload?.(req) ?? handleWorkspaceUpload(req));
+  }
+
+  if (req.method === "POST" && pathname === "/workspace/upload-chunk") {
+    return await (channel.handleWorkspaceUploadChunk?.(req) ?? handleWorkspaceUploadChunk(req));
   }
 
   if (req.method === "POST" && pathname === "/workspace/file") {

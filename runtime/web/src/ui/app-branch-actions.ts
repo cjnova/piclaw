@@ -281,6 +281,59 @@ export async function pruneCurrentBranch(options: PruneCurrentBranchOptions): Pr
   }
 }
 
+export interface PurgeArchivedBranchOptions {
+  targetChatJid?: string | null;
+  purgeChatBranch?: (chatJid: string) => Promise<{ branch?: BranchRecord | null }>;
+  currentChatBranches?: BranchRecord[];
+  refreshActiveChatAgents?: () => Promise<unknown> | unknown;
+  refreshCurrentChatBranches?: () => Promise<unknown> | unknown;
+  showIntentToast?: ToastFn;
+  confirm?: (message: string) => boolean;
+}
+
+/** Permanently delete an already archived branch after an explicit irreversible confirmation. */
+export async function purgeArchivedBranch(options: PurgeArchivedBranchOptions): Promise<boolean> {
+  const {
+    targetChatJid,
+    purgeChatBranch,
+    currentChatBranches = [],
+    refreshActiveChatAgents,
+    refreshCurrentChatBranches,
+    showIntentToast,
+    confirm = (message: string) => window.confirm(message),
+  } = options;
+
+  const normalized = typeof targetChatJid === 'string' ? targetChatJid.trim() : '';
+  if (!normalized || typeof purgeChatBranch !== 'function') return false;
+
+  const branch = currentChatBranches.find((item) => item?.chat_jid === normalized) || null;
+  const isArchived = Boolean(branch?.archived_at);
+  if (!isArchived) {
+    showIntentToast?.('Could not delete branch', 'Only archived sessions can be permanently deleted.', 'warning', 4500);
+    return false;
+  }
+
+  const label = `@${branch?.agent_name || normalized}`;
+  const confirmed = confirm(
+    `Permanently delete ${label}?\n\nThis removes all chat history, token usage, cursor state, scheduled tasks, and session files for this branch. It cannot be undone.`
+  );
+  if (!confirmed) return false;
+
+  try {
+    await purgeChatBranch(normalized);
+    await Promise.allSettled([
+      refreshActiveChatAgents?.(),
+      refreshCurrentChatBranches?.(),
+    ]);
+    showIntentToast?.('Archived branch deleted', `${label} was permanently deleted.`, 'info', 4000);
+    return true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || 'Could not permanently delete archived branch.');
+    showIntentToast?.('Could not delete branch', message || 'Could not permanently delete archived branch.', 'warning', 5000);
+    return false;
+  }
+}
+
 export interface RestoreBranchOptions {
   targetChatJid?: string | null;
   restoreChatBranch?: (chatJid: string) => Promise<{ branch?: BranchRecord | null }>;

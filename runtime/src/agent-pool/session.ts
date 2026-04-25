@@ -237,7 +237,7 @@ export function getInstalledAddonExtensionPaths(workspaceDir = getWorkspaceDir()
       const manifest = JSON.parse(readFileSync(packageJsonPath, "utf8")) as AddonPackageManifest;
       const declared = Array.isArray(manifest?.pi?.extensions) && manifest.pi?.extensions?.length
         ? manifest.pi.extensions
-        : (typeof manifest?.main === "string" && manifest.main.trim() ? [manifest.main.trim()] : []);
+        : [];
       for (const relativePath of declared) {
         const fullPath = join(packageDir, relativePath);
         if (existsSync(fullPath) && statSync(fullPath).isFile()) extensionPaths.push(fullPath);

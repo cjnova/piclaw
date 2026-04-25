@@ -133,6 +133,8 @@ describe("core config", () => {
           vncTargetsRaw: "",
           debugCardSubmissions: true,
           trustProxy: false,
+          composeUploadLimitMb: 32,
+          workspaceUploadLimitMb: 512,
         });
         expect(config.getToolActivationConfig()).toEqual({
           additionalDefaultTools: ["search_workspace", "introspect_sql"],

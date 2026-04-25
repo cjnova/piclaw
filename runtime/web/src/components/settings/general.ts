@@ -63,6 +63,8 @@ function normalizeGeneralSettings(data = {}) {
         sessionAutoRotate: data.sessionAutoRotate !== false,
         sessionMaxSizeMb: data.sessionMaxSizeMb ?? 32,
         webTerminalEnabled: data.webTerminalEnabled !== false,
+        composeUploadLimitMb: data.composeUploadLimitMb ?? 32,
+        workspaceUploadLimitMb: data.workspaceUploadLimitMb ?? 512,
         toolUseBudget: data.toolUseBudget ?? 64,
     };
 }
@@ -75,6 +77,8 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
     const [sessionAutoRotate, setSessionAutoRotate] = useState(true);
     const [sessionMaxSizeMb, setSessionMaxSizeMb] = useState(32);
     const [webTerminalEnabled, setWebTerminalEnabled] = useState(true);
+    const [composeUploadLimitMb, setComposeUploadLimitMb] = useState(32);
+    const [workspaceUploadLimitMb, setWorkspaceUploadLimitMb] = useState(512);
     const [toolUseBudget, setToolUseBudget] = useState(64);
     const [saving, setSaving] = useState(false);
     const [metersEnabled, setMetersEnabled] = useState(() => readStoredMetersEnabled(false));
@@ -89,6 +93,8 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
         setSessionAutoRotate(next.sessionAutoRotate);
         setSessionMaxSizeMb(next.sessionMaxSizeMb);
         setWebTerminalEnabled(next.webTerminalEnabled);
+        setComposeUploadLimitMb(next.composeUploadLimitMb);
+        setWorkspaceUploadLimitMb(next.workspaceUploadLimitMb);
         setToolUseBudget(next.toolUseBudget);
         savedSnapshotRef.current = JSON.stringify(next);
     }, []);
@@ -113,6 +119,8 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
         sessionAutoRotate,
         sessionMaxSizeMb,
         webTerminalEnabled,
+        composeUploadLimitMb,
+        workspaceUploadLimitMb,
         toolUseBudget,
     })), [
         userName,
@@ -122,6 +130,8 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
         sessionAutoRotate,
         sessionMaxSizeMb,
         webTerminalEnabled,
+        composeUploadLimitMb,
+        workspaceUploadLimitMb,
         toolUseBudget,
     ]);
     const dirty = currentSnapshot !== savedSnapshotRef.current;
@@ -142,6 +152,8 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
                     sessionAutoRotate,
                     sessionMaxSizeMb,
                     webTerminalEnabled,
+                    composeUploadLimitMb,
+                    workspaceUploadLimitMb,
                     toolUseBudget,
                 }),
             });
@@ -167,10 +179,21 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
         sessionAutoRotate,
         sessionMaxSizeMb,
         webTerminalEnabled,
+        composeUploadLimitMb,
+        workspaceUploadLimitMb,
         toolUseBudget,
         applyIncoming,
         mergeSettingsData,
     ]);
+
+    const totpSetup = settingsData?.instanceTotp || {
+        configured: false,
+        issuer: assistantName || 'Piclaw',
+        label: userName ? `${assistantName || 'Piclaw'}:${userName}` : (assistantName || 'Piclaw'),
+        secret: '',
+        otpauth: '',
+        qrSvg: '',
+    };
 
     return html`
         <div class="settings-section">
@@ -231,12 +254,71 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
                 />
                 <span class="settings-hint" style="margin:0">per turn</span>
             </div>
+
+            <h3 style="margin-top:20px">Instance Configuration</h3>
+            <div class="settings-row">
+                <label>Compose upload (MB)</label>
+                <${NumberStepper}
+                    label="compose upload limit"
+                    value=${composeUploadLimitMb}
+                    min=${1}
+                    max=${512}
+                    fallback=${32}
+                    width="80px"
+                    onChange=${setComposeUploadLimitMb}
+                />
+                <span class="settings-hint" style="margin:0">chat/media attachments</span>
+            </div>
+            <div class="settings-row">
+                <label>Workspace upload (MB)</label>
+                <${NumberStepper}
+                    label="workspace upload limit"
+                    value=${workspaceUploadLimitMb}
+                    min=${1}
+                    max=${512}
+                    fallback=${512}
+                    width="80px"
+                    onChange=${setWorkspaceUploadLimitMb}
+                />
+                <span class="settings-hint" style="margin:0">bounded by the current 512 MB request cap</span>
+            </div>
+            <div class="settings-totp-panel">
+                <div class="settings-totp-header">
+                    <div>
+                        <strong>TOTP setup QR</strong>
+                        <div class="settings-hint" style="margin:6px 0 0 0;">
+                            ${totpSetup.configured
+                                ? 'Current web-login authenticator secret. Scan this QR to add another authenticator device.'
+                                : 'TOTP is not configured for this instance yet, so no setup QR is available.'}
+                        </div>
+                    </div>
+                </div>
+                ${totpSetup.configured ? html`
+                    <div class="settings-totp-grid">
+                        <div class="settings-totp-qr" dangerouslySetInnerHTML=${{ __html: totpSetup.qrSvg }}></div>
+                        <div class="settings-totp-meta">
+                            <div class="settings-row settings-row-vertical">
+                                <label>Issuer</label>
+                                <input type="text" readonly value=${totpSetup.issuer || ''} />
+                            </div>
+                            <div class="settings-row settings-row-vertical">
+                                <label>Label</label>
+                                <input type="text" readonly value=${totpSetup.label || ''} />
+                            </div>
+                            <div class="settings-row settings-row-vertical">
+                                <label>Secret</label>
+                                <input type="text" readonly value=${totpSetup.secret || ''} />
+                            </div>
+                        </div>
+                    </div>
+                ` : null}
+            </div>
             <div class="settings-row" style="margin-top:16px; align-items:center; gap:10px;">
                 <button class="settings-addon-btn settings-addon-btn-install" disabled=${saving || !dirty} onClick=${save}>
                     ${saving ? 'Saving…' : 'Save & apply'}
                 </button>
                 <span class="settings-hint" style="margin:0">
-                    Identity, session rotation, size caps, terminal availability, and tool budget apply to new turns immediately.
+                    Identity, session rotation, upload limits, terminal availability, and tool budget apply to new turns immediately.
                 </span>
             </div>
         </div>

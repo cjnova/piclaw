@@ -233,7 +233,7 @@ export class AgentPool {
       query: extensionKvQuery,
       clear: extensionKvClear,
     });
-    try { migrateProxmoxPortainerToKv(); } catch { /* migration is best-effort */ }
+    try { migrateProxmoxPortainerToKv(); } catch (e) { void e; /* migration is best-effort */ }
     mkdirSync(SESSIONS_DIR, { recursive: true });
     mkdirSync(this.logsDir, { recursive: true });
     this.cleanupTimer = setInterval(

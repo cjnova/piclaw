@@ -152,6 +152,15 @@ describe("web control-plane payload guards", () => {
     expect(pruneResponse.status).toBe(400);
     expect((await pruneResponse.json()).error).toBe("Missing chat_jid");
 
+    const purgeReq = new Request("https://example.com/agent/branch-purge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const purgeResponse = await WebChannel.prototype.handleAgentBranchPurge.call(channel, purgeReq);
+    expect(purgeResponse.status).toBe(400);
+    expect((await purgeResponse.json()).error).toBe("Missing chat_jid");
+
     const restoreReq = new Request("https://example.com/agent/branch-restore", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -1,6 +1,6 @@
 ---
-id: adopt-pi-coding-agent-0.68.0-followups-and-web-progress-mapping
-title: Adopt pi-coding-agent 0.68.0 follow-ups and web progress mapping
+id: adopt-pi-coding-agent-0.70.x-followups-and-web-progress-mapping
+title: Adopt pi-coding-agent 0.70.x follow-ups and web progress mapping
 status: review
 priority: high
 created: 2026-04-21
@@ -20,11 +20,11 @@ owner: smith
 blocked-by: []
 ---
 
-# Adopt pi-coding-agent 0.68.0 follow-ups and web progress mapping
+# Adopt pi-coding-agent 0.70.x follow-ups and web progress mapping
 
 ## Verbatim analysis
 
-Here’s the **Piclaw-focused 0.68.0 impact map**, with emphasis on **web/TUI progress mapping** and **shipping extensions**.
+Here’s the **Piclaw-focused 0.70.x impact map**, with emphasis on **web/TUI progress mapping** and **shipping extensions**.
 
 ## Executive summary
 
@@ -42,13 +42,13 @@ Here’s the **Piclaw-focused 0.68.0 impact map**, with emphasis on **web/TUI pr
 ### Remaining follow-up outside this implementation pass
 - **map `ctx.ui.setWorkingIndicator()` into our web UI**
   - the runtime/web bridge compatibility is present, but richer animated indicator rendering is still a separate product-polish task
-  - this is no longer blocking the 0.68.0 implementation closure
+  - this is no longer blocking the 0.70.x implementation closure
 
 ---
 
 # 1) Core upstream changes → Piclaw impact
 
-| Upstream 0.68.0 item | Piclaw impact | Status |
+| Upstream 0.70.x item | Piclaw impact | Status |
 |---|---|---|
 | `tools` changed from built-in tool objects to **tool-name allowlists** | Broke our session bootstrap/tool factory | **Fixed** |
 | `/clone` added upstream | Piclaw parser intercepted slash commands, so upstream `/clone` would not pass through | **Fixed natively in Piclaw** |
@@ -227,7 +227,7 @@ These are the built-ins loaded from `runtime/src/extensions/index.ts`.
 - prompt hint injection
 
 **Impact**
-- little direct 0.68.0 benefit beyond compatibility
+- little direct 0.70.x benefit beyond compatibility
 
 **Suggested upgrade**
 - low priority
@@ -246,7 +246,7 @@ These are the built-ins loaded from `runtime/src/extensions/index.ts`.
 
 **Suggested upgrade**
 - low priority
-- no urgent 0.68.0 work
+- no urgent 0.70.x work
 
 ---
 
@@ -286,7 +286,7 @@ These are the built-ins loaded from `runtime/src/extensions/index.ts`.
 - discovery tooling
 
 **Impact**
-- no direct 0.68.0 change required
+- no direct 0.70.x change required
 - tool-name allowlist migration is already accounted for indirectly
 
 ---
@@ -309,7 +309,7 @@ These are the built-ins loaded from `runtime/src/extensions/index.ts`.
 
 ### `messages-crud`, `file-attachments`, `runtime-scripts`, `sql-introspect`, `scheduled-tasks`, `workspace-search`, `workspace-memory-bootstrap`, `dream-maintenance`, `exit-process`
 **Impact**
-- mostly no direct 0.68.0 changes needed
+- mostly no direct 0.70.x changes needed
 - many append prompt hints in `before_agent_start`, but do not need structured prompt inspection yet
 
 **Value**
@@ -405,7 +405,7 @@ These are the packaged wrappers under `runtime/extensions/integrations/*`, mostl
 ## `bun-runner`
 **Impact**
 - likely good candidate for working indicator during script execution
-- otherwise low direct 0.68.0 pressure
+- otherwise low direct 0.70.x pressure
 
 ---
 
@@ -499,7 +499,7 @@ Potential indirect benefit for:
 
 # 7) Prioritized Piclaw follow-up list
 
-## Completed in the 0.68.0 implementation pass
+## Completed in the 0.70.x implementation pass
 1. **Adopt progress indicator support in `smart-compaction`**
 2. **Adopt `session_shutdown.reason` / `targetSessionFile` in `ssh-core`**
 3. **Add progress indicator support to `image-processing`**
@@ -546,7 +546,7 @@ into one extension status model per chat/turn
 
 ## Closure
 
-The upstream 0.68.0 implementation follow-up is closed for Piclaw runtime/extensions. Remaining work is optional UI polish or separate Azure-specific lifecycle hardening.
+The upstream 0.70.x implementation follow-up is closed for Piclaw runtime/extensions. Remaining work is optional UI polish or separate Azure-specific lifecycle hardening.
 
 If you want, I can still turn the remaining web-indicator rendering work into a dedicated **workitem/spec** with:
 - event schema
@@ -556,12 +556,12 @@ If you want, I can still turn the remaining web-indicator rendering work into a 
 
 ## Follow-up tickets
 
-- [Audit core Pi 0.68.0 runtime and web surfaces](audit-core-pi-0.68.0-runtime-and-web-surfaces.md)
+- [Audit core Pi 0.70.x runtime and web surfaces](audit-core-pi-0.70.x-runtime-and-web-surfaces.md)
 - [Map extension working indicator to the web UI](map-extension-working-indicator-to-web-ui.md)
-- [Audit built-in extensions for Pi 0.68.0 adoption](audit-built-in-extensions-for-pi-0.68.0-adoption.md)
-- [Audit packaged integrations for Pi 0.68.0 adoption](audit-packaged-integrations-for-pi-0.68.0-adoption.md)
+- [Audit built-in extensions for Pi 0.70.x adoption](audit-built-in-extensions-for-pi-0.70.x-adoption.md)
+- [Audit packaged integrations for Pi 0.70.x adoption](audit-packaged-integrations-for-pi-0.70.x-adoption.md)
 - [Adopt `systemPromptOptions` and `session_shutdown` metadata](adopt-systempromptoptions-and-session-shutdown-metadata.md)
 - [Capture automatic upstream wins with regression coverage](capture-automatic-upstream-wins-with-regression-coverage.md)
-- [Plan and sequence the Pi 0.68.0 follow-up rollout](plan-and-sequence-pi-0.68.0-follow-up-rollout.md)
+- [Plan and sequence the Pi 0.70.x follow-up rollout](plan-and-sequence-pi-0.70.x-follow-up-rollout.md)
 - [Specify the web progress and extension status model](specify-web-progress-and-extension-status-model.md)
-- [Audit and improve Azure extensions after Pi 0.68.0](audit-and-improve-azure-extensions-after-pi-0.68.0.md)
+- [Audit and improve Azure extensions after Pi 0.70.x](audit-and-improve-azure-extensions-after-pi-0.70.x.md)

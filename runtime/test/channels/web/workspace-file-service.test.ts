@@ -198,3 +198,44 @@ test("uploadFile, attachFile, and downloadZip return expected outcomes", async (
     cleanup();
   }
 });
+
+test("uploadChunk assembles a file atomically", async () => {
+  const { prefix, base, cleanup, service } = setupWorkspaceDir();
+  try {
+    mkdirSync(join(base, "uploads"), { recursive: true });
+
+    const chunkA = new TextEncoder().encode("hello ");
+    const chunkB = new TextEncoder().encode("world");
+    const uploadId = `upload-${Date.now()}`;
+
+    const first = await service.uploadChunk({
+      pathParam: `${prefix}/uploads`,
+      uploadId,
+      chunkIndex: 0,
+      chunkTotal: 2,
+      fileName: 'chunked.txt',
+      fileSize: chunkA.length + chunkB.length,
+      overwrite: false,
+      data: chunkA,
+    });
+    expect(first.status).toBe(200);
+    expect((first.body as any).complete).toBe(false);
+
+    const second = await service.uploadChunk({
+      pathParam: `${prefix}/uploads`,
+      uploadId,
+      chunkIndex: 1,
+      chunkTotal: 2,
+      fileName: 'chunked.txt',
+      fileSize: chunkA.length + chunkB.length,
+      overwrite: false,
+      data: chunkB,
+    });
+    expect(second.status).toBe(200);
+    expect((second.body as any).complete).toBe(true);
+    expect((second.body as any).path).toBe(`${prefix}/uploads/chunked.txt`);
+    expect(readFileSync(join(base, 'uploads', 'chunked.txt'), 'utf8')).toBe('hello world');
+  } finally {
+    cleanup();
+  }
+});

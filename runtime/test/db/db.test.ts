@@ -232,6 +232,135 @@ test("chat branch registry can list archived branches and restore with collision
   expect(db.getChatBranchByAgentName(restored.agent_name)?.chat_jid).toBe(archived.chat_jid);
 });
 
+test("permanentDeleteArchivedBranch removes archived branch state without deleting shared media", () => {
+  const rootChatJid = `web:test-purge-${Date.now()}`;
+  const branchChatJid = `${rootChatJid}:branch:archived`;
+  const siblingChatJid = `${rootChatJid}:branch:active`;
+  const now = new Date().toISOString();
+
+  db.storeChatMetadata(rootChatJid, now, "Root");
+  db.storeChatMetadata(branchChatJid, now, "Archived");
+  db.storeChatMetadata(siblingChatJid, now, "Sibling");
+  const root = db.getChatBranchByChatJid(rootChatJid);
+  const archived = db.ensureChatBranch({
+    chat_jid: branchChatJid,
+    root_chat_jid: rootChatJid,
+    parent_branch_id: root?.branch_id ?? null,
+    agent_name: "archived",
+  });
+  db.ensureChatBranch({
+    chat_jid: siblingChatJid,
+    root_chat_jid: rootChatJid,
+    parent_branch_id: root?.branch_id ?? null,
+    agent_name: "active",
+  });
+  db.archiveChatBranch(branchChatJid);
+
+  const uniqueMediaId = db.createMedia("branch.txt", "text/plain", new TextEncoder().encode("branch"), null, null);
+  const sharedMediaId = db.createMedia("shared.txt", "text/plain", new TextEncoder().encode("shared"), null, null);
+  const archivedMessageRowId = db.storeMessage(makeMessage(branchChatJid, "archived message", now));
+  db.attachMediaToMessage(archivedMessageRowId, [uniqueMediaId, sharedMediaId]);
+  const siblingMessageRowId = db.storeMessage(makeMessage(siblingChatJid, "sibling message", now));
+  db.attachMediaToMessage(siblingMessageRowId, [sharedMediaId]);
+
+  db.setChatCursor(branchChatJid, now);
+  db.storeTokenUsage({
+    chat_jid: branchChatJid,
+    run_at: now,
+    input_tokens: 1,
+    output_tokens: 2,
+    cache_read_tokens: 0,
+    cache_write_tokens: 0,
+    total_tokens: 3,
+    cost_input: 0,
+    cost_output: 0,
+    cost_cache_read: 0,
+    cost_cache_write: 0,
+    cost_total: 0,
+    model: "test-model",
+    provider: "test-provider",
+    api: "responses",
+    turns: 1,
+    source: "test",
+    source_ref: "purge",
+  });
+  db.createTask({
+    id: `task-${Date.now()}`,
+    chat_jid: branchChatJid,
+    prompt: "Do the thing",
+    model: null,
+    task_kind: "agent",
+    command: null,
+    cwd: null,
+    timeout_sec: null,
+    schedule_type: "once",
+    schedule_value: now,
+    next_run: now,
+    status: "active",
+    created_at: now,
+  });
+  db.logTaskRun({
+    task_id: db.getDb().prepare("SELECT id FROM scheduled_tasks WHERE chat_jid = ?").get(branchChatJid)!.id,
+    run_at: now,
+    duration_ms: 5,
+    status: "success",
+    result: "ok",
+    error: null,
+  });
+  db.upsertSshConfig({
+    chat_jid: branchChatJid,
+    ssh_target: "host",
+    ssh_port: 22,
+    private_key_keychain: "ssh/test",
+    known_hosts_keychain: null,
+    strict_host_key_checking: true,
+  });
+  db.getDb().prepare(
+    `INSERT INTO proxmox_configs (chat_jid, base_url, api_token_keychain, allow_insecure_tls, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(branchChatJid, "https://proxmox.example.test", "proxmox/test", 0, now, now);
+  db.getDb().prepare(
+    `INSERT INTO portainer_configs (chat_jid, base_url, api_token_keychain, allow_insecure_tls, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(branchChatJid, "https://portainer.example.test", "portainer/test", 0, now, now);
+
+  const preview = db.previewPermanentDeleteArchivedBranch(branchChatJid);
+  expect(preview.counts.messages).toBe(1);
+  expect(preview.counts.message_media).toBe(2);
+  expect(preview.counts.media_candidates).toBe(2);
+  expect(preview.counts.task_run_logs).toBe(1);
+  expect(preview.counts.scheduled_tasks).toBe(1);
+
+  const deleted = db.permanentDeleteArchivedBranch(branchChatJid);
+  expect(deleted.branch.chat_jid).toBe(branchChatJid);
+  expect(deleted.counts.media_deleted).toBe(1);
+  expect(db.getChatBranchByChatJid(branchChatJid)).toBeNull();
+  expect(db.getDb().prepare("SELECT COUNT(*) AS count FROM chats WHERE jid = ?").get(branchChatJid)).toEqual({ count: 0 });
+  expect(db.getDb().prepare("SELECT COUNT(*) AS count FROM messages WHERE chat_jid = ?").get(branchChatJid)).toEqual({ count: 0 });
+  expect(db.getDb().prepare("SELECT COUNT(*) AS count FROM scheduled_tasks WHERE chat_jid = ?").get(branchChatJid)).toEqual({ count: 0 });
+  expect(db.getMediaById(uniqueMediaId)).toBeUndefined();
+  expect(db.getMediaById(sharedMediaId)?.id).toBe(sharedMediaId);
+  expect(db.getDb().prepare("SELECT COUNT(*) AS count FROM messages WHERE chat_jid = ?").get(siblingChatJid)).toEqual({ count: 1 });
+  expect(db.getDb().prepare("SELECT COUNT(*) AS count FROM chat_branches WHERE chat_jid = ?").get(rootChatJid)).toEqual({ count: 1 });
+  expect(db.getDb().prepare("SELECT COUNT(*) AS count FROM chat_branches WHERE chat_jid = ?").get(siblingChatJid)).toEqual({ count: 1 });
+  expect(archived.agent_name).toBe("archived");
+});
+
+test("permanentDeleteArchivedBranch rejects non-archived and root chats", () => {
+  const rootChatJid = `web:test-purge-guard-${Date.now()}`;
+  db.storeChatMetadata(rootChatJid, new Date().toISOString(), "Root");
+  const root = db.getChatBranchByChatJid(rootChatJid);
+  const branch = db.ensureChatBranch({
+    chat_jid: `${rootChatJid}:branch:active`,
+    root_chat_jid: rootChatJid,
+    parent_branch_id: root?.branch_id ?? null,
+    agent_name: "active",
+  });
+
+  expect(() => db.permanentDeleteArchivedBranch(branch.chat_jid)).toThrow(/not archived/);
+  db.archiveChatBranch(branch.chat_jid);
+  db.archiveChatBranch(rootChatJid);
+  expect(() => db.permanentDeleteArchivedBranch(rootChatJid)).toThrow(/root chat session/);
+});
+
 test("initDatabase migrates legacy chat branch uniqueness so pruned handles can be reused", () => {
   const ws = createTempWorkspace("piclaw-chat-branch-migrate-");
 

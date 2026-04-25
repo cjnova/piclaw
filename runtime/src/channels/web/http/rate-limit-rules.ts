@@ -19,6 +19,7 @@ const DATA_REPLY_LIMIT = 30;
 const DATA_AGENT_MESSAGE_LIMIT = 30;
 const DATA_MEDIA_UPLOAD_LIMIT = 20;
 const DATA_WORKSPACE_UPLOAD_LIMIT = 20;
+const DATA_WORKSPACE_UPLOAD_CHUNK_LIMIT = 240;
 const DATA_DELETE_LIMIT = 60;
 const DATA_WRITE_LIMIT = 30;
 const DATA_POST_UPDATE_LIMIT = 30;
@@ -69,7 +70,7 @@ export function getDataRateLimitRule(method: string, pathname: string): DataRate
       message: "Too many queued-message actions. Slow down.",
     };
   }
-  if (method === "POST" && (pathname === "/agent/branch-fork" || pathname === "/agent/branch-rename" || pathname === "/agent/branch-prune" || pathname === "/agent/branch-restore")) {
+  if (method === "POST" && (pathname === "/agent/branch-fork" || pathname === "/agent/branch-rename" || pathname === "/agent/branch-prune" || pathname === "/agent/branch-purge" || pathname === "/agent/branch-restore")) {
     return {
       bucket: "data/agent_branch",
       limit: DATA_AGENT_BRANCH_LIMIT,
@@ -109,6 +110,13 @@ export function getDataRateLimitRule(method: string, pathname: string): DataRate
       bucket: "data/workspace_upload",
       limit: DATA_WORKSPACE_UPLOAD_LIMIT,
       message: "Too many workspace uploads. Slow down.",
+    };
+  }
+  if (method === "POST" && pathname === "/workspace/upload-chunk") {
+    return {
+      bucket: "data/workspace_upload_chunk",
+      limit: DATA_WORKSPACE_UPLOAD_CHUNK_LIMIT,
+      message: "Too many workspace upload chunks. Slow down.",
     };
   }
   if (method === "POST" && pathname === "/workspace/attach") {

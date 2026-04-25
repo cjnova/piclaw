@@ -228,8 +228,9 @@ export function migrateProxmoxPortainerToKv(): { proxmox: number; portainer: num
       `).run(row.chat_jid, value, row.created_at, row.updated_at);
       proxmox += result.changes;
     }
-  } catch {
+  } catch (e) {
     // Table may not exist
+    void e;
   }
 
   try {
@@ -250,8 +251,9 @@ export function migrateProxmoxPortainerToKv(): { proxmox: number; portainer: num
       `).run(row.chat_jid, value, row.created_at, row.updated_at);
       portainer += result.changes;
     }
-  } catch {
+  } catch (e) {
     // Table may not exist
+    void e;
   }
 
   return { proxmox, portainer };

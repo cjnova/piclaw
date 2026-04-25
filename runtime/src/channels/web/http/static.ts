@@ -8,7 +8,7 @@
  */
 
 import { extname, resolve } from "path";
-import { statSync } from "fs";
+import { readFileSync, statSync } from "fs";
 
 import { createLogger, debugSuppressedError } from "../../../utils/logger.js";
 import { WEB_RUNTIME_CONFIG } from "../../../core/config.js";
@@ -36,6 +36,7 @@ const LOGIN_ASSET_VERSION_PLACEHOLDER = "__LOGIN_ASSET_VERSION__";
 const NOTIFICATION_SOURCE_LABELS_PLACEHOLDER = "__PICLAW_NOTIFICATION_SOURCE_LABELS_FLAG__";
 const APP_VERSION_FILES = ["dist/app.bundle.js", "dist/app.bundle.css"];
 const LOGIN_VERSION_FILES = ["dist/login.bundle.js", "dist/login.bundle.css"];
+const TEXT_ASSET_CACHE = new Map<string, { mtimeMs: number; text: string }>();
 
 function readAssetVersion(relPaths: string[]): string {
   let newestMtimeMs = 0;
@@ -81,6 +82,21 @@ function renderHtmlTemplate(relPath: string, html: string): string {
   return renderedWithSharedFlags;
 }
 
+function readRenderedTextAsset(filePath: string): string {
+  const stats = statSync(filePath);
+  const cached = TEXT_ASSET_CACHE.get(filePath);
+  if (cached && cached.mtimeMs === stats.mtimeMs) {
+    return cached.text;
+  }
+
+  const text = readFileSync(filePath, "utf8");
+  TEXT_ASSET_CACHE.set(filePath, {
+    mtimeMs: stats.mtimeMs || 0,
+    text,
+  });
+  return text;
+}
+
 import { isPathWithin } from "../../../utils/path-safety.js";
 
 /**
@@ -114,12 +130,16 @@ export async function serveStatic(relPath: string, notFound: () => Response): Pr
           : "public, max-age=3600";
 
   if (ext === ".html" || relPath === "sw.js") {
-    const rendered = renderHtmlTemplate(relPath, await file.text());
+    const rendered = renderHtmlTemplate(relPath, readRenderedTextAsset(filePath));
+    const responseHeaders: Record<string, string> = {
+      "Content-Type": contentType,
+      "Cache-Control": cacheControl,
+    };
+    if (relPath === "sw.js") {
+      responseHeaders["Service-Worker-Allowed"] = "/";
+    }
     return new Response(rendered, {
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": cacheControl,
-      },
+      headers: responseHeaders,
     });
   }
 
@@ -127,10 +147,6 @@ export async function serveStatic(relPath: string, notFound: () => Response): Pr
     "Content-Type": contentType,
     "Cache-Control": cacheControl,
   };
-
-  if (relPath === "sw.js") {
-    responseHeaders["Service-Worker-Allowed"] = "/";
-  }
 
   return new Response(file, {
     headers: responseHeaders,

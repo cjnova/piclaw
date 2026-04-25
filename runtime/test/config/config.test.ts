@@ -251,6 +251,8 @@ test("config and env fallback chains handle booleans and session settings", () =
       vncTargetsRaw: "",
       debugCardSubmissions: true,
       trustProxy: false,
+      composeUploadLimitMb: 32,
+      workspaceUploadLimitMb: 512,
     });
     expect(snapshot.SESSION_STORAGE_CONFIG).toEqual({
       maxSizeMb: 8,
@@ -607,6 +609,8 @@ test("web runtime config getter groups auth/session/proxy settings", async () =>
         vncTargetsRaw: "",
         debugCardSubmissions: true,
         trustProxy: false,
+        composeUploadLimitMb: 32,
+        workspaceUploadLimitMb: 512,
       });
     },
   );
@@ -616,6 +620,7 @@ test("legacy top-level web terminal and VNC config keys still map into web runti
   await withTempWorkspaceEnv(
     "piclaw-config-",
     {
+      PICLAW_WEB_TERMINAL_ENABLED: undefined,
       PICLAW_WEB_VNC_ALLOW_DIRECT: undefined,
       PICLAW_VNC_ALLOW_DIRECT: undefined,
       PICLAW_WEB_VNC_TARGETS: undefined,
@@ -766,6 +771,8 @@ test("in-process module init handles deprecated env warnings, argv parsing, and 
           vncTargetsRaw: "",
           debugCardSubmissions: false,
           trustProxy: false,
+          composeUploadLimitMb: 32,
+          workspaceUploadLimitMb: 512,
         });
         expect(cfg.getWebRuntimeConfig()).toBe(cfg.WEB_RUNTIME_CONFIG);
         expect(cfg.SESSION_STORAGE_CONFIG).toEqual({

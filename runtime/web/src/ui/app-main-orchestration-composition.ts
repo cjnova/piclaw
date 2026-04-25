@@ -301,6 +301,7 @@ export function useMainAppOrchestrationComposition(options: UseMainAppOrchestrat
     setIsRenamingBranch: setters.setIsRenamingBranch,
     renameChatBranch: services.renameChatBranch,
     pruneChatBranch: services.pruneChatBranch,
+    purgeChatBranch: services.purgeChatBranch,
     restoreChatBranch: services.restoreChatBranch,
     branchLoaderMode: routeState.branchLoaderMode,
     branchLoaderSourceChatJid: routeState.branchLoaderSourceChatJid,

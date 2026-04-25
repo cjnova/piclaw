@@ -41,20 +41,18 @@ export function resolveOobePanelState(options: {
   modelsLoaded: boolean;
   modelPayload: Record<string, unknown> | null | undefined;
   providerMissingDismissed?: boolean;
-  providerReadyCompleted?: boolean;
 }): OobePanelState {
   const {
     panePopoutMode = false,
     modelsLoaded,
     modelPayload,
     providerMissingDismissed = false,
-    providerReadyCompleted = false,
   } = options;
 
   const availableModelCount = countAvailableModels(modelPayload);
   const hasAvailableModels = availableModelCount > 0;
   const configuredModelHint = hasConfiguredModelHint(modelPayload);
-  const providerReadyCompletedResolved = providerReadyCompleted || isProviderReadyCompletedForInstance(modelPayload);
+  const isInstanceConfigured = hasAvailableModels || configuredModelHint;
 
   if (panePopoutMode || !modelsLoaded) {
     return {
@@ -65,9 +63,9 @@ export function resolveOobePanelState(options: {
     };
   }
 
-  if (!hasAvailableModels) {
+  if (isInstanceConfigured) {
     return {
-      kind: configuredModelHint ? 'hidden' : (providerMissingDismissed ? 'hidden' : 'provider-missing'),
+      kind: 'hidden',
       hasAvailableModels,
       availableModelCount,
       hasConfiguredModelHint: configuredModelHint,
@@ -75,7 +73,7 @@ export function resolveOobePanelState(options: {
   }
 
   return {
-    kind: (providerReadyCompletedResolved || configuredModelHint) ? 'hidden' : 'provider-ready',
+    kind: providerMissingDismissed ? 'hidden' : 'provider-missing',
     hasAvailableModels,
     availableModelCount,
     hasConfiguredModelHint: configuredModelHint,

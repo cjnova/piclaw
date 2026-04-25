@@ -147,7 +147,7 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) fail(message);
 }
 
-async function assertPanelVisible(page, kind: 'provider-missing' | 'provider-ready') {
+async function assertPanelVisible(page, kind: 'provider-missing') {
   const locator = page.locator(`.oobe-panel-${kind}`);
   await locator.waitFor({ state: 'visible', timeout: 15000 });
   return locator;
@@ -314,17 +314,14 @@ async function main() {
         await page.waitForSelector('textarea', { timeout: 15000 });
         const panel = await assertPanelVisible(page, 'provider-missing');
         const text = (await panel.textContent()) || '';
-        assert(text.includes('Connect an AI provider'), 'Provider-missing OOBE title missing.');
-        assert(text.includes('not web-app sign-in'), 'Provider-missing copy should distinguish provider setup from app sign-in.');
+        assert(text.includes('Instance needs setup'), 'Provider-missing OOBE title missing.');
+        assert(text.includes('Open Settings'), 'Provider-missing copy should point to settings for setup.');
 
         const providerMissingScreenshot = join(artifactDir, `oobe-provider-missing-${stamp}.png`);
         await page.screenshot({ path: providerMissingScreenshot, fullPage: true });
 
-        await page.getByRole('button', { name: 'Set up with /login' }).click();
-        await page.waitForFunction(() => {
-          const textarea = document.querySelector('textarea');
-          return Boolean(textarea && 'value' in textarea && textarea.value === '/login');
-        }, undefined, { timeout: 15000 });
+        await page.getByRole('button', { name: 'Open Settings' }).click();
+        await page.waitForFunction(() => Boolean(document.querySelector('.settings-dialog')), { timeout: 15000 });
 
         await page.getByRole('button', { name: 'Dismiss' }).click();
         await assertPanelHidden(page);
@@ -349,14 +346,14 @@ async function main() {
       }
     }
 
-    log('Scenario 2: provider-ready OOBE panel and completion persistence');
+    log('Scenario 2: configured instance keeps OOBE hidden');
     {
       const context = await browser.newContext();
       const page = await context.newPage();
       const interceptedModelRequests: string[] = [];
       const modelResponses: Array<{ url: string; status: number; body?: string }> = [];
-      const providerReadyPayload = JSON.stringify({
-        current: null,
+      const configuredPayload = JSON.stringify({
+        current: 'openai/gpt-4.1',
         models: ['openai/gpt-4.1'],
         model_options: [{
           label: 'openai/gpt-4.1',
@@ -375,7 +372,7 @@ async function main() {
         await route.fulfill({
           status: 200,
           contentType: 'application/json',
-          body: providerReadyPayload,
+          body: configuredPayload,
         });
       });
       page.on('response', async (response) => {
@@ -394,24 +391,13 @@ async function main() {
       try {
         await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('textarea', { timeout: 15000 });
-        const panel = await assertPanelVisible(page, 'provider-ready');
-        const text = (await panel.textContent()) || '';
-        assert(text.includes('You’re ready to chat'), 'Provider-ready OOBE title missing.');
-        assert(text.includes('Try /model'), 'Provider-ready next-step CTA missing.');
-
-        const providerReadyScreenshot = join(artifactDir, `oobe-provider-ready-${stamp}.png`);
-        await page.screenshot({ path: providerReadyScreenshot, fullPage: true });
-
-        await page.getByRole('button', { name: 'Try /model' }).click();
-        await page.waitForFunction(() => {
-          const textarea = document.querySelector('textarea');
-          return Boolean(textarea && 'value' in textarea && textarea.value === '/model');
-        }, undefined, { timeout: 15000 });
-
-        await page.getByRole('button', { name: 'Got it' }).click();
         await assertPanelHidden(page);
-        const completedValue = await page.evaluate((key) => localStorage.getItem(key), OOBE_PROVIDER_READY_COMPLETED_KEY);
-        assert(completedValue === 'true', 'Provider-ready completion state did not persist to localStorage.');
+
+        const configuredScreenshot = join(artifactDir, `oobe-configured-${stamp}.png`);
+        await page.screenshot({ path: configuredScreenshot, fullPage: true });
+
+        const panelCount = await page.locator('.oobe-panel').count();
+        assert(panelCount === 0, 'Configured instance should keep OOBE panel hidden.');
 
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.waitForSelector('textarea', { timeout: 15000 });
@@ -421,7 +407,7 @@ async function main() {
         await captureFailureArtifacts(page, {
           artifactDir,
           stamp,
-          label: 'provider-ready',
+          label: 'oobe-configured',
           interceptedModelRequests,
           modelResponses,
         });

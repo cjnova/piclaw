@@ -1,6 +1,6 @@
 ---
-id: audit-built-in-extensions-for-pi-0.68.0-adoption
-title: Audit built-in extensions for Pi 0.68.0 adoption
+id: audit-built-in-extensions-for-pi-0.70.x-adoption
+title: Audit built-in extensions for Pi 0.70.x adoption
 status: review
 priority: high
 created: 2026-04-21
@@ -18,11 +18,11 @@ owner: smith
 blocked-by: []
 ---
 
-# Audit built-in extensions for Pi 0.68.0 adoption
+# Audit built-in extensions for Pi 0.70.x adoption
 
 ## Summary
 
-Piclaw’s built-in extensions are where most of the product value from upstream 0.68.0 can be realized. This ticket audits every built-in extension loaded from `runtime/src/extensions/index.ts`, classifies impact, and lands the first wave of upgrades.
+Piclaw’s built-in extensions are where most of the product value from upstream 0.70.x can be realized. This ticket audits every built-in extension loaded from `runtime/src/extensions/index.ts`, classifies impact, and lands the first wave of upgrades.
 
 ## Audit set
 
@@ -158,7 +158,7 @@ For each extension, record:
 
 - 2026-04-21: Confirmed `smart-compaction` and `ssh-core` upstream adoptions were already landed.
 - 2026-04-21: Added bounded working-indicator adoption for `image-processing` and `autoresearch-supervisor`.
-- 2026-04-21: Revalidated hook-driven built-ins against the 0.68.0 context-path/tool-context changes; no extra runtime changes required.
+- 2026-04-21: Revalidated hook-driven built-ins against the 0.70.x context-path/tool-context changes; no extra runtime changes required.
 - 2026-04-21: Added/ran focused regression coverage in `runtime/test/extensions/upstream-068-builtins-and-integrations.test.ts` plus existing built-in extension suites.
 
 ## Evidence
@@ -171,4 +171,4 @@ For each extension, record:
 
 ## Links
 
-- Parent: `workitems/20-doing/adopt-pi-coding-agent-0.68.0-followups-and-web-progress-mapping.md`
+- Parent: `workitems/20-doing/adopt-pi-coding-agent-0.70.x-followups-and-web-progress-mapping.md`

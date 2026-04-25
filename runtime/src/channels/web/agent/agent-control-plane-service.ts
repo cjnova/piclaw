@@ -40,6 +40,7 @@ type ControlPlaneAgentPool = AgentPool & {
   renameChatBranch?: (chatJid: string, options?: { agentName?: string | null }) => Promise<unknown>;
   renameChatJid?: (oldJid: string, newJid: string) => Promise<unknown>;
   pruneChatBranch?: (chatJid: string) => Promise<unknown>;
+  permanentPurgeChatBranch?: (chatJid: string) => Promise<unknown>;
   restoreChatBranch?: (chatJid: string, options?: { agentName?: string | null }) => Promise<unknown>;
 };
 
@@ -445,6 +446,28 @@ export class WebAgentControlPlaneService {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error || "Failed to prune branch.");
       return this.options.json({ error: message || "Failed to prune branch." }, 400);
+    }
+  }
+
+  async handleAgentBranchPurge(req: Request): Promise<Response> {
+    const parsed = await parseJsonObjectRequest(req);
+    if (!parsed.ok) return this.options.json({ error: parsed.error }, 400);
+
+    const payload = parsed.payload as { chat_jid?: string };
+    const chatJid = this.resolveRequiredChatJid(payload.chat_jid);
+    if (!chatJid) {
+      return this.options.json({ error: "Missing chat_jid" }, 400);
+    }
+
+    try {
+      const result = await this.options.agentPool.permanentPurgeChatBranch?.(chatJid);
+      if (!result) {
+        return this.options.json({ error: "Archived-branch purge is not available." }, 501);
+      }
+      return this.options.json({ status: "ok", ...result }, 200);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error || "Failed to permanently delete archived branch.");
+      return this.options.json({ error: message || "Failed to permanently delete archived branch." }, 400);
     }
   }
 

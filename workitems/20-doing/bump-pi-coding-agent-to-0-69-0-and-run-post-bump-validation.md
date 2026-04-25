@@ -1,6 +1,6 @@
 ---
 id: bump-pi-coding-agent-to-0-69-0-and-run-post-bump-validation
-title: Bump pi-coding-agent to 0.69.0 and run post-bump validation
+title: Bump pi-coding-agent to 0.70.x and run post-bump validation
 status: doing
 priority: high
 created: 2026-04-22
@@ -18,19 +18,19 @@ tags:
 owner: pi
 ---
 
-# Bump pi-coding-agent to 0.69.0 and run post-bump validation
+# Bump pi-coding-agent to 0.70.x and run post-bump validation
 
 ## Summary
 
 After the TypeBox migration is stable, bump `@mariozechner/pi-coding-agent` to
-`0.69.0`, revalidate the full Piclaw runtime, and confirm that the upstream
+`0.70.x`, revalidate the full Piclaw runtime, and confirm that the upstream
 behavior changes do not regress Piclaw-specific flows.
 
 This is the final PR in the planned sequence.
 
 ## Acceptance Criteria
 
-- [ ] `@mariozechner/pi-coding-agent` is bumped to `0.69.0` cleanly.
+- [ ] `@mariozechner/pi-coding-agent` is bumped to `0.70.x` cleanly.
 - [ ] Full Piclaw tests pass after the bump.
 - [ ] Targeted validation passes for:
   - `before_agent_start` prompt chaining
@@ -111,7 +111,7 @@ This is the final PR in the planned sequence.
 ## Updates
 
 ### 2026-04-22
-- Created from the 0.69.0 adoption audit as PR3 of 3.
+- Created from the 0.70.x adoption audit as PR3 of 3.
 - Scoped to keep the dependency bump isolated from the TypeBox migration.
 - Seed validation areas copied from the audit checklist: prompt chaining, orphan tool results, web recovery flows, login/provider behavior, and packaged startup.
 

@@ -1,6 +1,6 @@
 ---
 id: audit-and-stage-typebox-adoption-for-pi-0-69-0
-title: Audit and stage TypeBox adoption for pi 0.69.0
+title: Audit and stage TypeBox adoption for pi 0.70.x
 status: doing
 priority: high
 created: 2026-04-22
@@ -18,7 +18,7 @@ tags:
 owner: pi
 ---
 
-# Audit and stage TypeBox adoption for pi 0.69.0
+# Audit and stage TypeBox adoption for pi 0.70.x
 
 ## Summary
 
@@ -112,7 +112,7 @@ safer to land, and easier to roll back if needed.
 ## Updates
 
 ### 2026-04-22
-- Created from the post-audit request to sketch a concrete 3-PR adoption plan for `@mariozechner/pi-coding-agent` `0.69.0`.
+- Created from the post-audit request to sketch a concrete 3-PR adoption plan for `@mariozechner/pi-coding-agent` `0.70.x`.
 - Scoped as PR1 of 3: make TypeBox adoption explicit before any dependency bump.
 - Seed document created: `docs/development/pi-mono-0.69.0-impact-checklist-2026-04-22.md`.
 

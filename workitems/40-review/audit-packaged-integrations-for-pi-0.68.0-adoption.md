@@ -1,6 +1,6 @@
 ---
-id: audit-packaged-integrations-for-pi-0.68.0-adoption
-title: Audit packaged integrations for Pi 0.68.0 adoption
+id: audit-packaged-integrations-for-pi-0.70.x-adoption
+title: Audit packaged integrations for Pi 0.70.x adoption
 status: review
 priority: high
 created: 2026-04-21
@@ -18,7 +18,7 @@ owner: smith
 blocked-by: []
 ---
 
-# Audit packaged integrations for Pi 0.68.0 adoption
+# Audit packaged integrations for Pi 0.70.x adoption
 
 ## Summary
 
@@ -42,7 +42,7 @@ This ticket audits the packaged layer and the delegated runtime behavior togethe
 
 ## Acceptance Criteria
 
-- [x] Every packaged integration is audited for 0.68.0 impact and classified.
+- [x] Every packaged integration is audited for 0.70.x impact and classified.
 - [x] Progress/status adoption opportunities are recorded for each long-running integration.
 - [x] Delegation boundaries between packaged wrappers and `runtime/src/extensions/*` are explicit.
 - [x] Packaging/resource registration still behaves correctly after the upstream bump.
@@ -147,10 +147,10 @@ For each integration, record:
 
 ## Update history
 
-- 2026-04-21: Re-audited packaged wrappers for `ssh`, `keychain`, `context-mode`, `bun-runner`, `office-tools`, `proxmox`, and `portainer` against the 0.68.0 runtime surface.
+- 2026-04-21: Re-audited packaged wrappers for `ssh`, `keychain`, `context-mode`, `bun-runner`, `office-tools`, `proxmox`, and `portainer` against the 0.70.x runtime surface.
 - 2026-04-21: Confirmed `proxmox` and `portainer` already expose structured working-indicator state for long workflows.
 - 2026-04-21: Added bounded working-indicator adoption for `office-tools` / `office-tools-tool` read/write flows.
-- 2026-04-21: Confirmed `bun-runner` remains intentionally separate from `bash` and does not need a 0.68.0-specific API change.
+- 2026-04-21: Confirmed `bun-runner` remains intentionally separate from `bash` and does not need a 0.70.x-specific API change.
 - 2026-04-21: Added/ran focused packaged integration regression coverage in `runtime/test/extensions/upstream-068-builtins-and-integrations.test.ts` and existing office/bun-runner suites.
 
 ## Evidence
@@ -163,5 +163,5 @@ For each integration, record:
 
 ## Links
 
-- Parent: `workitems/20-doing/adopt-pi-coding-agent-0.68.0-followups-and-web-progress-mapping.md`
-- Related: `workitems/20-doing/audit-and-improve-azure-extensions-after-pi-0.68.0.md`
+- Parent: `workitems/20-doing/adopt-pi-coding-agent-0.70.x-followups-and-web-progress-mapping.md`
+- Related: `workitems/20-doing/audit-and-improve-azure-extensions-after-pi-0.70.x.md`

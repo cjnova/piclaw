@@ -1,6 +1,6 @@
 ---
-id: audit-core-pi-0.68.0-runtime-and-web-surfaces
-title: Audit core Pi 0.68.0 runtime and web surfaces
+id: audit-core-pi-0.70.x-runtime-and-web-surfaces
+title: Audit core Pi 0.70.x runtime and web surfaces
 status: review
 priority: high
 created: 2026-04-21
@@ -19,16 +19,16 @@ owner: smith
 blocked-by: []
 ---
 
-# Audit core Pi 0.68.0 runtime and web surfaces
+# Audit core Pi 0.70.x runtime and web surfaces
 
 ## Summary
 
-Piclaw already handled the two blocking adoption issues from `@mariozechner/pi-coding-agent@0.68.0`:
+Piclaw already handled the two blocking adoption issues from `@mariozechner/pi-coding-agent@0.70.x`:
 
 - built-in tool selection now uses tool-name allowlists
 - `ExtensionUIContext` now requires `setWorkingIndicator()`
 
-This ticket covers the rest of the **core runtime + web surface audit** so we do not stop at type compatibility. The goal is to document and tighten every Piclaw-owned runtime boundary that was touched by upstream 0.68.0 behavior changes.
+This ticket covers the rest of the **core runtime + web surface audit** so we do not stop at type compatibility. The goal is to document and tighten every Piclaw-owned runtime boundary that was touched by upstream 0.70.x behavior changes.
 
 ## Scope
 
@@ -54,7 +54,7 @@ This ticket covers the rest of the **core runtime + web surface audit** so we do
 
 ## Acceptance Criteria
 
-- [x] Document the exact Piclaw-owned runtime/web boundaries touched by Pi 0.68.0.
+- [x] Document the exact Piclaw-owned runtime/web boundaries touched by Pi 0.70.x.
 - [x] Verify that tool-name allowlists behave correctly for:
   - [x] default session bootstrap
   - [x] `activate_tools`
@@ -151,7 +151,7 @@ This ticket covers the rest of the **core runtime + web surface audit** so we do
 
 ## Update history
 
-- 2026-04-21: Reconciled the core 0.68.0 audit against landed changes (`/clone`, tool-name allowlists, and web `ExtensionUIContext.setWorkingIndicator`).
+- 2026-04-21: Reconciled the core 0.70.x audit against landed changes (`/clone`, tool-name allowlists, and web `ExtensionUIContext.setWorkingIndicator`).
 - 2026-04-21: Recorded the exact Piclaw-owned runtime/web boundaries touched by the upstream bump in `runtime/test/workitems/upstream-068-audit-summary.md`.
 - 2026-04-21: Confirmed no remaining product gap in the core runtime/web surface beyond optional polish items already tracked separately.
 - 2026-04-21: Added/ran focused regression coverage tying built-in and packaged progress adoption back to the audited core web bridge.
@@ -166,4 +166,4 @@ This ticket covers the rest of the **core runtime + web surface audit** so we do
 
 ## Links
 
-- Parent: `workitems/20-doing/adopt-pi-coding-agent-0.68.0-followups-and-web-progress-mapping.md`
+- Parent: `workitems/20-doing/adopt-pi-coding-agent-0.70.x-followups-and-web-progress-mapping.md`

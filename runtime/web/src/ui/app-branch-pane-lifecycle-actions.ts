@@ -8,6 +8,7 @@ import {
   closeRenameBranchForm,
   openRenameBranchForm,
   pruneCurrentBranch,
+  purgeArchivedBranch,
   renameCurrentBranch,
   restoreBranch,
   runBranchLoader,
@@ -175,6 +176,19 @@ export async function pruneCurrentBranchAction(options: PruneCurrentBranchAction
     baseHref,
     ...rest,
   });
+}
+
+export interface PurgeArchivedBranchActionOptions {
+  targetChatJid: string;
+  purgeChatBranch: (chatJid: string) => Promise<any>;
+  currentChatBranches: any[];
+  refreshActiveChatAgents: () => void;
+  refreshCurrentChatBranches: () => void;
+  showIntentToast: (title: string, detail?: string | null, kind?: string, durationMs?: number) => void;
+}
+
+export async function purgeArchivedBranchAction(options: PurgeArchivedBranchActionOptions): Promise<void> {
+  await purgeArchivedBranch(options);
 }
 
 export interface RestoreBranchActionOptions {
@@ -516,6 +530,7 @@ export interface UseBranchPaneLifecycleOptions {
   currentChatBranches: any[];
   activeChatAgents: any[];
   pruneChatBranch: (chatJid: string) => Promise<any>;
+  purgeChatBranch: (chatJid: string) => Promise<any>;
   restoreChatBranch: (chatJid: string) => Promise<any>;
 
   branchLoaderMode: boolean;
@@ -572,6 +587,7 @@ export function useBranchPaneLifecycle(options: UseBranchPaneLifecycleOptions) {
     currentChatBranches,
     activeChatAgents,
     pruneChatBranch,
+    purgeChatBranch,
     restoreChatBranch,
     branchLoaderMode,
     branchLoaderSourceChatJid,
@@ -671,6 +687,17 @@ export function useBranchPaneLifecycle(options: UseBranchPaneLifecycleOptions) {
     });
   }, [activeChatAgents, chatOnlyMode, currentBranchRecord, currentChatBranches, currentChatJid, navigate, pruneChatBranch, refreshActiveChatAgents, refreshCurrentChatBranches, showIntentToast]);
 
+  const handlePurgeArchivedBranch = useCallback(async (targetChatJid: string) => {
+    await purgeArchivedBranchAction({
+      targetChatJid,
+      purgeChatBranch,
+      currentChatBranches,
+      refreshActiveChatAgents,
+      refreshCurrentChatBranches,
+      showIntentToast,
+    });
+  }, [currentChatBranches, purgeChatBranch, refreshActiveChatAgents, refreshCurrentChatBranches, showIntentToast]);
+
   const handleRestoreBranch = useCallback(async (targetChatJid: string) => {
     await restoreBranchAction({
       targetChatJid,
@@ -765,6 +792,7 @@ export function useBranchPaneLifecycle(options: UseBranchPaneLifecycleOptions) {
     closeRenameCurrentBranchForm,
     handleRenameCurrentBranch,
     handlePruneCurrentBranch,
+    handlePurgeArchivedBranch,
     handleRestoreBranch,
     handleCreateSessionFromCompose,
     handlePopOutPane,

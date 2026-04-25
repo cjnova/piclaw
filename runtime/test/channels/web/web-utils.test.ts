@@ -109,6 +109,7 @@ test("static helpers serve files and not-found", async () => {
 
   const swRes = await serveStatic("sw.js", () => new Response("nope", { status: 404 }));
   expect(swRes.status).toBe(200);
+  expect(swRes.headers.get("Service-Worker-Allowed")).toBe("/");
   const swText = await swRes.text();
   expect(swText).not.toContain("__PICLAW_NOTIFICATION_SOURCE_LABELS_FLAG__");
   expect(swText).toContain('const NOTIFICATION_SOURCE_LABELS_ENABLED = "0" === "1";');
@@ -119,6 +120,26 @@ test("static helpers serve files and not-found", async () => {
 
   const notFound = await serveDocsStatic("missing.html", () => new Response("nope", { status: 404 }));
   expect(notFound.status).toBe(404);
+});
+
+test("static text helpers serve repeated html and service worker reads", async () => {
+  const responses = await Promise.all(
+    Array.from({ length: 20 }, async () => {
+      const [indexRes, swRes] = await Promise.all([
+        serveStatic("index.html", () => new Response("nope", { status: 404 })),
+        serveStatic("sw.js", () => new Response("nope", { status: 404 })),
+      ]);
+      return {
+        indexText: await indexRes.text(),
+        swText: await swRes.text(),
+      };
+    })
+  );
+
+  for (const response of responses) {
+    expect(response.indexText).not.toContain("__APP_ASSET_VERSION__");
+    expect(response.swText).not.toContain("__PICLAW_NOTIFICATION_SOURCE_LABELS_FLAG__");
+  }
 });
 
 test("static helpers reject same-prefix sibling traversal paths", async () => {

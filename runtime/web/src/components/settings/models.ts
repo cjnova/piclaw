@@ -32,8 +32,6 @@ export function ModelsSection({ filter = '' }) {
     const [supportsThinking, setSupportsThinking] = useState(false);
     const [availableLevels, setAvailableLevels] = useState(['off']);
     const [thinkingBusy, setThinkingBusy] = useState(false);
-    const [cheapskateEnabled, setCheapskateEnabled] = useState(false);
-    const [cheapskateLoading, setCheapskateLoading] = useState(false);
 
     const loadModels = useCallback(async () => {
         const data = await getAgentModels();
@@ -43,12 +41,6 @@ export function ModelsSection({ filter = '' }) {
         if (Array.isArray(data.available_thinking_levels) && data.available_thinking_levels.length > 0) {
             setAvailableLevels(data.available_thinking_levels);
         }
-        // Check if cheapskate mode is active by looking for free-tier providers
-        const hasCheapskate = (data.model_options || []).some(m => {
-            const p = (m.provider || '').toLowerCase();
-            return p.includes('-free') || p === 'google-free' || p === 'cerebras-free' || p === 'groq-free' || p === 'sambanova-free';
-        });
-        setCheapskateEnabled(hasCheapskate);
         return data;
     }, []);
     useEffect(() => { loadModels().catch(() => setModels({ models: [], model_options: [] })); }, []);
@@ -72,22 +64,6 @@ export function ModelsSection({ filter = '' }) {
         finally { setThinkingBusy(false); }
     }, [thinkingBusy, loadModels]);
 
-    const toggleCheapskate = useCallback(async () => {
-        if (cheapskateLoading) return;
-        setCheapskateLoading(true);
-        try {
-            if (cheapskateEnabled) {
-                // Ask agent to rotate back to a paid model
-                await sendAgentMessage('default', 'Switch back to the default paid model. Cheapskate mode is being turned off.', null, []);
-            } else {
-                // Ask agent to activate cheapskate rotation
-                await sendAgentMessage('default', 'Activate cheapskate mode — rotate to the best available free-tier model using the cheapskate tool.', null, []);
-            }
-            await loadModels();
-        } catch (e) { console.error('Failed to toggle cheapskate mode:', e); }
-        finally { setCheapskateLoading(false); }
-    }, [cheapskateEnabled, cheapskateLoading, loadModels]);
-
     if (!models) return html`<div class="settings-loading">Loading models\u2026</div>`;
     const options = models.model_options || [];
     const current = models.current;
@@ -98,21 +74,6 @@ export function ModelsSection({ filter = '' }) {
 
     return html`
         <div class="settings-models-split">
-            <div class="settings-cheapskate-bar">
-                <label class="settings-toggle-row">
-                    <span class="settings-toggle-label">
-                        <strong>\uD83D\uDCB0 Cheapskate mode</strong>
-                        <span class="settings-hint" style="margin-left:8px;font-weight:normal">
-                            Rotate across free-tier providers (Gemini, Cerebras, Groq, SambaNova)
-                        </span>
-                    </span>
-                    <button class=${`settings-toggle-btn ${cheapskateEnabled ? 'active' : ''}`}
-                        onClick=${toggleCheapskate} disabled=${cheapskateLoading}
-                        title=${cheapskateEnabled ? 'Disable cheapskate mode' : 'Enable cheapskate mode'}>
-                        ${cheapskateLoading ? '\u23F3' : cheapskateEnabled ? 'On' : 'Off'}
-                    </button>
-                </label>
-            </div>
             <div class="settings-models-list">
                 <table class="settings-table settings-borderless">
                     <thead><tr><th style="width:32px"></th><th>Model</th><th>Provider</th><th>Context</th><th style="text-align:center">Reasoning</th></tr></thead>

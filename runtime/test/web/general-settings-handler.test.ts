@@ -6,7 +6,10 @@ import '../helpers.js';
 import { importFresh, withTempWorkspaceEnv } from '../helpers.js';
 
 test('saveGeneralSettings persists and applies general settings immediately', async () => {
-  await withTempWorkspaceEnv('piclaw-general-settings-', {}, async (workspace) => {
+  await withTempWorkspaceEnv('piclaw-general-settings-', {
+    PICLAW_WEB_COMPOSE_UPLOAD_LIMIT_MB: undefined,
+    PICLAW_WEB_WORKSPACE_UPLOAD_LIMIT_MB: undefined,
+  }, async (workspace) => {
     const handler = await importFresh<typeof import('../../src/channels/web/handlers/general-settings.js')>(
       '../src/channels/web/handlers/general-settings.js',
     );
@@ -19,6 +22,8 @@ test('saveGeneralSettings persists and applies general settings immediately', as
       sessionAutoRotate: false,
       sessionMaxSizeMb: 48,
       webTerminalEnabled: false,
+      composeUploadLimitMb: 24,
+      workspaceUploadLimitMb: 256,
       toolUseBudget: 23,
     });
 
@@ -30,8 +35,11 @@ test('saveGeneralSettings persists and applies general settings immediately', as
       sessionAutoRotate: false,
       sessionMaxSizeMb: 48,
       webTerminalEnabled: false,
+      composeUploadLimitMb: 24,
+      workspaceUploadLimitMb: 256,
       toolUseBudget: 23,
     });
+    expect(saved.instanceTotp.configured).toBe(false);
     expect(handler.getGeneralSettingsData()).toMatchObject(saved);
 
     const persisted = JSON.parse(readFileSync(join(workspace.workspace, '.piclaw', 'config.json'), 'utf8'));
@@ -49,6 +57,8 @@ test('saveGeneralSettings persists and applies general settings immediately', as
       turnMaxToolUseMessages: 23,
       web: {
         terminalEnabled: false,
+        composeUploadLimitMb: 24,
+        workspaceUploadLimitMb: 256,
       },
     });
   });

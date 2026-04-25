@@ -15,6 +15,7 @@ const MUTATING_ROUTE_COVERAGE = [
   { method: "POST", pathname: "/agent/branch-fork", coverage: "data/agent_branch" },
   { method: "POST", pathname: "/agent/branch-rename", coverage: "data/agent_branch" },
   { method: "POST", pathname: "/agent/branch-prune", coverage: "data/agent_branch" },
+  { method: "POST", pathname: "/agent/branch-purge", coverage: "data/agent_branch" },
   { method: "POST", pathname: "/agent/branch-restore", coverage: "data/agent_branch" },
   { method: "POST", pathname: "/agent/peer-message", coverage: "data/agent_peer" },
   { method: "POST", pathname: "/agent/respond", coverage: "data/agent_ui" },
@@ -24,6 +25,7 @@ const MUTATING_ROUTE_COVERAGE = [
   { method: "POST", pathname: "/agent/whitelist", coverage: "deprecated-noop" },
   { method: "POST", pathname: "/workspace/attach", coverage: "data/workspace_attach" },
   { method: "POST", pathname: "/workspace/upload", coverage: "data/workspace_upload" },
+  { method: "POST", pathname: "/workspace/upload-chunk", coverage: "data/workspace_upload_chunk" },
   { method: "POST", pathname: "/workspace/file", coverage: "data/write" },
   { method: "PUT", pathname: "/workspace/file", coverage: "data/write" },
   { method: "DELETE", pathname: "/workspace/file", coverage: "data/write" },
@@ -77,6 +79,7 @@ describe("web http route classification", () => {
     expect(getDataRateLimitRule("POST", "/agent/branch-fork")?.bucket).toBe("data/agent_branch");
     expect(getDataRateLimitRule("POST", "/agent/branch-rename")?.bucket).toBe("data/agent_branch");
     expect(getDataRateLimitRule("POST", "/agent/branch-prune")?.bucket).toBe("data/agent_branch");
+    expect(getDataRateLimitRule("POST", "/agent/branch-purge")?.bucket).toBe("data/agent_branch");
     expect(getDataRateLimitRule("POST", "/agent/branch-restore")?.bucket).toBe("data/agent_branch");
     expect(getDataRateLimitRule("POST", "/agent/peer-message")?.bucket).toBe("data/agent_peer");
     expect(getDataRateLimitRule("POST", "/agent/thought/visibility")?.bucket).toBe("data/agent_ui");
@@ -85,6 +88,7 @@ describe("web http route classification", () => {
     expect(getDataRateLimitRule("POST", "/agent/side-prompt")?.bucket).toBe("data/agent_side_prompt");
     expect(getDataRateLimitRule("POST", "/agent/side-prompt/stream")?.bucket).toBe("data/agent_side_prompt");
     expect(getDataRateLimitRule("POST", "/workspace/attach")?.bucket).toBe("data/workspace_attach");
+    expect(getDataRateLimitRule("POST", "/workspace/upload-chunk")?.bucket).toBe("data/workspace_upload_chunk");
     expect(getDataRateLimitRule("POST", "/workspace/visibility")?.bucket).toBe("data/workspace_ui");
     expect(getDataRateLimitRule("POST", "/workspace/reindex")?.bucket).toBe("data/workspace_ui");
     expect(getDataRateLimitRule("DELETE", "/workspace/file")?.bucket).toBe("data/write");
