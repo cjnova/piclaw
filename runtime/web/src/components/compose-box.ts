@@ -353,13 +353,9 @@ export function getModelPickerOptionSearchLabel(option) {
 export function resolveComposeModelPickerState(activeModel, agentModelsPayload) {
     const modelLabel = typeof activeModel === 'string' ? activeModel.trim() : '';
     if (modelLabel) {
-        // If the model has a name (e.g. cheapskate shows backend info), use it as subtitle
-        const options = normalizeModelPickerOptions(agentModelsPayload);
-        const match = options.find((o) => o.label === modelLabel);
-        const displayLabel = match?.name ? `${modelLabel} — ${match.name}` : modelLabel;
         return {
             showPicker: true,
-            label: displayLabel,
+            label: modelLabel,
             hasAvailableModels: true,
         };
     }
