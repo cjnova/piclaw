@@ -611,6 +611,32 @@
     background: color-mix(in srgb, var(--danger-color, #ef4444) 8%, var(--bg-primary));
 }
 
+.settings-addon-btn-restart-now {
+    background: color-mix(in srgb, var(--warning-color, #f0b429) 12%, var(--bg-primary));
+    border-color: color-mix(in srgb, var(--warning-color, #f0b429) 36%, transparent);
+    color: var(--warning-color, #f0b429);
+    font-weight: 700;
+}
+
+.settings-addon-btn-restart-now:hover {
+    border-color: var(--warning-color, #f0b429);
+    background: color-mix(in srgb, var(--warning-color, #f0b429) 18%, var(--bg-primary));
+}
+
+.settings-addon-restart-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--warning-color, #f0b429) 28%, transparent);
+    background: color-mix(in srgb, var(--warning-color, #f0b429) 9%, transparent);
+    color: var(--warning-color, #f0b429);
+    font-size: 0.84em;
+}
+
 .settings-addon-error {
     padding: 6px 10px;
     margin-bottom: 8px;
