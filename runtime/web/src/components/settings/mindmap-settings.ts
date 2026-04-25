@@ -4,17 +4,24 @@
  */
 import { html, useState } from '../../vendor/preact-htm.js';
 import { registerSettingsPane } from './pane-registry.js';
+import { NumberStepper, normalizeNumberValue } from './number-stepper.js';
 
 function getBool(key, fallback) {
     try { const v = localStorage.getItem(key); return v === null ? fallback : v === 'true'; } catch { return fallback; }
 }
 function setBool(key, value) { try { localStorage.setItem(key, String(value)); } catch (e) { void e; } }
-function getString(key, fallback) { try { return localStorage.getItem(key) || fallback; } catch { return fallback; } }
-function setString(key, value) { try { localStorage.setItem(key, value); } catch (e) { void e; } }
+function getInt(key, fallback, min, max) {
+    try {
+        return normalizeNumberValue(localStorage.getItem(key), { fallback, min, max });
+    } catch {
+        return normalizeNumberValue(fallback, { fallback, min, max });
+    }
+}
+function setInt(key, value) { try { localStorage.setItem(key, String(value)); } catch (e) { void e; } }
 
 function MindmapSettingsSection() {
     const [autoExpand, setAutoExpand] = useState(() => getBool('piclaw_mindmap_auto_expand', true));
-    const [nodeSpacing, setNodeSpacing] = useState(() => getString('piclaw_mindmap_node_spacing', '40'));
+    const [nodeSpacing, setNodeSpacing] = useState(() => getInt('piclaw_mindmap_node_spacing', 40, 20, 100));
     const [animateTransitions, setAnimateTransitions] = useState(() => getBool('piclaw_mindmap_animate', true));
 
     return html`
@@ -27,8 +34,15 @@ function MindmapSettingsSection() {
             </div>
             <div class="settings-row">
                 <label>Node spacing (px)</label>
-                <input type="number" value=${nodeSpacing} min="20" max="100" style="max-width:70px"
-                    onInput=${e => { const v = e.target.value; setNodeSpacing(v); setString('piclaw_mindmap_node_spacing', v); }} />
+                <${NumberStepper}
+                    label="node spacing"
+                    value=${nodeSpacing}
+                    min=${20}
+                    max=${100}
+                    fallback=${40}
+                    width="70px"
+                    onChange=${(value) => { setNodeSpacing(value); setInt('piclaw_mindmap_node_spacing', value); }}
+                />
             </div>
             <div class="settings-row">
                 <label>Animate transitions</label>

@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { html, useState, useEffect, useCallback, useMemo, useRef } from '../../vendor/preact-htm.js';
 import { METERS_EVENT_NAME, applyMetersEnabled, readStoredMetersEnabled } from '../../ui/meters.js';
+import { NumberStepper } from './number-stepper.js';
 
 function resolveAvatarPreview(value) {
     const raw = String(value || '').trim();
@@ -192,8 +193,15 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
             </div>
             <div class="settings-row">
                 <label>Max session size (MB)</label>
-                <input type="number" value=${sessionMaxSizeMb} min="1" max="256" style="max-width:80px"
-                    onInput=${e => setSessionMaxSizeMb(parseInt(e.target.value, 10) || 32)} />
+                <${NumberStepper}
+                    label="max session size"
+                    value=${sessionMaxSizeMb}
+                    min=${1}
+                    max=${256}
+                    fallback=${32}
+                    width="80px"
+                    onChange=${setSessionMaxSizeMb}
+                />
             </div>
             <div class="settings-row">
                 <label>Web terminal</label>
@@ -212,8 +220,15 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
             </div>
             <div class="settings-row">
                 <label>Tool use budget</label>
-                <input type="number" value=${toolUseBudget} min="8" max="512" style="max-width:80px"
-                    onInput=${e => setToolUseBudget(parseInt(e.target.value, 10) || 64)} />
+                <${NumberStepper}
+                    label="tool use budget"
+                    value=${toolUseBudget}
+                    min=${8}
+                    max=${512}
+                    fallback=${64}
+                    width="80px"
+                    onChange=${setToolUseBudget}
+                />
                 <span class="settings-hint" style="margin:0">per turn</span>
             </div>
             <div class="settings-row" style="margin-top:16px; align-items:center; gap:10px;">

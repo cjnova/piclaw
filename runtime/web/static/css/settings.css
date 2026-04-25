@@ -143,7 +143,9 @@
     color: var(--text-secondary);
 }
 
-.settings-row input[type="text"] {
+.settings-row input[type="text"],
+.settings-row input[type="number"],
+.settings-number-input {
     flex: 1;
     max-width: 280px;
     padding: 6px 10px;
@@ -154,7 +156,55 @@
     font-size: 0.88em;
 }
 
-.settings-row button {
+.settings-number-stepper {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.settings-number-input {
+    flex: 0 0 auto;
+    max-width: none;
+    text-align: center;
+    appearance: textfield;
+    -moz-appearance: textfield;
+}
+
+.settings-number-input::-webkit-outer-spin-button,
+.settings-number-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.settings-number-step-btn {
+    min-width: 32px;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border-color, rgba(128,128,128,0.3));
+    border-radius: 6px;
+    background: var(--bg-hover, var(--bg-secondary));
+    color: var(--text-primary);
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+    flex: 0 0 auto;
+}
+
+.settings-number-step-btn:hover:not(:disabled) {
+    border-color: var(--accent-color);
+    background: color-mix(in srgb, var(--accent-color) 10%, var(--bg-primary));
+}
+
+.settings-number-step-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.settings-row button:not(.settings-number-step-btn) {
     padding: 6px 14px;
     border: 1px solid var(--border-color, rgba(128,128,128,0.3));
     border-radius: 6px;
@@ -165,7 +215,7 @@
     min-width: 70px;
 }
 
-.settings-row button:hover {
+.settings-row button:not(.settings-number-step-btn):hover {
     background: color-mix(in srgb, var(--accent-color) 15%, var(--bg-primary));
 }
 
@@ -767,7 +817,9 @@
     }
 
     .settings-row label { min-width: 0; }
-    .settings-row input[type="text"] { max-width: 100%; }
+    .settings-row input[type="text"],
+    .settings-number-input { max-width: 100%; }
+    .settings-number-stepper { width: 100%; }
 
     .settings-model-filter { margin-bottom: 6px; }
     .settings-filter-input { font-size: 0.84em; padding: 6px 10px; }
