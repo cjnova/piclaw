@@ -615,21 +615,27 @@ export function QueuedFollowupStack({
                                 <button
                                     class="compose-queue-stack-move-btn"
                                     type="button"
-                                    title=${canReturnToEditor ? 'Return to editor' : 'Move down'}
-                                    aria-label=${canReturnToEditor ? 'Return queued message to editor' : 'Move down in queue'}
-                                    disabled=${!canMoveDown && !canReturnToEditor}
-                                    onClick=${() => {
-                                        if (canMoveDown) {
-                                            onMoveQueuedFollowup?.(index, index + 1);
-                                            return;
-                                        }
-                                        if (canReturnToEditor) {
-                                            onReturnQueuedFollowup?.(item);
-                                        }
-                                    }}
+                                    title="Move down"
+                                    aria-label="Move down in queue"
+                                    disabled=${!canMoveDown}
+                                    onClick=${() => canMoveDown && onMoveQueuedFollowup?.(index, index + 1)}
                                 >
                                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                                         <polyline points="6 9 12 15 18 9"></polyline>
+                                    </svg>
+                                </button>
+                            `}
+                            ${canReturnToEditor && html`
+                                <button
+                                    class="compose-queue-stack-move-btn"
+                                    type="button"
+                                    title="Edit in compose"
+                                    aria-label="Return queued message to editor"
+                                    onClick=${() => onReturnQueuedFollowup?.(item)}
+                                >
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                     </svg>
                                 </button>
                             `}

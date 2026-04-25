@@ -98,12 +98,6 @@ export function AddonsSection({ setStatus, filter = '' }) {
             <div class="settings-addon-toolbar">
                 <p class="settings-hint">Catalog from <a href="https://github.com/rcarmo/piclaw-addons" target="_blank">rcarmo/piclaw-addons</a>. Package-first install via Bun; restart required after install/uninstall.</p>
             </div>
-            ${restartRequired && html`
-                <div class="settings-addon-restart-notice" role="status" aria-live="polite">
-                    <span>Extension changes are installed but inactive until piclaw restarts.</span>
-                    <button class="settings-addon-btn settings-addon-btn-restart-now" type="button" disabled=${Boolean(busy)} onClick=${restartRuntime}>Restart Now</button>
-                </div>
-            `}
             ${busy && html`
                 <div class="settings-addon-panel-overlay" role="status" aria-live="polite" aria-label=${busyLabel}>
                     <div class="settings-addon-panel-overlay-card">
@@ -132,7 +126,7 @@ export function AddonsSection({ setStatus, filter = '' }) {
                             <div class="settings-addon-tags">${(a.tags || []).map(t => html`<span class="settings-tag">${t}</span>`)}${(a.skills || []).map(s => html`<span class="settings-tag settings-tag-skill">\ud83d\udcdd ${s}</span>`)}</div>
                             <div class="settings-addon-actions">
                                 ${a.installed ? html`
-                                    ${a.hasUpdate && html`<button class="settings-addon-btn settings-addon-btn-upgrade" disabled=${Boolean(busy)} onClick=${() => installAddon(a.slug)}>${busySlug === a.slug ? '\u2026' : '\u2b06 Upgrade'}</button>`}
+                                    ${a.hasUpdate && html`<button class="settings-addon-btn settings-addon-btn-upgrade" disabled=${Boolean(busy)} onClick=${() => installAddon(a.slug)}>${busySlug === a.slug ? '\u2026' : 'Update'}</button>`}
                                     <button class="settings-addon-btn settings-addon-btn-remove" disabled=${Boolean(busy)} onClick=${() => uninstallAddon(a.slug)}>${busySlug === a.slug ? '\u2026' : 'Remove'}</button>
                                 ` : html`
                                     <button class="settings-addon-btn settings-addon-btn-install" disabled=${Boolean(busy)} onClick=${() => installAddon(a.slug)}>${busySlug === a.slug ? '\u2026' : 'Install'}</button>
@@ -143,6 +137,12 @@ export function AddonsSection({ setStatus, filter = '' }) {
                 `; })}
                 ${filtered.length === 0 && html`<p class="settings-hint">No add-ons match "${filter}"</p>`}
             </div>
+            ${restartRequired && html`
+                <div class="settings-addon-restart-notice" role="status" aria-live="polite">
+                    <span>Extension changes are installed but inactive until piclaw restarts.</span>
+                    <button class="settings-addon-btn settings-addon-btn-restart-now" type="button" disabled=${Boolean(busy)} onClick=${restartRuntime}>Restart Now</button>
+                </div>
+            `}
         </div>
     `;
 }
