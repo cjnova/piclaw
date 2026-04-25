@@ -2251,7 +2251,14 @@ export function ComposeBox({
                                                     const url = new URL(window.location.href);
                                                     url.searchParams.set('chat_jid', chat.chat_jid);
                                                     url.searchParams.set('chat_only', '1');
-                                                    window.open(url.toString(), '_blank');
+                                                    const a = document.createElement('a');
+                                                    a.href = url.toString();
+                                                    a.target = '_blank';
+                                                    a.rel = 'noopener';
+                                                    a.style.display = 'none';
+                                                    document.body.appendChild(a);
+                                                    a.click();
+                                                    a.remove();
                                                 }}
                                             >
                                                 <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">

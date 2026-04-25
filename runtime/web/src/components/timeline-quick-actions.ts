@@ -109,6 +109,20 @@ function renderKeyboardHint(label, value) {
     `;
 }
 
+function openInNewTab(chatJid) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('chat_jid', chatJid);
+    url.searchParams.set('chat_only', '1');
+    const a = document.createElement('a');
+    a.href = url.toString();
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+}
+
 export function TimelineQuickActions({
     activeChatAgents = [],
     currentChatJid = 'web:default',
@@ -220,10 +234,7 @@ export function TimelineQuickActions({
                 if (current) {
                     if (current.kind === 'agent' && current.chatJid) {
                         if (popOut) {
-                            const url = new URL(window.location.href);
-                            url.searchParams.set('chat_jid', current.chatJid);
-                            url.searchParams.set('chat_only', '1');
-                            window.open(url.toString(), '_blank');
+                            openInNewTab(current.chatJid);
                         } else {
                             onSwitchChat?.(current.chatJid);
                         }
