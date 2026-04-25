@@ -15,7 +15,7 @@ export function resolveFollowupQueueRemovalPlan<T extends FollowupQueueItemLike>
   items: T[] | null | undefined,
   payload: Record<string, unknown> | null | undefined,
 ): FollowupQueueRemovalPlan<T> | null {
-  const rowId = payload?.row_id;
+  const rowId = payload?.row_id ?? payload?.id;
   if (rowId == null || (typeof rowId !== 'string' && typeof rowId !== 'number')) {
     return null;
   }

@@ -1454,7 +1454,14 @@ export function ComposeBox({
         onSetFileRefs?.(restored.fileRefs);
         onSetMessageRefs?.(restored.messageRefs);
         setContent(restored.content);
-        onRemoveQueuedFollowup?.(queuedItem);
+        // Remove from the displayed queue. If the backend removal fails,
+        // the item is already pulled into compose so this is the desired state.
+        try {
+            onRemoveQueuedFollowup?.(queuedItem);
+        } catch {
+            // Swallow — the item is already in compose; a stale queue entry
+            // will be cleaned up on the next queue refresh.
+        }
         requestAnimationFrame(() => {
             resizeTextarea();
             const textarea = textareaRef.current;
