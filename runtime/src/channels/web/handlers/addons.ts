@@ -107,8 +107,9 @@ function removeNodeModulesSymlinkIfPresent(addonsDir: string): void {
     if (stat.isSymbolicLink()) {
       unlinkSync(nodeModulesPath);
     }
-  } catch {
+  } catch (e) {
     // Not found or inaccessible — nothing to remove.
+    void e;
   }
 }
 

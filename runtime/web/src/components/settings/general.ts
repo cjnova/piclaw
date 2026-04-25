@@ -138,7 +138,7 @@ export function GeneralSection({ settingsData, setStatus, mergeSettingsData }) {
                 mergeSettingsData?.(payload.settings);
                 setAppliedHint(true);
                 setTimeout(() => { if (mountedRef.current) setAppliedHint(false); }, 4000);
-            } catch { /* silent */ }
+            } catch (e) { void e; /* best-effort hint reset */ }
         }, 600);
         return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
     }, [currentSnapshot, mergeSettingsData]);
