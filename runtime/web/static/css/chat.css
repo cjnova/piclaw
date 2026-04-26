@@ -724,7 +724,7 @@
     min-height: var(--chat-surface-control-height);
     padding: 0 9px 0 7px;
     border-radius: 999px;
-    color: var(--accent-color);
+    color: var(--text-secondary);
     opacity: 0.72;
     display: inline-flex;
     align-items: center;
@@ -733,15 +733,17 @@
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
-    transition: opacity 0.15s ease, background-color 0.15s ease;
+    transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
     background: none;
-    border: 1px solid color-mix(in srgb, var(--accent-color) 30%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent);
 }
 
 .compose-queue-stack-steer-btn:hover,
 .compose-queue-stack-steer-btn:focus-visible {
     opacity: 1;
+    color: var(--accent-color);
     background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    border-color: color-mix(in srgb, var(--accent-color) 30%, transparent);
     outline: none;
 }
 
@@ -754,7 +756,7 @@
     height: var(--chat-surface-control-height);
     padding: 0;
     border-radius: 999px;
-    color: var(--accent-color);
+    color: var(--text-secondary);
     opacity: 0;
     display: inline-flex;
     align-items: center;
@@ -774,8 +776,8 @@
 .compose-queue-stack-close-btn:hover,
 .compose-queue-stack-close-btn:focus-visible {
     opacity: 1 !important;
-    color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 10%, transparent);
+    color: var(--danger-color);
+    background: color-mix(in srgb, var(--danger-color) 10%, transparent);
     outline: none;
 }
 
@@ -979,7 +981,7 @@
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
-    opacity: 0.7;
+    opacity: 0.5;
     transition: opacity 0.12s, color 0.12s, background-color 0.12s;
 }
 
@@ -1011,21 +1013,21 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 30px;
-    height: 30px;
-    margin-right: 4px;
+    width: 28px;
+    height: 28px;
+    margin-right: 2px;
     border: 1px solid transparent;
     border-radius: var(--radius-sm, 4px);
     background: transparent;
-    color: color-mix(in srgb, var(--danger-color, #f4212e) 60%, var(--text-secondary));
+    color: var(--text-secondary);
     cursor: pointer;
-    opacity: 0.9;
+    opacity: 0.5;
     transition: opacity 0.12s, color 0.12s, background-color 0.12s, border-color 0.12s;
 }
 
 .compose-model-popup-item-delete svg {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
 }
 
 .compose-model-popup-item-row:hover .compose-model-popup-item-delete {
@@ -1041,9 +1043,9 @@
 .compose-model-popup-item-delete:hover,
 .compose-model-popup-item-delete:focus-visible {
     opacity: 1;
-    color: var(--danger-color, #f4212e);
-    background: color-mix(in srgb, var(--danger-color, #f4212e) 16%, transparent);
-    border-color: color-mix(in srgb, var(--danger-color, #f4212e) 35%, transparent);
+    color: var(--danger-color);
+    background: color-mix(in srgb, var(--danger-color) 10%, transparent);
+    border-color: color-mix(in srgb, var(--danger-color) 28%, transparent);
 }
 
 .compose-model-popup-actions {
