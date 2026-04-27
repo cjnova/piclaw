@@ -7,7 +7,10 @@ import { getIdentityConfig, PICLAW_CONFIG_PATH } from "../../../core/config.js";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { createLogger, debugSuppressedError } from "../../../utils/logger.js";
 import { THEME_PRESETS, THEME_LIST_COLOR_KEYS } from "../theming/ui-theme-data.js";
+
+const log = createLogger("web:dispatch-agent");
 import { TOOLSETS } from "../../../extensions/tool-activation.js";
 import { getToolCapability } from "../../../extensions/tool-capabilities.js";
 import { handleGetAddons, handleInstallAddon, handleUninstallAddon } from "../handlers/addons.js";
@@ -225,7 +228,7 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
         if (existsSync(PICLAW_CONFIG_PATH)) {
           rawConfig = JSON.parse(readFileSync(PICLAW_CONFIG_PATH, "utf-8"));
         }
-      } catch { /* ignore */ }
+      } catch (err) { debugSuppressedError(log, "Failed to read piclaw config", err, { path: PICLAW_CONFIG_PATH }); }
       const assistantSection = typeof rawConfig.assistant === "object" && rawConfig.assistant ? rawConfig.assistant as Record<string, unknown> : rawConfig;
       const userSection = typeof rawConfig.user === "object" && rawConfig.user ? rawConfig.user as Record<string, unknown> : rawConfig;
 
@@ -235,7 +238,7 @@ const EXACT_AGENT_ROUTES: ExactAgentRoute[] = [
       try {
         const authPath = join(piAgentDir, "auth.json");
         if (existsSync(authPath)) authProviders = JSON.parse(readFileSync(authPath, "utf-8"));
-      } catch { /* ignore */ }
+      } catch (err) { debugSuppressedError(log, "Failed to read auth state", err, { path: join(piAgentDir, "auth.json") }); }
 
       const providerDefs = [
         { id: "anthropic", name: "Anthropic", hasOAuth: true, hasApiKey: true, apiKeyHint: "sk-ant-..." },

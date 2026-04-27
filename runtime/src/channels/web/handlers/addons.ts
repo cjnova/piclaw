@@ -8,7 +8,10 @@
 
 import { existsSync, readFileSync, rmSync, mkdirSync } from "fs";
 import { join } from "path";
+import { createLogger, debugSuppressedError } from "../../../utils/logger.js";
 import { WORKSPACE_DIR } from "../../../core/config.js";
+
+const log = createLogger("web:addons");
 
 const CATALOG_URL = "https://raw.githubusercontent.com/rcarmo/piclaw-addons/main/catalog.json";
 const REPO_URL = "https://github.com/rcarmo/piclaw-addons.git";
@@ -65,7 +68,7 @@ function getInstalledVersion(packageName: string): string | null {
       const raw = readFileSync(pkgJsonPath, "utf-8");
       const pkg = JSON.parse(raw);
       if (typeof pkg.version === "string") return pkg.version;
-    } catch { /* continue */ }
+    } catch (err) { debugSuppressedError(log, "Failed to read addon package version", err, { path: pkgJsonPath }); }
   }
   return null;
 }
