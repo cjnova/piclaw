@@ -55,7 +55,7 @@ export function ModelsSection({ filter = '' }) {
             const resp = await sendAgentMessage('default', `/thinking ${level}`, null, []);
             if (resp?.command?.thinking_level) setThinkingLevel(resp.command.thinking_level);
             setSupportsThinking(resp?.command?.supports_thinking !== false);
-        } catch (e) { console.error('Failed to set thinking:', e); await loadModels().catch(() => {}); }
+        } catch (e) { console.error('Failed to set thinking:', e); await loadModels().catch((err) => { console.warn('Failed to reload models after thinking error:', err); }); }
         finally { setThinkingBusy(false); }
     }, [thinkingBusy, loadModels]);
 
