@@ -25,7 +25,9 @@ export function ModelContextBar() {
   } = useModelPicker();
 
   const contextTokens = useComputed(() => agentContext.value?.tokens ?? 0);
-  const contextWindow = useComputed(() => agentContext.value?.contextWindow ?? modelContextWindow.value ?? 0);
+  const contextWindow = useComputed(() =>
+    agentContext.value?.contextWindow ?? modelContextWindow.value ?? 0
+  );
   const contextPercent = useComputed(() => {
     const w = contextWindow.value, t = contextTokens.value;
     return agentContext.value?.percent ?? (w > 0 ? (t / w) * 100 : 0);
