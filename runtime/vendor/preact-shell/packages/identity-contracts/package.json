@@ -1,0 +1,15 @@
+{
+  "name": "@cjnova/preact-shell-identity-contracts",
+  "version": "0.1.1",
+  "type": "module",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

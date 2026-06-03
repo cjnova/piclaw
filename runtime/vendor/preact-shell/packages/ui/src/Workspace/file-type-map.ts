@@ -1,0 +1,98 @@
+/** Map file extension (no dot) → Seti icon name */
+export const EXT_MAP: Record<string, string> = {
+  ts: "typescript",
+  tsx: "react",
+  js: "javascript",
+  jsx: "react",
+  mjs: "javascript",
+  cjs: "javascript",
+  json: "json",
+  jsonc: "json",
+  md: "markdown",
+  mdx: "markdown",
+  css: "css",
+  scss: "sass",
+  sass: "sass",
+  html: "html",
+  htm: "html",
+  py: "python",
+  go: "go",
+  rs: "rust",
+  rb: "ruby",
+  java: "java",
+  kt: "kotlin",
+  swift: "swift",
+  dart: "dart",
+  c: "c",
+  h: "header",
+  cpp: "cpp",
+  cxx: "cpp",
+  cc: "cpp",
+  hpp: "header",
+  hxx: "header",
+  hh: "header",
+  cs: "csharp",
+  sh: "shell",
+  bash: "shell",
+  zsh: "shell",
+  fish: "shell",
+  ps1: "powershell",
+  bat: "bat",
+  cmd: "bat",
+  yaml: "yaml",
+  yml: "yaml",
+  toml: "toml",
+  xml: "xml",
+  svg: "svg",
+  graphql: "graphql",
+  gql: "graphql",
+  sql: "sql",
+  docker: "docker",
+  tf: "terraform",
+  bicep: "bicep",
+  lua: "lua",
+  r: "r",
+  php: "php",
+  vue: "vue",
+  svelte: "svelte",
+  scala: "scala",
+  pdf: "pdf",
+  zip: "zip",
+  gz: "zip",
+  tgz: "zip",
+  tar: "zip",
+  png: "image",
+  jpg: "image",
+  jpeg: "image",
+  gif: "image",
+  webp: "image",
+  ico: "image",
+  bmp: "image",
+};
+
+/** Map exact filename (lowercase) → Seti icon name */
+export const FILENAME_MAP: Record<string, string> = {
+  "dockerfile": "docker",
+  "makefile": "makefile",
+  "license": "license",
+  "licence": "license",
+  ".gitignore": "git",
+  ".gitattributes": "git",
+  "tsconfig.json": "tsconfig",
+  "package.json": "json",
+  "yarn.lock": "yarn",
+  "bun.lockb": "bun",
+  "bun.lock": "bun",
+  "readme.md": "info",
+};
+
+export function getFileIconName(filename: string): string {
+  const lower = filename.toLowerCase();
+
+  if (FILENAME_MAP[lower]) {
+    return FILENAME_MAP[lower];
+  }
+
+  const ext = lower.split(".").pop() || "";
+  return EXT_MAP[ext] || "default";
+}
