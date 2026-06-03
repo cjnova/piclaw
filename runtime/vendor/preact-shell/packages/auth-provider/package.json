@@ -1,0 +1,22 @@
+{
+  "name": "@cjnova/preact-shell-auth-provider",
+  "version": "0.1.1",
+  "type": "module",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./providers/azure-cli-provider": "./src/providers/azure-cli-provider.ts",
+    "./providers/github-provider": "./src/providers/github-provider.ts",
+    "./providers/m365-provider": "./src/providers/m365-provider.ts"
+  },
+  "dependencies": {
+    "@cjnova/preact-shell-identity-contracts": "file:../identity-contracts",
+    "hono": "4.10.2"
+  }
+}

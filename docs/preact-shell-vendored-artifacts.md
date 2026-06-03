@@ -1,41 +1,27 @@
-# Vendored `@cjnova/preact-shell*` package artifacts
+# Vendored `@cjnova/preact-shell*` source (integration branch model)
 
-PiClaw vendors prebuilt `@cjnova/preact-shell*` npm tarballs under `vendor/npm/` so local/CI installs do not depend on live GitHub Packages availability for these framework packages.
+On `integration/preact-shell-app`, PiClaw treats vendored `preact-shell` **source** as canonical. We no longer vendor npm tarballs for these framework packages.
 
-## Why this exists
+## Canonical layout
 
-- GitHub Packages auth/network issues can break otherwise unrelated installs.
-- We only need the published package outputs, not the framework source repository.
-- Vendored tarballs make installs reproducible and reviewable in Git history.
+Vendored framework packages live under:
 
-## Current vendored packages
+- `runtime/vendor/preact-shell/packages/ui`
+- `runtime/vendor/preact-shell/packages/auth-provider`
+- `runtime/vendor/preact-shell/packages/identity-contracts`
+- `runtime/vendor/preact-shell/packages/workspace-provider`
 
-- `@cjnova/preact-shell-ui`
-- `@cjnova/preact-shell-auth-provider`
-- `@cjnova/preact-shell-identity-contracts`
-- `@cjnova/preact-shell-workspace-provider`
+Root `package.json` dependencies and overrides point directly to these paths via `file:` references.
 
-Dependencies and overrides in root `package.json` are pinned to local files using:
+## Sync flow
 
-```json
-"@cjnova/preact-shell-ui": "file:vendor/npm/cjnova-preact-shell-ui-<version>.tgz"
-```
-
-## Refreshing tarballs
-
-1. Ensure GitHub Packages access is available (either `NODE_AUTH_TOKEN` exported or `gh auth login` completed).
-2. Run:
+1. Pull latest `preact-shell` source locally.
+2. From piclaw root run:
 
 ```bash
-./scripts/refresh-vendored-preact-shell-artifacts.sh
+./scripts/refresh-vendored-preact-shell-artifacts.sh /path/to/preact-shell
 ```
 
-The script will:
+3. Commit vendored source updates together with `package.json`/`bun.lock` changes.
 
-- resolve latest versions from `https://npm.pkg.github.com`
-- download `.tgz` artifacts into `vendor/npm/`
-- patch `workspace:*` internal dependency declarations inside fetched tarballs to concrete versions
-- rewrite `package.json` dependency/override file references for the four packages
-- run `bun install` to update `bun.lock`
-
-3. Commit updated tarballs, `package.json`, and `bun.lock` together.
+This keeps the integration branch reproducible while allowing framework changes to be reviewed as source diffs instead of tarball blobs.
