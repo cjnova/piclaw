@@ -23,6 +23,15 @@ node_modules/
 coverage/
 .bun/
 
+# Local-only developer workspace (keep placeholder)
+workspace/*
+!workspace/.gitkeep
+
+# Local-only helper/script files
+int-start.sh
+.npmrc
+.github/pull_request_template_framework_baseline.md
+
 # Pack artifacts
 **/piclaw-*.tgz
 build/
